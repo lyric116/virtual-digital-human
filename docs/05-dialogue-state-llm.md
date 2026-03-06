@@ -1,0 +1,131 @@
+# 对话状态机与 LLM 实施方案
+
+## 1. 在整体技术路线中的位置
+
+LLM 负责系统的自然语言表达和策略执行，但必须被状态机、规则层和知识库约束。该模块的关键不是“聊得像人”，而是“在正确阶段做正确的干预，并始终可解释、可控”。
+
+## 2. 模块目标
+
+- 支持至少 10 轮连续对话。
+- 上下文窗口不少于 8k。
+- 按固定状态机推进会话。
+- 统一输出结构化 JSON。
+- 将高风险情况稳定导向安全回复和人工求助提示。
+
+## 3. 模型推荐
+
+- 主模型：`Qwen2.5-7B-Instruct` 或 `Qwen2.5-14B-Instruct`
+- 部署方式：`vLLM`
+- 原因：中文能力强、长上下文稳定、推理速度适合本地服务化
+
+如果硬件较弱，可用 API 方案先跑 Demo，但最终交付建议保留本地部署路径。
+
+## 4. 状态机设计
+
+```mermaid
+stateDiagram-v2
+  [*] --> engage
+  engage --> assess
+  assess --> intervene
+  intervene --> reassess
+  reassess --> intervene
+  reassess --> handoff
+  assess --> handoff
+```
+
+### 阶段说明
+
+- `engage`：建立联系，确认用户愿意继续交流
+- `assess`：收集情绪、睡眠、压力源、持续时间等线索
+- `intervene`：给出呼吸引导、认知重构、行为建议等非临床支持
+- `reassess`：确认当前状态是否改善
+- `handoff`：提示寻求辅导员、家人、校医院或专业帮助
+
+## 5. 非纯 LLM 架构
+
+最终决策采用“三层协同”：
+
+- 规则层：高风险词、极端表达、明显危险线索
+- 分类层：多模态感知模块给出的风险评分
+- LLM 层：负责语言组织、共情和追问
+
+LLM 只负责“怎么说”，不独占“是否高风险”的判断权。
+
+## 6. Prompt 结构
+
+建议拆成 5 段：
+
+- `system_prompt`：角色、边界、禁忌、不能做临床诊断
+- `persona_prompt`：当前数字人风格
+- `state_prompt`：当前阶段、目标、应避免的话术
+- `knowledge_prompt`：RAG 返回的 2 到 3 条知识
+- `memory_prompt`：最近几轮对话摘要和风险变化
+
+## 7. 统一输出 JSON
+
+```json
+{
+  "reply": "谢谢你愿意说出来，我们先慢一点。",
+  "emotion": "anxious",
+  "risk_level": "medium",
+  "stage": "intervene",
+  "next_action": "breathing",
+  "knowledge_refs": ["breathing_478", "sleep_hygiene_basic"],
+  "avatar_style": "warm_support",
+  "requires_followup": true
+}
+```
+
+要求：
+
+- 回复文本必须可直接给 TTS 使用。
+- 阶段字段必须严格属于状态机枚举。
+- 输出失败时自动重试一次，仍失败则回退到规则模板。
+
+## 8. 多轮记忆设计
+
+- Redis 保存最近 6 到 10 轮完整上下文。
+- PostgreSQL 保存整场会话和阶段切换记录。
+- 每 3 轮生成一次摘要，防止上下文无限膨胀。
+
+摘要内容至少包括：
+
+- 当前主要情绪
+- 压力来源
+- 已尝试的干预
+- 风险等级变化
+- 是否已建议线下求助
+
+## 9. 安全策略
+
+- 检测到高风险时，不允许输出轻率安慰或玩笑化表达。
+- 明确禁止诊断式结论，如“你就是抑郁症”。
+- 明确禁止提供危险行为指导。
+- 在 `handoff` 阶段固定插入求助资源模板。
+
+## 10. 工具调用建议
+
+对话服务可调用以下工具：
+
+- `retrieve_kb`
+- `fetch_affect_summary`
+- `trigger_reassess`
+- `select_avatar_style`
+- `escalate_handoff_template`
+
+工具调用结果由编排层注入，不让模型直接访问数据库。
+
+## 11. 实施顺序
+
+1. 先用 mock 多轮历史验证 JSON 输出。
+2. 接入状态机和规则层。
+3. 接入 RAG 检索。
+4. 接入风险升级逻辑和 handoff 模板。
+5. 最后做长对话、超时和失败回退测试。
+
+## 12. 验收标准
+
+- 连续 10 轮对话阶段推进合理，无明显跳阶段。
+- 高风险输入能稳定走向 `handoff`。
+- 输出 JSON 字段完整、合法，可直接被后续模块消费。
+- 不依赖人工修 prompt 即可完成标准 Demo 脚本。
