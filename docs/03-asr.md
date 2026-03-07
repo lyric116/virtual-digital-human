@@ -135,3 +135,15 @@ flowchart LR
 - 5 分钟连续语音输入不崩溃。
 - 能在页面上稳定显示 partial 和 final 转写。
 - 独立 ASR 工程可单独启动、单独评测、单独导出结果。
+
+## 13. 企业验证集接入要求
+
+当前企业验证集可直接用于 ASR 的离线基线验证，但必须经过统一预处理。
+
+- 原始企业音频为 `44.1kHz` 双声道，进入识别前必须转成 `16kHz` 单声道。
+- ASR 评测输入统一从 manifest 的 `audio_path_16k_mono` 读取，而不是直接读取原始音频。
+- ASR 批处理只允许写入转录模板中的初稿字段，例如 `draft_text_raw`、`draft_segments`、`draft_confidence_mean`、`asr_engine`，不得直接覆盖 `final_text`。
+- 转录状态应按 `pending_asr -> draft_ready -> pending_review -> verified` 推进；人工复核完成前，不得把样本计入正式评测集。
+- 参考文本必须写回统一转录工作流文件，并通过 `text_status` 区分 `asr_generated` 与 `human_verified`。
+- 最终 WER/SER 报告只允许使用 `human_verified` 参考文本，不允许模型生成结果自评。
+- 当前已生成 `data/derived/transcripts/val_transcripts_template.jsonl`，共 `1126` 条转录工作流记录，当前状态基线为 `pending_asr=1126`，后续 ASR 流程应直接回填这一文件链路。

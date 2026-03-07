@@ -145,3 +145,16 @@
 - 能导出一份包含指标和日志的实验报告。
 - 压测结果可支撑答辩中的稳定性说明。
 - 评测脚本和结果表可独立运行，不依赖人工手填。
+
+## 13. Manifest、血缘与质控
+
+企业验证集接入后，数据运维需要增加一层样本血缘和质量控制管理。
+
+- 日志中除 `session_id` 和 `trace_id` 外，还应记录 `record_id`、`dataset`、`canonical_role`、`segment_id`。
+- 评测任务应优先读取 `data/manifests/val_manifest.jsonl`，而不是直接遍历原始目录。
+- 转录评测任务应优先读取 `data/derived/transcripts/val_transcripts_template.jsonl`，并显式区分 `pending_asr`、`draft_ready`、`pending_review`、`verified`。
+- 数据质控至少覆盖三类问题：隐藏文件污染、模态缺失、情绪 CSV 与 3D 特征步数不一致。
+- QC 报告必须按 `dataset + canonical_role` 输出覆盖率、问题样本和转录状态拆表，便于直接转成开发待办和回归样本池。
+- 正式 ASR 指标只允许使用 `verified` 且 `locked_for_eval` 的样本，禁止把机器初稿直接当参考文本。
+- 所有导出的实验表都应能区分“实时采集样本”和“企业验证集离线样本”。
+- 当前已产出 `data/derived/qc_report.md`，当前基线统计为：总记录 `1126`、完整多模态 `1124`、缺失情绪标签 `2`、隐藏文件过滤 `2486`、对齐错位 `1124`、转录状态 `pending_asr=1126`。

@@ -1,0 +1,9 @@
+.env
+.uv-cache/
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+data/val/
+data/derived/audio_16k_mono/

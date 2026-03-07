@@ -127,3 +127,13 @@ Demo 模式是比赛交付保底：
 - 主系统与两个独立工程均能单独演示。
 - `demo mode` 可在弱网络环境或离线环境运行。
 - 交付包结构清晰，评委无需猜测入口文件和启动顺序。
+
+## 12. 数据挂载与交付边界
+
+企业验证集体量较大，部署与交付必须明确数据边界。
+
+- Docker 镜像默认不内置 `data/val` 原始数据，改为通过只读挂载方式接入。
+- 镜像内应包含 `data/manifests/val_manifest.jsonl`、角色映射和标签映射等轻量元数据文件。
+- README 中要明确区分“无原始验证集也可运行的 demo mode”和“挂载验证集后的离线评测模式”。
+- 这样既能减小交付体积，也能避免现场因拷贝大文件导致部署失败。
+- 转录模板 `data/derived/transcripts/val_transcripts_template.jsonl` 和质检报告 `data/derived/qc_report.md` 也应作为轻量交付件保留，便于评委直接看到数据治理结果。

@@ -1,0 +1,9 @@
+dataset,source_namespace,source_role,canonical_role,semantic_role,mapping_status,mapping_basis,is_default,notes
+noxi,av,Expert_video,speaker_a,expert,verified,"Role name explicitly encodes semantic identity in AV and 3D directories",true,"Applies to audio, video, and 3D feature directories"
+noxi,av,Novice_video,speaker_b,novice,verified,"Role name explicitly encodes semantic identity in AV and 3D directories",true,"Applies to audio, video, and 3D feature directories"
+noxi,emotion,P1,speaker_a,expert,assumed,"Default positional mapping used because label-role correspondence is not documented in current files",true,"Keep assumed until enterprise metadata confirms P1/P2 meaning"
+noxi,emotion,P2,speaker_b,novice,assumed,"Default positional mapping used because label-role correspondence is not documented in current files",true,"Keep assumed until enterprise metadata confirms P1/P2 meaning"
+recola,av,P41,speaker_a,,verified,"Source role exists directly in audio, video, and 3D directories",true,"No semantic role is assigned"
+recola,av,P42,speaker_b,,verified,"Source role exists directly in audio, video, and 3D directories",true,"No semantic role is assigned"
+recola,emotion,P1,speaker_a,,assumed,"Default positional mapping used because label-role correspondence is not documented in current files",true,"May remain unlinked for samples without emotion CSV"
+recola,emotion,P2,speaker_b,,assumed,"Default positional mapping used because label-role correspondence is not documented in current files",true,"May remain unlinked for samples without emotion CSV"

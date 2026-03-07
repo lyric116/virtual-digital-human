@@ -155,3 +155,12 @@ stateDiagram-v2
 - 所有关键步骤都能在日志中按 `trace_id` 查到。
 - 任意子服务挂掉后，系统可降级而不整体崩溃。
 - 前端能收到完整的阶段变化事件并正确渲染。
+
+## 13. Manifest 驱动的离线编排
+
+除了实时会话，本层还应支持基于验证集的离线编排与回放。
+
+- 网关层增加样本回放入口，输入最小单位为 `record_id`，而不是原始文件路径。
+- 编排层读取 manifest 后，把 `dataset/session_id/canonical_role/segment_id` 注入到事件上下文。
+- 任意内部服务在离线模式下都只消费 manifest 提供的资源定位信息，不直接推断角色映射。
+- 当 `has_emotion=false` 或 `has_face3d=false` 时，编排层必须允许部分模态降级，而不是直接判定样本非法。
