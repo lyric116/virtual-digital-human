@@ -21,6 +21,32 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-07 - Reusable Demo Assets
+
+### Scope
+
+Completed implementation plan step 6 by adding a lightweight demo asset directory for text-first session replay, audio metadata mocks, video-frame mock payloads, and sample session export output.
+
+### Outputs
+
+- data/demo/README.md
+- data/demo/text_session_script.json
+- data/demo/audio_sample.md
+- data/demo/video_frame_sample.md
+- data/demo/session_export_sample.json
+- tests/test_demo_assets.py
+
+### Checks
+
+- Ran uv run pytest tests/test_memory_bank.py tests/test_environment_inventory.py tests/test_shared_contracts.py tests/test_infra_compose.py tests/test_db_schema_assets.py tests/test_demo_assets.py and confirmed 15 tests passed.
+- Verified demo JSON assets are parseable and README points to the demo asset directory.
+- Confirmed the demo directory now covers text script, audio description, video-frame description, and export sample.
+
+### Next
+
+- Implementation plan step 7: build the frontend single-page layout with six static panels.
+- Keep mock flows anchored to data/demo assets instead of ad hoc inline fixtures.
+
 ## 2026-03-07 - Baseline PostgreSQL Schema
 
 ### Scope

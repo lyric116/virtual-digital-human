@@ -1,0 +1,37 @@
+{
+  "session_template_id": "demo_text_flow_v1",
+  "title": "Anxious Student Check-In",
+  "description": "Minimal text-first conversation script for early UI and orchestrator mock flow.",
+  "turns": [
+    {
+      "message_id": "demo_msg_user_001",
+      "role": "user",
+      "content_text": "我这两天总是睡不好，脑子停不下来。",
+      "expected_stage": "engage"
+    },
+    {
+      "message_id": "demo_msg_assistant_001",
+      "role": "assistant",
+      "reply": "谢谢你愿意告诉我这件事。最近这种状态是一直持续，还是集中在晚上更明显？",
+      "emotion": "anxious",
+      "risk_level": "medium",
+      "stage": "assess",
+      "next_action": "ask_followup"
+    },
+    {
+      "message_id": "demo_msg_user_002",
+      "role": "user",
+      "content_text": "主要是晚上，一躺下就会一直想课程和实习。",
+      "expected_stage": "assess"
+    },
+    {
+      "message_id": "demo_msg_assistant_002",
+      "role": "assistant",
+      "reply": "我们先把节奏放慢一点。我想先带你做一次简短呼吸，再一起看看今晚能先减轻哪一件事。",
+      "emotion": "supportive",
+      "risk_level": "medium",
+      "stage": "intervene",
+      "next_action": "breathing"
+    }
+  ]
+}

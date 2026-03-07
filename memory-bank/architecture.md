@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-07 - Demo Mode Now Has A Stable Asset Root
+
+- data/demo is now the canonical location for lightweight mock and replay assets, and later frontend or orchestrator mock flows should consume these files instead of embedding one-off fixtures in code.
+- Early export behavior should target the shape in data/demo/session_export_sample.json so session export remains predictable before live APIs are implemented.
+
 ## 2026-03-07 - Verified Table Names And Keys Are Now Stable
 
 - The baseline PostgreSQL surface is now fixed to sessions, messages, system_events, evaluation_records, and media_indexes, and later service code should reuse these names instead of inventing parallel tables for the same concerns.

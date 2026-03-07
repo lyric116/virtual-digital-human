@@ -1,0 +1,47 @@
+{
+  "session_id": "sess_demo_export_001",
+  "trace_id": "trace_demo_export_001",
+  "status": "closed",
+  "stage": "reassess",
+  "exported_at": "2026-03-07T14:20:00Z",
+  "messages": [
+    {
+      "message_id": "demo_msg_user_001",
+      "role": "user",
+      "content_text": "我这两天总是睡不好，脑子停不下来。",
+      "created_at": "2026-03-07T14:18:00Z"
+    },
+    {
+      "message_id": "demo_msg_assistant_001",
+      "role": "assistant",
+      "content_text": "谢谢你愿意告诉我这件事。最近这种状态是一直持续，还是集中在晚上更明显？",
+      "created_at": "2026-03-07T14:18:05Z"
+    }
+  ],
+  "stage_history": [
+    {
+      "stage": "engage",
+      "changed_at": "2026-03-07T14:18:00Z"
+    },
+    {
+      "stage": "assess",
+      "changed_at": "2026-03-07T14:18:05Z"
+    },
+    {
+      "stage": "reassess",
+      "changed_at": "2026-03-07T14:19:10Z"
+    }
+  ],
+  "events": [
+    {
+      "event_type": "session.created",
+      "source_service": "api_gateway",
+      "emitted_at": "2026-03-07T14:18:00Z"
+    },
+    {
+      "event_type": "dialogue.reply",
+      "source_service": "orchestrator",
+      "emitted_at": "2026-03-07T14:18:05Z"
+    }
+  ]
+}

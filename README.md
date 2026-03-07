@@ -44,6 +44,10 @@ Use `uv run` for Python commands. The project already has `pyproject.toml` and `
 
 ## Data And ASR Commands
 
+Demo assets for mock flow development live in:
+
+- `data/demo/README.md`
+
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`
 - Generate `16kHz mono` ASR input audio and backfill manifest/transcripts:
