@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-07 - Step 9 Frontend Session Start
+
+### Scope
+
+Connected the web shell start button to the live gateway session-create endpoint so the page now displays the active session id, status, stage, trace id, and last update timestamp.
+
+### Outputs
+
+- Updated apps/web/index.html, styles.css, and app.js so Start Session creates a new backend session and refresh-safe state starts empty on every page load.
+- Added browser-side verification harness scripts/web_session_start_harness.js and live verifier scripts/verify_web_session_start.py.
+- Enabled gateway CORS configuration for local frontend preview and documented the new runtime variables in .env.example and docs/environment.md.
+
+### Checks
+
+- Verified mock success and mock failure browser flows through the Node harness.
+- Verified 24 automated tests pass, including refresh isolation and frontend failure handling.
+- Verified live Docker-backed flow where two frontend session starts create two distinct PostgreSQL session rows.
+
+### Next
+
+- Implement step 10: establish a session-level realtime connection between the web shell and gateway without business messages.
+- Keep the session bootstrap contract stable so the upcoming websocket layer can reuse session_id and trace_id without schema changes.
+
 ## 2026-03-07 - Step 8 Session Creation Gateway
 
 ### Scope

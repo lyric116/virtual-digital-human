@@ -190,6 +190,12 @@ body::before {
   gap: 10px;
 }
 
+.session-overview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .mock-input label {
   display: block;
   margin-bottom: 8px;
@@ -364,6 +370,25 @@ body::before {
 
 .button-row button:nth-child(4) {
   background: var(--signal);
+}
+
+.button-row button[disabled] {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.session-feedback {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.control-notes span {
+  color: var(--ink);
 }
 
 .control-notes {

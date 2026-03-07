@@ -14,8 +14,9 @@
           <p class="eyebrow">Demo Mode / Frontend Skeleton</p>
           <h1>Emotion Care Console</h1>
           <p class="hero-copy">
-            Static single-page layout for the early interaction loop. All modules are
-            placeholders and intentionally disconnected from live services.
+            Frontend console for the early interaction loop. Session bootstrap is now
+            connected to the gateway, while transcript, emotion, and avatar modules
+            remain placeholders.
           </p>
         </div>
         <div class="hero-badges">
@@ -168,30 +169,49 @@
             <h2>Session Control</h2>
           </div>
           <p class="panel-summary">
-            Session start, pause, reset, and export controls. Buttons stay non-destructive
-            until the API layer is connected.
+            Session start is live. Pause, reset, and export remain disabled until message
+            handling and realtime state are connected.
           </p>
           <div class="panel-body controls">
-            <div class="session-chip">
-              <span>Session</span>
-              <strong>sess_demo_shell_001</strong>
+            <div class="session-overview">
+              <div class="session-chip">
+                <span>Session</span>
+                <strong id="session-id-value">未创建</strong>
+              </div>
+              <div class="session-chip">
+                <span>Status</span>
+                <strong id="session-status-value">idle</strong>
+              </div>
+              <div class="session-chip">
+                <span>Stage</span>
+                <strong id="session-stage-value">idle</strong>
+              </div>
             </div>
+            <p class="session-feedback" id="session-feedback" aria-live="polite">
+              点击 Start Session 创建新的会话编号。
+            </p>
             <div class="button-row">
-              <button type="button">Start</button>
-              <button type="button">Pause</button>
-              <button type="button">Reset</button>
-              <button type="button">Export</button>
+              <button type="button" id="session-start-button">Start Session</button>
+              <button type="button" id="session-pause-button" disabled>Pause</button>
+              <button type="button" id="session-reset-button" disabled>Reset</button>
+              <button type="button" id="session-export-button" disabled>Export</button>
             </div>
             <ul class="control-notes">
-              <li>Current mode: demo</li>
-              <li>Trace header: X-Trace-Id</li>
-              <li>Last update: static placeholder</li>
+              <li>Trace id: <span id="session-trace-value">not assigned</span></li>
+              <li>Last update: <span id="session-updated-at-value">not started</span></li>
+              <li>Gateway base URL: <span id="session-api-base-url-value">http://127.0.0.1:8000</span></li>
             </ul>
           </div>
         </section>
       </main>
     </div>
 
+    <script>
+      window.__APP_CONFIG__ = window.__APP_CONFIG__ || {
+        apiBaseUrl: "http://127.0.0.1:8000",
+        defaultAvatarId: "companion_female_01"
+      };
+    </script>
     <script src="./app.js"></script>
   </body>
 </html>

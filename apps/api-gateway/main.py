@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import psycopg
 from psycopg.rows import dict_row
@@ -39,12 +40,20 @@ def bootstrap_runtime_env() -> None:
         os.environ.setdefault(key, value)
 
 
+def parse_csv_env(value: str | None, fallback: list[str]) -> list[str]:
+    if not value:
+        return fallback
+    items = [item.strip() for item in value.split(",")]
+    return [item for item in items if item]
+
+
 @dataclass
 class GatewaySettings:
     database_url: str
     default_avatar_id: str
     gateway_host: str
     gateway_port: int
+    cors_origins: list[str]
 
     @classmethod
     def from_env(cls) -> "GatewaySettings":
@@ -64,6 +73,10 @@ class GatewaySettings:
             or "companion_female_01",
             gateway_host=os.getenv("GATEWAY_HOST", "0.0.0.0"),
             gateway_port=int(os.getenv("GATEWAY_PORT", "8000")),
+            cors_origins=parse_csv_env(
+                os.getenv("GATEWAY_CORS_ORIGINS"),
+                ["http://127.0.0.1:4173", "http://localhost:4173"],
+            ),
         )
 
 
@@ -210,6 +223,13 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
     settings = GatewaySettings.from_env()
 
     app = FastAPI(title="virtual-huamn-api-gateway", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.state.settings = settings
     app.state.session_repository = repository or PostgresSessionRepository(settings)
 

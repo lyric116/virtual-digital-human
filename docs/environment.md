@@ -39,6 +39,7 @@ code or deployment files.
 | `GATEWAY_PORT` | Yes | `8000` | External HTTP port for gateway APIs. |
 | `GATEWAY_PUBLIC_BASE_URL` | Yes | `http://localhost:8000` | Public base URL used in generated links and callbacks. |
 | `GATEWAY_WS_PATH` | Yes | `/ws` | WebSocket path used by the frontend. |
+| `GATEWAY_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173` | Comma-separated browser origins allowed to call the gateway during local frontend preview. |
 
 ## Orchestrator
 

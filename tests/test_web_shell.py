@@ -50,6 +50,9 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert '<link rel="stylesheet" href="./styles.css"' in content
     assert '<link rel="icon" href="./favicon.svg" type="image/svg+xml"' in content
     assert '<script src="./app.js"></script>' in content
+    assert 'id="session-start-button"' in content
+    assert 'id="session-id-value"' in content
+    assert 'id="session-status-value"' in content
     assert "Emotion Care Console" in content
     assert "Capture Panel" in content
     assert "Session Control" in content

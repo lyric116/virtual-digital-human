@@ -63,6 +63,13 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-07 - Web Session Bootstrap Flow
+
+- apps/web/app.js now owns a narrow browser state machine for session bootstrap only: idle, loading, ready, and error; it does not yet manage messages, transcript buffers, or audio capture.
+- scripts/web_session_start_harness.js provides a package-free Node-based DOM harness so frontend behavior can be regression-tested without adding a browser automation stack or npm dependencies.
+- scripts/verify_web_session_start.py is the runtime gate for step 9; it starts the gateway, runs the frontend harness in live mode, simulates a browser refresh by creating a fresh document, and verifies that both created sessions are persisted in PostgreSQL.
+- GATEWAY_CORS_ORIGINS is now required for practical local browser preview because apps/web is served from a different origin than the gateway during early development.
+
 ## 2026-03-07 - Gateway Session Creation Baseline
 
 - apps/api-gateway/main.py is now the first runnable backend service and owns session bootstrap responsibilities only: health check, input validation, session_id generation, trace_id generation, and database persistence.

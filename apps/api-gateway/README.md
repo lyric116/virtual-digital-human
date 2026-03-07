@@ -26,3 +26,5 @@ From repository root:
 - This step intentionally does not create messages, WebSocket events, or orchestrator calls.
 - The endpoint writes only to the `sessions` table defined in
   `infra/docker/postgres/init/001_base_schema.sql`.
+- `GATEWAY_CORS_ORIGINS` controls which local frontend preview origins can call the API
+  from the browser.
