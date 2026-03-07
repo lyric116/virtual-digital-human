@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Virtual Human Console</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Demo Mode / Frontend Skeleton</p>
+          <h1>Emotion Care Console</h1>
+          <p class="hero-copy">
+            Static single-page layout for the early interaction loop. All modules are
+            placeholders and intentionally disconnected from live services.
+          </p>
+        </div>
+        <div class="hero-badges">
+          <span>2 avatars planned</span>
+          <span>text + voice</span>
+          <span>camera + mic</span>
+        </div>
+      </header>
+
+      <main class="panel-grid">
+        <section class="panel capture-panel" data-panel="capture">
+          <div class="panel-header">
+            <p class="panel-kicker">01</p>
+            <h2>Capture Panel</h2>
+          </div>
+          <p class="panel-summary">
+            Camera, microphone, and text input placeholders for the upcoming realtime
+            capture flow.
+          </p>
+          <div class="panel-body stacked">
+            <div class="media-preview">
+              <span class="status-dot muted"></span>
+              <span>Camera preview unavailable in static mode</span>
+            </div>
+            <div class="pill-row">
+              <span class="pill">Mic: idle</span>
+              <span class="pill">Camera: blocked</span>
+              <span class="pill">Input: text</span>
+            </div>
+            <div class="mock-input">
+              <label for="mock-text-input">Mock text prompt</label>
+              <textarea
+                id="mock-text-input"
+                rows="3"
+                readonly
+              >我这两天总是睡不好，脑子停不下来。</textarea>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel avatar-panel" data-panel="avatar">
+          <div class="panel-header">
+            <p class="panel-kicker">02</p>
+            <h2>Avatar Stage</h2>
+          </div>
+          <p class="panel-summary">
+            Dedicated space for avatar playback, subtitle overlay, and speaking state.
+          </p>
+          <div class="avatar-stage">
+            <div class="avatar-card">
+              <p class="avatar-label">Avatar A</p>
+              <div class="avatar-portrait portrait-a"></div>
+              <p class="avatar-meta">Warm support / soft expression / low motion</p>
+            </div>
+            <div class="avatar-card">
+              <p class="avatar-label">Avatar B</p>
+              <div class="avatar-portrait portrait-b"></div>
+              <p class="avatar-meta">Structured guidance / stronger pacing / clearer cues</p>
+            </div>
+            <div class="subtitle-bar">
+              <span>Subtitle placeholder</span>
+              <strong>谢谢你愿意说出来，我们先慢一点。</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel transcript-panel" data-panel="transcript">
+          <div class="panel-header">
+            <p class="panel-kicker">03</p>
+            <h2>Transcript Panel</h2>
+          </div>
+          <p class="panel-summary">
+            Upcoming home for streaming transcript and final dialogue text.
+          </p>
+          <div class="panel-body transcript-lines">
+            <div class="line">
+              <span class="line-label">partial</span>
+              <p>我这两天总是睡不好 ...</p>
+            </div>
+            <div class="line final">
+              <span class="line-label">final</span>
+              <p>我这两天总是睡不好，脑子停不下来。</p>
+            </div>
+            <div class="line assistant">
+              <span class="line-label">reply</span>
+              <p>谢谢你愿意告诉我这件事。最近这种状态是一直持续，还是晚上更明显？</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel emotion-panel" data-panel="emotion">
+          <div class="panel-header">
+            <p class="panel-kicker">04</p>
+            <h2>Emotion Panel</h2>
+          </div>
+          <p class="panel-summary">
+            Placeholder cards for text, audio, video, and fused affect state.
+          </p>
+          <div class="signal-grid">
+            <article class="signal-card">
+              <span>Text</span>
+              <strong>Anxious</strong>
+              <small>keyword: sleep pressure</small>
+            </article>
+            <article class="signal-card">
+              <span>Audio</span>
+              <strong>Pending</strong>
+              <small>voice features not connected</small>
+            </article>
+            <article class="signal-card">
+              <span>Video</span>
+              <strong>Pending</strong>
+              <small>camera analysis not connected</small>
+            </article>
+            <article class="signal-card fusion">
+              <span>Fusion</span>
+              <strong>medium risk</strong>
+              <small>stage: assess / confidence: 0.71</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel chat-panel" data-panel="chat">
+          <div class="panel-header">
+            <p class="panel-kicker">05</p>
+            <h2>Chat Timeline</h2>
+          </div>
+          <p class="panel-summary">
+            Multi-turn history panel that will later sync to session storage and export.
+          </p>
+          <div class="timeline">
+            <article class="timeline-item user">
+              <span class="timeline-role">User</span>
+              <p>我这两天总是睡不好，脑子停不下来。</p>
+            </article>
+            <article class="timeline-item assistant">
+              <span class="timeline-role">Assistant</span>
+              <p>谢谢你愿意告诉我这件事。最近这种状态是一直持续，还是晚上更明显？</p>
+            </article>
+            <article class="timeline-item system">
+              <span class="timeline-role">Stage</span>
+              <p>engage → assess</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel control-panel" data-panel="control">
+          <div class="panel-header">
+            <p class="panel-kicker">06</p>
+            <h2>Session Control</h2>
+          </div>
+          <p class="panel-summary">
+            Session start, pause, reset, and export controls. Buttons stay non-destructive
+            until the API layer is connected.
+          </p>
+          <div class="panel-body controls">
+            <div class="session-chip">
+              <span>Session</span>
+              <strong>sess_demo_shell_001</strong>
+            </div>
+            <div class="button-row">
+              <button type="button">Start</button>
+              <button type="button">Pause</button>
+              <button type="button">Reset</button>
+              <button type="button">Export</button>
+            </div>
+            <ul class="control-notes">
+              <li>Current mode: demo</li>
+              <li>Trace header: X-Trace-Id</li>
+              <li>Last update: static placeholder</li>
+            </ul>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

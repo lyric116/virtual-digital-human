@@ -48,6 +48,10 @@ Demo assets for mock flow development live in:
 
 - `data/demo/README.md`
 
+Frontend shell preview:
+
+- `python3 -m http.server 4173 --directory apps/web`
+
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`
 - Generate `16kHz mono` ASR input audio and backfill manifest/transcripts:

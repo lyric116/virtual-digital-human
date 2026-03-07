@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-07 - Frontend Shell Is Now A Stable Mount Point
+
+- apps/web is now a standalone static shell with six named panels that match the implementation plan, so later frontend features should extend these mount points instead of redesigning the page structure again.
+- The shell intentionally avoids framework and API coupling at this stage, which keeps step-8 session wiring narrow: only the control panel and session display need to move first.
+
 ## 2026-03-07 - Demo Mode Now Has A Stable Asset Root
 
 - data/demo is now the canonical location for lightweight mock and replay assets, and later frontend or orchestrator mock flows should consume these files instead of embedding one-off fixtures in code.
