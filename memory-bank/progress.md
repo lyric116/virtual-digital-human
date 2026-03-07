@@ -21,6 +21,32 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-07 - Foundation Compose Stack And Infra Verifier
+
+### Scope
+
+Completed implementation plan step 4 by adding the baseline Docker Compose stack for PostgreSQL, Redis, and MinIO, documenting how to run it, and verifying health plus persistence through an automated checker.
+
+### Outputs
+
+- infra/compose/docker-compose.yml
+- infra/compose/README.md
+- scripts/verify_infra_stack.py
+- tests/test_infra_compose.py
+- docs/environment.md
+- .env.example
+
+### Checks
+
+- Ran uv run pytest tests/test_memory_bank.py tests/test_environment_inventory.py tests/test_shared_contracts.py tests/test_infra_compose.py and confirmed 10 tests passed.
+- Ran uv run python scripts/verify_infra_stack.py --compose-file infra/compose/docker-compose.yml and verified health=healthy, persistence=verified.
+- Confirmed the stack uses named volumes and health checks for PostgreSQL, Redis, and MinIO.
+
+### Next
+
+- Implementation plan step 5: define the initial PostgreSQL schema for sessions, messages, system events, eval records, and media indexes.
+- Keep service runtime code aligned with the foundation compose stack and the documented environment inventory.
+
 ## 2026-03-07 - Shared Contracts And Schema Index
 
 ### Scope

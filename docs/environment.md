@@ -76,6 +76,8 @@ code or deployment files.
 | Variable | Required | Default / Example | Purpose |
 | --- | --- | --- | --- |
 | `MINIO_ENDPOINT` | Yes | `localhost:9000` | MinIO API endpoint. |
+| `MINIO_API_PORT` | Yes | `9000` | Host port for the MinIO S3-compatible API. |
+| `MINIO_CONSOLE_PORT` | Yes | `9001` | Host port for the MinIO admin console. |
 | `MINIO_ACCESS_KEY` | Yes | `minioadmin` | MinIO access key. |
 | `MINIO_SECRET_KEY` | Yes | `minioadmin` | MinIO secret key. |
 | `MINIO_SECURE` | Yes | `false` | Toggle HTTPS when connecting to MinIO. |

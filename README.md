@@ -86,3 +86,9 @@ different API path than the OpenAI-compatible route used here.
 ## Docker
 
 Docker is available in the current environment. Containerization work should be added under `infra/docker` and `infra/compose` as the service skeletons are implemented.
+
+Current foundation stack entrypoints:
+
+- `infra/compose/docker-compose.yml`
+- `infra/compose/README.md`
+- `scripts/verify_infra_stack.py`

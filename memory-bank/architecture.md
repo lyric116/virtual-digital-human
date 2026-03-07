@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-07 - Foundation Infra Is Now A Verified Baseline
+
+- infra/compose/docker-compose.yml is now the canonical foundation stack for local development and must remain limited to PostgreSQL, Redis, and MinIO until application services are added step by step.
+- Foundation verification now depends on named volumes plus explicit marker checks after restart, so future infra changes must preserve persistence semantics instead of only checking container liveness.
+
 ## 2026-03-07 - Event Envelope And Replay Identifiers Are Now Locked
 
 - All cross-service realtime traffic now centers on a shared event envelope with event_id, event_type, schema_version, source_service, session_id, trace_id, emitted_at, and payload.
