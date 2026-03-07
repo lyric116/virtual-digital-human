@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-07 - Shared Contracts And Schema Index
+
+### Scope
+
+Completed implementation plan step 3 by defining the cross-service contract catalog for sessions, realtime events, text input, transcripts, dialogue output, avatar commands, and error responses, and by adding tests to prevent field-name drift.
+
+### Outputs
+
+- docs/shared_contracts.md
+- libs/shared-schema/README.md
+- tests/test_shared_contracts.py
+- README.md
+- libs/README.md
+
+### Checks
+
+- Verified the contract document covers session, event envelope, transcript, dialogue, avatar, and error payloads.
+- Verified snake_case naming and rejected camelCase aliases in automated tests.
+- Ran uv run pytest tests/test_memory_bank.py tests/test_environment_inventory.py tests/test_shared_contracts.py and confirmed 8 tests passed.
+
+### Next
+
+- Implementation plan step 4: start PostgreSQL, Redis, and MinIO with health checks and persistent volumes.
+- Keep future service code aligned with docs/shared_contracts.md before generating machine-readable schemas.
+
 ## 2026-03-07 - Environment Inventory And Config Sample
 
 ### Scope

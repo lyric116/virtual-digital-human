@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-07 - Event Envelope And Replay Identifiers Are Now Locked
+
+- All cross-service realtime traffic now centers on a shared event envelope with event_id, event_type, schema_version, source_service, session_id, trace_id, emitted_at, and payload.
+- Offline replay identifiers record_id, dataset, canonical_role, and segment_id are now part of the canonical contract surface so replay and live paths can converge without renaming fields.
+
 ## 2026-03-07 - Canonical Environment Variables Now Have A Single Source Of Truth
 
 - docs/environment.md and .env.example are now the required source of truth for runtime configuration across web, gateway, orchestrator, infra, and model services.

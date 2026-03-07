@@ -64,6 +64,10 @@ The canonical environment inventory is:
 - `docs/environment.md`
 - `.env.example`
 
+The canonical cross-service payload reference is:
+
+- `docs/shared_contracts.md`
+
 For DashScope ASR with the current script, prefer:
 
 - `DASHSCOPE_API_KEY`
