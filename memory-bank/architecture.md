@@ -63,6 +63,13 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-07 - Gateway Session Creation Baseline
+
+- apps/api-gateway/main.py is now the first runnable backend service and owns session bootstrap responsibilities only: health check, input validation, session_id generation, trace_id generation, and database persistence.
+- The gateway uses PostgreSQL directly at this stage to keep the first backend slice narrow and testable before introducing the orchestrator or message pipelines.
+- scripts/verify_gateway_session_create.py performs real end-to-end verification by starting uvicorn locally, posting to /api/session/create, and then checking the persisted row in PostgreSQL; this is the runtime gate for step 8.
+- tests/test_api_gateway_session_create.py avoids FastAPI TestClient in this environment and instead validates the contract through direct function calls and route inspection, which keeps CI stable while runtime verification covers the live HTTP path.
+
 ## 2026-03-07 - Frontend Shell Is Now A Stable Mount Point
 
 - apps/web is now a standalone static shell with six named panels that match the implementation plan, so later frontend features should extend these mount points instead of redesigning the page structure again.

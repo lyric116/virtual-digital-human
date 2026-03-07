@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-07 - Step 8 Session Creation Gateway
+
+### Scope
+
+Implemented the first live backend endpoint in api-gateway so the project can create and persist a session before any transcript or dialogue logic is added.
+
+### Outputs
+
+- Added FastAPI app entry at apps/api-gateway/main.py with /health and /api/session/create.
+- Persisted sessions into PostgreSQL with generated session_id and trace_id using the baseline schema.
+- Added runtime verifier scripts/verify_gateway_session_create.py and contract tests in tests/test_api_gateway_session_create.py.
+
+### Checks
+
+- Verified compose stack, database schema, and live session creation against PostgreSQL.
+- Confirmed pytest coverage for contract shape, validation failure, and documentation presence.
+
+### Next
+
+- Implement step 9: add a start-session action in the frontend shell that calls the gateway create-session endpoint.
+- Keep the gateway contract stable so orchestrator and logging modules can reuse the session identifiers.
+
 ## 2026-03-07 - Static Frontend Shell
 
 ### Scope
