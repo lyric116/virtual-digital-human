@@ -20,6 +20,32 @@ Each appended entry must contain:
 Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
+
+## 2026-03-07 - Environment Inventory And Config Sample
+
+### Scope
+
+Completed implementation plan step 2 by defining the canonical runtime configuration inventory, adding a sample env file, and enforcing consistency with automated tests.
+
+### Outputs
+
+- docs/environment.md
+- .env.example
+- tests/test_environment_inventory.py
+- README.md
+- memory-bank/README.md
+
+### Checks
+
+- Verified required variables for gateway, orchestrator, PostgreSQL, Redis, MinIO, LLM, ASR, TTS, and avatar driver are present in both docs and .env.example.
+- Ran uv run python -m py_compile for repository scripts.
+- Ran uv run pytest tests/test_memory_bank.py tests/test_environment_inventory.py and confirmed 5 tests passed.
+
+### Next
+
+- Implementation plan step 3: define shared contracts and schema skeletons.
+- Keep using scripts/update_memory_bank.py before each tested commit.
+
 ## 2026-03-07 - ASR Batch, Review Tasks, And Repo Skeleton
 
 ### Scope

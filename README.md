@@ -59,6 +59,11 @@ Use `uv run` for Python commands. The project already has `pyproject.toml` and `
 
 ## Environment Variables
 
+The canonical environment inventory is:
+
+- `docs/environment.md`
+- `.env.example`
+
 For DashScope ASR with the current script, prefer:
 
 - `DASHSCOPE_API_KEY`
@@ -70,7 +75,9 @@ Supported shorthand keys in `.env`:
 - `baseurl`
 - `model`
 
-Do not point the current ASR script at `https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription`; that is a different API path than the OpenAI-compatible route used here.
+Do not point the current ASR script at
+`https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription`; that is a
+different API path than the OpenAI-compatible route used here.
 
 ## Docker
 

@@ -62,6 +62,12 @@ implementation.
 Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
+
+## 2026-03-07 - Canonical Environment Variables Now Have A Single Source Of Truth
+
+- docs/environment.md and .env.example are now the required source of truth for runtime configuration across web, gateway, orchestrator, infra, and model services.
+- Compatibility aliases such as OPENAI_API_KEY, DASHSCOPE_API_KEY, key, baseurl, and model are explicitly quarantined to current ASR bridge tooling and should not leak into new service code.
+
 ## 2026-03-07 - Transcript Workflow Is The Current Core Integration Layer
 
 - `data/derived/transcripts/val_transcripts_template.jsonl` is now the most important
