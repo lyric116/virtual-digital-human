@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-07 - Verified Table Names And Keys Are Now Stable
+
+- The baseline PostgreSQL surface is now fixed to sessions, messages, system_events, evaluation_records, and media_indexes, and later service code should reuse these names instead of inventing parallel tables for the same concerns.
+- Replay lineage fields record_id, dataset, canonical_role, and segment_id now exist directly in the session and evaluation storage model so enterprise data replay can share the same tracing model as live sessions.
+
 ## 2026-03-07 - Foundation Infra Is Now A Verified Baseline
 
 - infra/compose/docker-compose.yml is now the canonical foundation stack for local development and must remain limited to PostgreSQL, Redis, and MinIO until application services are added step by step.

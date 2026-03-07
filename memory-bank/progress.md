@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-07 - Baseline PostgreSQL Schema
+
+### Scope
+
+Completed implementation plan step 5 by defining the initial PostgreSQL schema for sessions, messages, system events, evaluation records, and media indexes, wiring the SQL init file into the compose stack, and verifying inserts plus foreign-key linkage against the running database.
+
+### Outputs
+
+- infra/docker/postgres/init/001_base_schema.sql
+- docs/database_schema.md
+- scripts/verify_db_schema.py
+- tests/test_db_schema_assets.py
+- infra/compose/docker-compose.yml
+
+### Checks
+
+- Ran uv run pytest tests/test_memory_bank.py tests/test_environment_inventory.py tests/test_shared_contracts.py tests/test_infra_compose.py tests/test_db_schema_assets.py and confirmed 12 tests passed.
+- Ran uv run python scripts/verify_infra_stack.py --compose-file infra/compose/docker-compose.yml and verified health=healthy, persistence=verified.
+- Ran uv run python scripts/verify_db_schema.py --compose-file infra/compose/docker-compose.yml and verified inserts across sessions, messages, system_events, evaluation_records, and media_indexes.
+
+### Next
+
+- Implementation plan step 6: prepare reusable demo data assets for text, audio, video-frame, and export flows.
+- Keep later gateway and orchestrator code aligned with the verified table names and shared contract identifiers.
+
 ## 2026-03-07 - Foundation Compose Stack And Infra Verifier
 
 ### Scope

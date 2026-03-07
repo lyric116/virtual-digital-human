@@ -9,6 +9,10 @@ plan step 4:
 - Redis
 - MinIO
 
+PostgreSQL auto-loads init SQL from:
+
+- `infra/docker/postgres/init/001_base_schema.sql`
+
 Primary file:
 
 - `infra/compose/docker-compose.yml`
@@ -26,9 +30,11 @@ Stop the stack:
 Run the verification workflow:
 
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_infra_stack.py --compose-file infra/compose/docker-compose.yml`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_db_schema.py --compose-file infra/compose/docker-compose.yml`
 
 The verification workflow checks:
 
 1. config validity
 2. container health
 3. persistence after restart for PostgreSQL, Redis, and MinIO
+4. PostgreSQL baseline schema application and insert verification

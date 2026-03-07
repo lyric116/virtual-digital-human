@@ -68,6 +68,11 @@ The canonical cross-service payload reference is:
 
 - `docs/shared_contracts.md`
 
+The initial PostgreSQL schema reference is:
+
+- `docs/database_schema.md`
+- `infra/docker/postgres/init/001_base_schema.sql`
+
 For DashScope ASR with the current script, prefer:
 
 - `DASHSCOPE_API_KEY`
