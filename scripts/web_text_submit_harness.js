@@ -61,6 +61,12 @@ class FakeElement {
       }
     }
   }
+
+  dispatchInput(nextValue) {
+    this.value = nextValue;
+    const handlers = this.listeners.get("input") || [];
+    handlers.forEach((handler) => handler({ currentTarget: this, preventDefault() {} }));
+  }
 }
 
 class FakeDocument {
@@ -119,27 +125,6 @@ class FakeDocument {
   }
 }
 
-function createMockFetch() {
-  return async function mockFetch() {
-    return {
-      ok: true,
-      status: 201,
-      async json() {
-        return {
-          session_id: "sess_mock_live_001",
-          trace_id: "trace_mock_live_001",
-          status: "created",
-          stage: "engage",
-          input_modes: ["text", "audio"],
-          avatar_id: "companion_female_01",
-          started_at: "2026-03-08T10:00:00Z",
-          updated_at: "2026-03-08T10:00:00Z",
-        };
-      },
-    };
-  };
-}
-
 function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null) {
   return {
     event_id: `evt_${Math.random().toString(16).slice(2, 10)}`,
@@ -154,7 +139,19 @@ function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null)
   };
 }
 
-function createMockWebSocket() {
+function createMockRuntime() {
+  let currentSocket = null;
+  const sessionPayload = {
+    session_id: "sess_mock_text_001",
+    trace_id: "trace_mock_text_001",
+    status: "created",
+    stage: "engage",
+    input_modes: ["text", "audio"],
+    avatar_id: "companion_female_01",
+    started_at: "2026-03-08T10:10:00Z",
+    updated_at: "2026-03-08T10:10:00Z",
+  };
+
   class MockWebSocket {
     constructor(url) {
       this.url = url;
@@ -162,6 +159,7 @@ function createMockWebSocket() {
       this.listeners = new Map();
       this.sessionId = decodeURIComponent(url.split("/session/")[1].split("?")[0]);
       this.traceId = new URL(url).searchParams.get("trace_id") || "trace_missing";
+      currentSocket = this;
 
       setTimeout(() => {
         this.readyState = MockWebSocket.OPEN;
@@ -220,21 +218,85 @@ function createMockWebSocket() {
   MockWebSocket.OPEN = 1;
   MockWebSocket.CLOSING = 2;
   MockWebSocket.CLOSED = 3;
-  return MockWebSocket;
+
+  async function mockFetch(url, options = {}) {
+    if (url.endsWith("/api/session/create")) {
+      return {
+        ok: true,
+        status: 201,
+        async json() {
+          return sessionPayload;
+        },
+      };
+    }
+
+    if (url.includes(`/api/session/${sessionPayload.session_id}/text`)) {
+      const submitted = JSON.parse(options.body || "{}");
+      const messagePayload = {
+        message_id: "msg_mock_text_001",
+        session_id: sessionPayload.session_id,
+        trace_id: sessionPayload.trace_id,
+        role: "user",
+        status: "accepted",
+        source_kind: "text",
+        content_text: submitted.content_text,
+        submitted_at: "2026-03-08T10:10:02Z",
+        client_seq: submitted.client_seq,
+      };
+
+      setTimeout(() => {
+        if (!currentSocket || currentSocket.readyState !== MockWebSocket.OPEN) {
+          return;
+        }
+        currentSocket.emit("message", {
+          data: JSON.stringify(
+            buildEnvelope(
+              sessionPayload.session_id,
+              sessionPayload.trace_id,
+              "message.accepted",
+              messagePayload,
+              messagePayload.message_id,
+            ),
+          ),
+        });
+      }, 0);
+
+      return {
+        ok: true,
+        status: 202,
+        async json() {
+          return messagePayload;
+        },
+      };
+    }
+
+    return {
+      ok: false,
+      status: 404,
+      async json() {
+        return { message: `Unhandled mock fetch URL: ${url}` };
+      },
+    };
+  }
+
+  return {
+    fetchImpl: mockFetch,
+    WebSocketImpl: MockWebSocket,
+  };
 }
 
 function collectSnapshot(document) {
   return {
     sessionId: document.getElementById("session-id-value").textContent,
     status: document.getElementById("session-status-value").textContent,
-    stage: document.getElementById("session-stage-value").textContent,
     traceId: document.getElementById("session-trace-value").textContent,
-    connectionStatus: document.getElementById("connection-status-value").textContent,
-    lastHeartbeat: document.getElementById("connection-heartbeat-value").textContent,
-    connectionLog: document.getElementById("connection-log").textContent,
-    requestState: document.body.dataset.sessionState || null,
-    bodyConnectionState: document.body.dataset.connectionState || null,
     textSubmitState: document.body.dataset.textSubmitState || null,
+    textSubmitStatus: document.getElementById("text-submit-status").textContent,
+    lastMessageId: document.getElementById("text-last-message-id-value").textContent,
+    lastMessageTime: document.getElementById("text-last-message-time-value").textContent,
+    connectionStatus: document.getElementById("connection-status-value").textContent,
+    connectionLog: document.getElementById("connection-log").textContent,
+    draftText: document.getElementById("text-input-field").value,
   };
 }
 
@@ -280,6 +342,8 @@ function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl }) {
     document,
     window,
     startButton: document.getElementById("session-start-button"),
+    textInputField: document.getElementById("text-input-field"),
+    textSubmitButton: document.getElementById("text-submit-button"),
   };
 }
 
@@ -296,55 +360,46 @@ async function waitFor(condition, timeoutMs, message) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const fetchImpl = args.mode === "live" ? fetch : createMockFetch();
-  const WebSocketImpl = args.mode === "live" ? WebSocket : createMockWebSocket();
+  const runtimeConfig = args.mode === "live"
+    ? { fetchImpl: fetch, WebSocketImpl: WebSocket }
+    : createMockRuntime();
 
-  if (typeof fetchImpl !== "function") {
+  if (typeof runtimeConfig.fetchImpl !== "function") {
     throw new Error("fetch is not available in this runtime");
   }
-  if (typeof WebSocketImpl !== "function") {
+  if (typeof runtimeConfig.WebSocketImpl !== "function") {
     throw new Error("WebSocket is not available in this runtime");
   }
 
   const runtime = executeApp({
-    fetchImpl,
-    WebSocketImpl,
+    fetchImpl: runtimeConfig.fetchImpl,
+    WebSocketImpl: runtimeConfig.WebSocketImpl,
     apiBaseUrl: args.apiBaseUrl,
     wsUrl: args.wsUrl,
   });
 
   const beforeCreate = collectSnapshot(runtime.document);
   await runtime.startButton.click();
-
   await waitFor(
     () => runtime.document.getElementById("connection-status-value").textContent === "connected",
     5000,
-    "realtime connection did not reach connected state",
-  );
-  await waitFor(
-    () => runtime.document.getElementById("connection-heartbeat-value").textContent !== "not started",
-    5000,
-    "heartbeat acknowledgement did not arrive",
+    "realtime connection did not reach connected state before text submit",
   );
 
   const afterConnect = collectSnapshot(runtime.document);
-  const controller = runtime.window.__virtualHumanConsoleController;
-  controller.forceRealtimeDropForTest();
+  const input = runtime.textInputField;
+  input.dispatchInput("最近总觉得脑子停不下来，晚上更明显。\n想先试着说出来。\n");
+  await runtime.textSubmitButton.click();
 
   await waitFor(
-    () => runtime.document.getElementById("connection-log").textContent.includes("reconnect attempt"),
+    () => runtime.document.body.dataset.textSubmitState === "sent",
     5000,
-    "reconnect attempt was not scheduled after socket close",
-  );
-  await waitFor(
-    () => runtime.document.getElementById("connection-status-value").textContent === "connected",
-    5000,
-    "realtime connection did not recover after forced drop",
+    "text submit did not reach sent state",
   );
 
-  const afterReconnect = collectSnapshot(runtime.document);
-  controller.shutdownForTest();
-  process.stdout.write(`${JSON.stringify({ beforeCreate, afterConnect, afterReconnect }, null, 2)}\n`);
+  const afterSubmit = collectSnapshot(runtime.document);
+  runtime.window.__virtualHumanConsoleController.shutdownForTest();
+  process.stdout.write(`${JSON.stringify({ beforeCreate, afterConnect, afterSubmit }, null, 2)}\n`);
 }
 
 main().catch((error) => {

@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import psycopg
@@ -113,12 +114,80 @@ class SessionCreatedResponse(BaseModel):
     updated_at: datetime
 
 
+class TextMessageSubmitRequest(BaseModel):
+    content_text: str
+    client_seq: int | None = Field(default=None, ge=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("content_text")
+    @classmethod
+    def validate_content_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("content_text must not be empty")
+        return normalized
+
+
+class TextMessageAcceptedResponse(BaseModel):
+    message_id: str
+    session_id: str
+    trace_id: str
+    role: str
+    status: str
+    source_kind: str
+    content_text: str
+    submitted_at: datetime
+    client_seq: int | None = None
+
+
 class SessionRepository(Protocol):
     def create_session(self, payload: SessionCreateRequest) -> dict[str, Any]:
         ...
 
     def get_session_summary(self, session_id: str) -> dict[str, Any] | None:
         ...
+
+    def create_user_text_message(
+        self,
+        session_id: str,
+        payload: TextMessageSubmitRequest,
+    ) -> dict[str, Any]:
+        ...
+
+
+class ConnectionRegistry:
+    def __init__(self) -> None:
+        self._connections: dict[str, list[WebSocket]] = {}
+        self._pending_events: dict[str, list[dict[str, Any]]] = {}
+
+    async def add(self, session_id: str, websocket: WebSocket) -> None:
+        connections = self._connections.setdefault(session_id, [])
+        if websocket not in connections:
+            connections.append(websocket)
+
+    async def remove(self, session_id: str, websocket: WebSocket) -> None:
+        connections = self._connections.get(session_id)
+        if not connections:
+            return
+        self._connections[session_id] = [item for item in connections if item is not websocket]
+        if not self._connections[session_id]:
+            del self._connections[session_id]
+
+    async def enqueue_event(self, session_id: str, envelope: dict[str, Any]) -> None:
+        queue = self._pending_events.setdefault(session_id, [])
+        queue.append(envelope)
+
+    async def flush(self, session_id: str, websocket: WebSocket) -> None:
+        queue = self._pending_events.get(session_id, [])
+        if not queue:
+            return
+
+        while queue:
+            envelope = queue.pop(0)
+            await websocket.send_json(envelope)
+
+        if session_id in self._pending_events and not self._pending_events[session_id]:
+            del self._pending_events[session_id]
 
 
 class PostgresSessionRepository:
@@ -209,14 +278,121 @@ class PostgresSessionRepository:
                 row = cur.fetchone()
         return row
 
+    def create_user_text_message(
+        self,
+        session_id: str,
+        payload: TextMessageSubmitRequest,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        message_id = f"msg_{uuid4().hex[:24]}"
 
-def error_payload(*, error_code: str, message: str, trace_id: str | None = None) -> dict[str, Any]:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT session_id, trace_id, status, stage
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                session_row = cur.fetchone()
+                if session_row is None:
+                    raise KeyError(session_id)
+
+                metadata = dict(payload.metadata)
+                if payload.client_seq is not None:
+                    metadata["client_seq"] = payload.client_seq
+
+                cur.execute(
+                    """
+                    INSERT INTO messages (
+                        message_id,
+                        session_id,
+                        trace_id,
+                        role,
+                        status,
+                        source_kind,
+                        content_text,
+                        metadata,
+                        submitted_at,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        %(message_id)s,
+                        %(session_id)s,
+                        %(trace_id)s,
+                        'user',
+                        'accepted',
+                        'text',
+                        %(content_text)s,
+                        %(metadata)s,
+                        %(submitted_at)s,
+                        %(created_at)s,
+                        %(updated_at)s
+                    )
+                    RETURNING
+                        message_id,
+                        session_id,
+                        trace_id,
+                        role,
+                        status,
+                        source_kind,
+                        content_text,
+                        submitted_at
+                    """,
+                    {
+                        "message_id": message_id,
+                        "session_id": session_id,
+                        "trace_id": session_row["trace_id"],
+                        "content_text": payload.content_text,
+                        "metadata": Jsonb(metadata),
+                        "submitted_at": now,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                )
+                message_row = cur.fetchone()
+
+                cur.execute(
+                    """
+                    UPDATE sessions
+                    SET status = 'active', updated_at = %(updated_at)s
+                    WHERE session_id = %(session_id)s
+                    RETURNING session_id, trace_id, status, stage, updated_at
+                    """,
+                    {
+                        "session_id": session_id,
+                        "updated_at": now,
+                    },
+                )
+                updated_session = cur.fetchone()
+
+        if message_row is None or updated_session is None:
+            raise RuntimeError("text message insert returned no row")
+
+        accepted_message = dict(message_row)
+        accepted_message["client_seq"] = payload.client_seq
+        return {
+            "session": dict(updated_session),
+            "message": accepted_message,
+        }
+
+
+def error_payload(
+    *,
+    error_code: str,
+    message: str,
+    trace_id: str | None = None,
+    session_id: str | None = None,
+    retryable: bool = False,
+) -> dict[str, Any]:
     return {
         "error_code": error_code,
         "message": message,
         "trace_id": trace_id or f"trace_error_{uuid4().hex[:24]}",
-        "session_id": None,
-        "retryable": False,
+        "session_id": session_id,
+        "retryable": retryable,
         "details": {},
     }
 
@@ -226,6 +402,7 @@ def build_event_envelope(
     session: dict[str, Any],
     event_type: str,
     payload: dict[str, Any],
+    message_id: str | None = None,
 ) -> dict[str, Any]:
     return {
         "event_id": f"evt_{uuid4().hex[:24]}",
@@ -234,7 +411,7 @@ def build_event_envelope(
         "source_service": "api_gateway",
         "session_id": session["session_id"],
         "trace_id": session["trace_id"],
-        "message_id": None,
+        "message_id": message_id,
         "emitted_at": datetime.now(timezone.utc).isoformat(),
         "payload": payload,
     }
@@ -256,6 +433,33 @@ def create_session_record(
         )
 
 
+def create_text_message_record(
+    repository: SessionRepository,
+    session_id: str,
+    payload: TextMessageSubmitRequest,
+) -> dict[str, Any] | JSONResponse:
+    try:
+        return repository.create_user_text_message(session_id, payload)
+    except KeyError:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=error_payload(
+                error_code="session_not_found",
+                message="Session not found",
+                session_id=session_id,
+            ),
+        )
+    except psycopg.Error:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error_payload(
+                error_code="text_message_submit_failed",
+                message="Failed to submit text message",
+                session_id=session_id,
+            ),
+        )
+
+
 def create_app(repository: SessionRepository | None = None) -> FastAPI:
     bootstrap_runtime_env()
     settings = GatewaySettings.from_env()
@@ -270,6 +474,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.session_repository = repository or PostgresSessionRepository(settings)
+    app.state.connection_registry = ConnectionRegistry()
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -283,6 +488,30 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
     def create_session(payload: SessionCreateRequest, request: Request) -> Any:
         return create_session_record(request.app.state.session_repository, payload)
 
+    @app.post(
+        "/api/session/{session_id}/text",
+        response_model=TextMessageAcceptedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def submit_text(
+        session_id: str,
+        payload: TextMessageSubmitRequest,
+        request: Request,
+    ) -> Any:
+        result = create_text_message_record(request.app.state.session_repository, session_id, payload)
+        if isinstance(result, JSONResponse):
+            return result
+
+        accepted_event = build_event_envelope(
+            session=result["session"],
+            event_type="message.accepted",
+            payload=result["message"],
+            message_id=result["message"]["message_id"],
+        )
+        accepted_event = jsonable_encoder(accepted_event)
+        await request.app.state.connection_registry.enqueue_event(session_id, accepted_event)
+        return result["message"]
+
     @app.websocket("/ws/session/{session_id}")
     async def session_realtime(websocket: WebSocket, session_id: str) -> None:
         repository = websocket.app.state.session_repository
@@ -291,7 +520,9 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             await websocket.close(code=4404, reason="session_not_found")
             return
 
+        registry: ConnectionRegistry = websocket.app.state.connection_registry
         await websocket.accept()
+        await registry.add(session_id, websocket)
         await websocket.send_json(
             build_event_envelope(
                 session=session,
@@ -320,6 +551,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
                     )
                     continue
 
+                await registry.flush(session_id, websocket)
                 await websocket.send_json(
                     build_event_envelope(
                         session=session,
@@ -334,6 +566,8 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
                 )
         except WebSocketDisconnect:
             return
+        finally:
+            await registry.remove(session_id, websocket)
 
     return app
 

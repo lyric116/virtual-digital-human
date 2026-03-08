@@ -33,8 +33,8 @@
             <h2>Capture Panel</h2>
           </div>
           <p class="panel-summary">
-            Camera, microphone, and text input placeholders for the upcoming realtime
-            capture flow.
+            Text input is now live. Camera and microphone remain placeholders until the
+            audio path is connected.
           </p>
           <div class="panel-body stacked">
             <div class="media-preview">
@@ -47,12 +47,22 @@
               <span class="pill">Input: text</span>
             </div>
             <div class="mock-input">
-              <label for="mock-text-input">Mock text prompt</label>
+              <label for="text-input-field">Text input</label>
               <textarea
-                id="mock-text-input"
+                id="text-input-field"
                 rows="3"
-                readonly
               >我这两天总是睡不好，脑子停不下来。</textarea>
+            </div>
+            <div class="button-row">
+              <button type="button" id="text-submit-button">Send Text</button>
+            </div>
+            <p class="text-submit-status" id="text-submit-status" aria-live="polite">
+              建立会话并连接实时通道后可发送文本。
+            </p>
+            <div class="text-submit-meta">
+              <span>Last accepted message</span>
+              <strong id="text-last-message-id-value">not sent</strong>
+              <small id="text-last-message-time-value">not accepted</small>
             </div>
           </div>
         </section>

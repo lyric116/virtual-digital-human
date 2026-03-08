@@ -30,10 +30,11 @@ function parseArgs(argv) {
 }
 
 class FakeElement {
-  constructor({ id = null, panelId = null, textContent = "" } = {}) {
+  constructor({ id = null, panelId = null, textContent = "", value = "" } = {}) {
     this.id = id;
     this.panelId = panelId;
     this.textContent = textContent;
+    this.value = value;
     this.disabled = false;
     this.dataset = {};
     this.listeners = new Map();
@@ -71,22 +72,27 @@ class FakeDocument {
     });
 
     const elements = [
-      ["session-start-button", "Start Session"],
-      ["session-id-value", "未创建"],
-      ["session-status-value", "idle"],
-      ["session-stage-value", "idle"],
-      ["session-trace-value", "not assigned"],
-      ["session-updated-at-value", "not started"],
-      ["session-api-base-url-value", "http://127.0.0.1:8000"],
-      ["session-ws-url-value", "ws://127.0.0.1:8000/ws"],
-      ["session-feedback", "点击 Start Session 创建新的会话编号。"],
-      ["connection-status-value", "idle"],
-      ["connection-heartbeat-value", "not started"],
-      ["connection-log", "realtime idle"],
+      ["session-start-button", "Start Session", ""],
+      ["text-input-field", "", "我这两天总是睡不好，脑子停不下来。"],
+      ["text-submit-button", "Send Text", ""],
+      ["text-submit-status", "建立会话并连接实时通道后可发送文本。", ""],
+      ["text-last-message-id-value", "not sent", ""],
+      ["text-last-message-time-value", "not accepted", ""],
+      ["session-id-value", "未创建", ""],
+      ["session-status-value", "idle", ""],
+      ["session-stage-value", "idle", ""],
+      ["session-trace-value", "not assigned", ""],
+      ["session-updated-at-value", "not started", ""],
+      ["session-api-base-url-value", "http://127.0.0.1:8000", ""],
+      ["session-ws-url-value", "ws://127.0.0.1:8000/ws", ""],
+      ["session-feedback", "点击 Start Session 创建新的会话编号。", ""],
+      ["connection-status-value", "idle", ""],
+      ["connection-heartbeat-value", "not started", ""],
+      ["connection-log", "realtime idle", ""],
     ];
 
-    elements.forEach(([id, textContent]) => {
-      this.idMap.set(id, new FakeElement({ id, textContent }));
+    elements.forEach(([id, textContent, value]) => {
+      this.idMap.set(id, new FakeElement({ id, textContent, value }));
     });
   }
 
@@ -172,6 +178,7 @@ function collectSnapshot(document) {
     startButtonDisabled: document.getElementById("session-start-button").disabled,
     connectionStatus: document.getElementById("connection-status-value").textContent,
     connectionLog: document.getElementById("connection-log").textContent,
+    textSubmitStatus: document.getElementById("text-submit-status").textContent,
     uiReady: document.body.dataset.uiReady || null,
     requestState: document.body.dataset.sessionState || null,
   };

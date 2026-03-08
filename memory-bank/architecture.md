@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - Text Submit Ack Is A Realtime Contract Boundary
+
+- apps/api-gateway/main.py now treats message.accepted as a queued session event, not just an HTTP response; the browser send flow is only complete after the websocket acknowledgement is received.
+- Queued realtime envelopes must be JSON-serializable before websocket send_json is called; accepted message payloads include submitted_at timestamps, so jsonable_encoder is now part of the stable gateway boundary for business events.
+- scripts/verify_web_text_submit.py now reserves a temporary localhost port instead of assuming a fixed port, which prevents false failures when prior verification runs or local tools leave a port occupied.
+
 ## 2026-03-08 - Session Realtime Transport Baseline
 
 - apps/api-gateway/main.py now owns the minimal realtime transport contract for the project: it validates session existence, upgrades the session websocket, and emits only ready, heartbeat, and error envelopes in v1alpha1 shape.

@@ -33,6 +33,13 @@
       connectionStatus: "idle",
       lastHeartbeatAt: null,
       connectionLog: ["realtime idle"],
+      draftText: "我这两天总是睡不好，脑子停不下来。",
+      textSubmitState: "idle",
+      textSubmitMessage: null,
+      pendingMessageId: null,
+      lastAcceptedMessageId: null,
+      lastAcceptedAt: null,
+      nextClientSeq: 1,
     };
   }
 
@@ -47,6 +54,11 @@
   function getViewElements(rootDocument) {
     return {
       startButton: findRequiredElement(rootDocument, "session-start-button"),
+      textInputField: findRequiredElement(rootDocument, "text-input-field"),
+      textSubmitButton: findRequiredElement(rootDocument, "text-submit-button"),
+      textSubmitStatus: findRequiredElement(rootDocument, "text-submit-status"),
+      textLastMessageIdValue: findRequiredElement(rootDocument, "text-last-message-id-value"),
+      textLastMessageTimeValue: findRequiredElement(rootDocument, "text-last-message-time-value"),
       sessionIdValue: findRequiredElement(rootDocument, "session-id-value"),
       sessionStatusValue: findRequiredElement(rootDocument, "session-status-value"),
       sessionStageValue: findRequiredElement(rootDocument, "session-stage-value"),
@@ -100,6 +112,41 @@
     return "点击 Start Session 创建新的会话编号。";
   }
 
+  function getTextSubmitStatusMessage(state) {
+    if (!state.sessionId) {
+      return "建立会话并连接实时通道后可发送文本。";
+    }
+    if (state.connectionStatus === "unsupported") {
+      return "当前环境不支持 WebSocket，无法等待确认事件。";
+    }
+    if (state.connectionStatus !== "connected") {
+      if (state.connectionStatus === "reconnecting") {
+        return "实时连接重连中，暂时不能发送文本。";
+      }
+      return "等待实时连接完成后再发送文本。";
+    }
+    if (state.textSubmitState === "sending") {
+      return "正在提交文本，请稍候。";
+    }
+    if (state.textSubmitState === "awaiting_ack") {
+      return "消息已写入网关，等待确认事件。";
+    }
+    if (state.textSubmitState === "sent") {
+      return state.textSubmitMessage || "发送成功。";
+    }
+    if (state.textSubmitState === "error") {
+      return state.textSubmitMessage || "文本发送失败。";
+    }
+    return "输入文本并点击 Send Text。";
+  }
+
+  function getTextSubmitButtonLabel(state) {
+    if (state.textSubmitState === "sending") {
+      return "Sending...";
+    }
+    return "Send Text";
+  }
+
   function pushConnectionLog(state, message) {
     state.connectionLog = [message].concat(state.connectionLog).slice(0, 6);
   }
@@ -118,10 +165,23 @@
     elements.connectionStatusValue.textContent = state.connectionStatus;
     elements.connectionHeartbeatValue.textContent = formatTimestamp(state.lastHeartbeatAt);
     elements.connectionLogValue.textContent = state.connectionLog.join("\n");
+    elements.textInputField.value = state.draftText;
+    elements.textInputField.disabled = state.requestState === "loading";
+    elements.textSubmitButton.textContent = getTextSubmitButtonLabel(state);
+    elements.textSubmitButton.disabled = (
+      !state.sessionId
+      || state.requestState === "loading"
+      || state.connectionStatus !== "connected"
+      || state.textSubmitState === "sending"
+    );
+    elements.textSubmitStatus.textContent = getTextSubmitStatusMessage(state);
+    elements.textLastMessageIdValue.textContent = state.lastAcceptedMessageId || "not sent";
+    elements.textLastMessageTimeValue.textContent = formatTimestamp(state.lastAcceptedAt);
 
     rootDocument.body.dataset.uiReady = "true";
     rootDocument.body.dataset.sessionState = state.requestState;
     rootDocument.body.dataset.connectionState = state.connectionStatus;
+    rootDocument.body.dataset.textSubmitState = state.textSubmitState;
   }
 
   async function requestSession(fetchImpl, appConfig) {
@@ -150,6 +210,41 @@
       const message = payload && typeof payload.message === "string"
         ? payload.message
         : `Session create failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return payload;
+  }
+
+  async function requestTextMessage(fetchImpl, appConfig, state, contentText, clientSeq) {
+    const response = await fetchImpl(
+      `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(state.sessionId)}/text`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content_text: contentText,
+          client_seq: clientSeq,
+          metadata: {
+            source: "web-shell",
+          },
+        }),
+      },
+    );
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      const message = payload && typeof payload.message === "string"
+        ? payload.message
+        : `Text submit failed with status ${response.status}`;
       throw new Error(message);
     }
 
@@ -273,6 +368,21 @@
         return;
       }
 
+      if (envelope.event_type === "message.accepted") {
+        const payload = envelope.payload || {};
+        state.status = "active";
+        state.updatedAt = payload.submitted_at || envelope.emitted_at;
+        state.lastAcceptedMessageId = payload.message_id || envelope.message_id || null;
+        state.lastAcceptedAt = payload.submitted_at || envelope.emitted_at;
+        state.textSubmitState = "sent";
+        state.textSubmitMessage = `发送成功: ${state.lastAcceptedMessageId || "message.accepted"}`;
+        state.pendingMessageId = null;
+        state.draftText = "";
+        pushConnectionLog(state, `message accepted: ${state.lastAcceptedMessageId || "unknown"}`);
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
       if (envelope.event_type === "session.error") {
         const errorCode = envelope.payload && envelope.payload.error_code
           ? envelope.payload.error_code
@@ -367,6 +477,11 @@
       state.connectionStatus = "idle";
       state.lastHeartbeatAt = null;
       state.connectionLog = ["realtime idle"];
+      state.textSubmitState = "idle";
+      state.textSubmitMessage = null;
+      state.pendingMessageId = null;
+      state.lastAcceptedMessageId = null;
+      state.lastAcceptedAt = null;
       renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
@@ -386,6 +501,62 @@
         renderSessionState(rootDocument, elements, state, appConfig);
       }
 
+      return { ...state };
+    }
+
+    async function submitText() {
+      const contentText = state.draftText.trim();
+      if (!state.sessionId) {
+        state.textSubmitState = "error";
+        state.textSubmitMessage = "请先创建会话。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+      if (state.connectionStatus !== "connected") {
+        state.textSubmitState = "error";
+        state.textSubmitMessage = "实时连接未就绪，暂时不能发送文本。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+      if (!contentText) {
+        state.textSubmitState = "error";
+        state.textSubmitMessage = "请输入要发送的文本。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      state.textSubmitState = "sending";
+      state.textSubmitMessage = null;
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      const clientSeq = state.nextClientSeq;
+      try {
+        const payload = await requestTextMessage(
+          resolvedFetch,
+          appConfig,
+          state,
+          contentText,
+          clientSeq,
+        );
+        state.nextClientSeq += 1;
+        state.pendingMessageId = payload.message_id;
+        state.status = "active";
+        state.updatedAt = payload.submitted_at || state.updatedAt;
+        if (state.lastAcceptedMessageId === payload.message_id) {
+          state.textSubmitState = "sent";
+          state.textSubmitMessage = `发送成功: ${payload.message_id}`;
+          state.pendingMessageId = null;
+          state.draftText = "";
+        } else {
+          state.textSubmitState = "awaiting_ack";
+          state.textSubmitMessage = null;
+        }
+      } catch (error) {
+        state.textSubmitState = "error";
+        state.textSubmitMessage = error instanceof Error ? error.message : String(error);
+      }
+
+      renderSessionState(rootDocument, elements, state, appConfig);
       return { ...state };
     }
 
@@ -409,6 +580,17 @@
     elements.startButton.addEventListener("click", function () {
       return startSession();
     });
+    elements.textSubmitButton.addEventListener("click", function () {
+      return submitText();
+    });
+    elements.textInputField.addEventListener("input", function (event) {
+      state.draftText = event.currentTarget.value;
+      if (state.textSubmitState === "error") {
+        state.textSubmitState = "idle";
+        state.textSubmitMessage = null;
+      }
+      renderSessionState(rootDocument, elements, state, appConfig);
+    });
 
     renderSessionState(rootDocument, elements, state, appConfig);
     rootWindow.__virtualHumanConsoleController = {
@@ -416,6 +598,7 @@
         return { ...state };
       },
       startSession,
+      submitText,
       forceRealtimeDropForTest,
       shutdownForTest,
     };

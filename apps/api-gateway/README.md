@@ -2,10 +2,11 @@
 
 ## Purpose
 
-This gateway currently covers steps 8 and 10:
+This gateway currently covers steps 8, 10, and 11:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
+- step 11: accept plain text input, write it into PostgreSQL, and emit `message.accepted`
 
 ## Files
 
@@ -16,6 +17,7 @@ This gateway currently covers steps 8 and 10:
 
 - `GET /health`
 - `POST /api/session/create`
+- `POST /api/session/{session_id}/text`
 - `GET /ws/session/{session_id}` as a WebSocket upgrade endpoint
 
 ## Local Run
@@ -32,4 +34,4 @@ From repository root:
 - `GATEWAY_CORS_ORIGINS` controls which local frontend preview origins can call the API
   from the browser.
 - The realtime endpoint currently emits only `session.connection.ready`,
-  `session.heartbeat`, and `session.error`.
+  `session.heartbeat`, `message.accepted`, and `session.error`.

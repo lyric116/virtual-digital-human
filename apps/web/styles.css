@@ -211,6 +211,11 @@ body::before {
   font: inherit;
 }
 
+.mock-input textarea:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
 .avatar-stage {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -385,6 +390,31 @@ body::before {
   background: var(--panel-strong);
   color: var(--muted);
   line-height: 1.5;
+}
+
+.text-submit-status,
+.text-submit-meta {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.text-submit-status {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.text-submit-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.text-submit-meta span,
+.text-submit-meta small {
+  color: var(--muted);
 }
 
 .control-notes span {

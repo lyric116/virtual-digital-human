@@ -54,6 +54,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/api-gateway main:app --host 0.0.0.0 --port 8000`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

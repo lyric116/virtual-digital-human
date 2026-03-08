@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Step 11 Text Submission Gateway Flow
+
+### Scope
+
+Completed implementation plan step 11 by letting the web shell submit plain text to the gateway, persist the accepted user message in PostgreSQL, and wait for a realtime message.accepted acknowledgement before marking the send as successful.
+
+### Outputs
+
+- Added POST /api/session/{session_id}/text in apps/api-gateway/main.py and persisted accepted user text messages into the messages table while promoting the parent session to active.
+- Extended apps/web/app.js, apps/web/index.html, and apps/web/styles.css so Send Text is enabled only after session bootstrap plus a connected realtime channel, and the page now shows submit status, last accepted message id, and last accepted timestamp.
+- Added text-submit harness and live verifier assets: scripts/web_text_submit_harness.js, scripts/verify_web_text_submit.py, and tests/test_web_text_submit.py.
+- Added a regression guard so message.accepted envelopes are JSON-serializable before they are queued to the realtime transport.
+
+### Checks
+
+- Verified Node syntax checks pass for the frontend shell and all browser harness scripts.
+- Verified py_compile passes for apps/api-gateway/main.py and scripts/verify_web_text_submit.py.
+- Verified 34 automated tests pass with UV_CACHE_DIR=.uv-cache uv run pytest.
+- Verified live gateway session creation, web session bootstrap, websocket reconnect, and text submission flows against local PostgreSQL-backed services.
+
+### Next
+
+- Implement step 12: record assistant placeholder events so the timeline can show a deterministic system response stub after the first accepted user text.
+- Keep the realtime message.accepted contract stable so later orchestrator and assistant reply events can layer onto the same session channel without changing the frontend transport state machine.
+
 ## 2026-03-08 - Step 10 Session Realtime Connection
 
 ### Scope

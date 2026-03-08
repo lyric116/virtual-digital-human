@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import importlib.util
+import json
 from pathlib import Path
 import sys
 
@@ -24,11 +26,12 @@ def load_gateway_module():
 
 class FakeSessionRepository:
     def __init__(self) -> None:
-        self.calls: list[dict] = []
+        self.session_calls: list[dict] = []
+        self.message_calls: list[dict] = []
 
     def create_session(self, payload):
         dumped = payload.model_dump()
-        self.calls.append(dumped)
+        self.session_calls.append(dumped)
         return {
             "session_id": "sess_fake_001",
             "trace_id": "trace_fake_001",
@@ -44,9 +47,33 @@ class FakeSessionRepository:
         return {
             "session_id": session_id,
             "trace_id": "trace_fake_001",
-            "status": "created",
+            "status": "active",
             "stage": "engage",
-            "updated_at": "2026-03-07T14:00:00Z",
+            "updated_at": "2026-03-07T14:01:00Z",
+        }
+
+    def create_user_text_message(self, session_id: str, payload):
+        dumped = payload.model_dump()
+        self.message_calls.append({"session_id": session_id, **dumped})
+        return {
+            "session": {
+                "session_id": session_id,
+                "trace_id": "trace_fake_001",
+                "status": "active",
+                "stage": "engage",
+                "updated_at": "2026-03-07T14:01:00Z",
+            },
+            "message": {
+                "message_id": "msg_fake_001",
+                "session_id": session_id,
+                "trace_id": "trace_fake_001",
+                "role": "user",
+                "status": "accepted",
+                "source_kind": "text",
+                "content_text": dumped["content_text"],
+                "submitted_at": "2026-03-07T14:01:00Z",
+                "client_seq": dumped.get("client_seq"),
+            },
         }
 
 
@@ -62,7 +89,7 @@ def test_create_session_endpoint_returns_contract_shape():
     assert body["status"] == "created"
     assert body["stage"] == "engage"
     assert body["input_modes"] == ["text", "audio"]
-    assert repository.calls[0]["input_modes"] == ["text", "audio"]
+    assert repository.session_calls[0]["input_modes"] == ["text", "audio"]
 
 
 def test_create_session_rejects_invalid_input_modes():
@@ -75,17 +102,44 @@ def test_create_session_rejects_invalid_input_modes():
     raise AssertionError("expected SessionCreateRequest validation to fail for empty input_modes")
 
 
-def test_gateway_app_and_readme_document_endpoint():
+def test_text_message_accept_returns_contract_shape():
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    payload = module.TextMessageSubmitRequest(content_text="今天压力有点大", client_seq=3)
+    body = module.create_text_message_record(repository, "sess_fake_001", payload)
+
+    assert isinstance(body, dict)
+    assert body["message"]["message_id"] == "msg_fake_001"
+    assert body["message"]["session_id"] == "sess_fake_001"
+    assert body["message"]["trace_id"] == "trace_fake_001"
+    assert body["message"]["status"] == "accepted"
+    assert body["message"]["content_text"] == "今天压力有点大"
+    assert repository.message_calls[0]["client_seq"] == 3
+
+
+def test_text_message_rejects_blank_content():
+    module = load_gateway_module()
+    try:
+        module.TextMessageSubmitRequest(content_text="   ")
+    except ValidationError:
+        assert True
+        return
+    raise AssertionError("expected TextMessageSubmitRequest validation to fail for blank content")
+
+
+def test_gateway_app_and_readme_document_endpoints():
     module = load_gateway_module()
     app = module.create_app(repository=FakeSessionRepository())
     paths = {route.path for route in app.routes}
 
     assert "/health" in paths
     assert "/api/session/create" in paths
+    assert "/api/session/{session_id}/text" in paths
     assert "/ws/session/{session_id}" in paths
 
     content = GATEWAY_README.read_text(encoding="utf-8")
     assert "POST /api/session/create" in content
+    assert "POST /api/session/{session_id}/text" in content
     assert "uvicorn" in content
 
 
@@ -96,13 +150,35 @@ def test_gateway_event_envelope_matches_shared_shape():
             "session_id": "sess_fake_001",
             "trace_id": "trace_fake_001",
         },
-        event_type="session.heartbeat",
+        event_type="message.accepted",
         payload={"connection_status": "alive"},
+        message_id="msg_fake_001",
     )
 
-    assert envelope["event_type"] == "session.heartbeat"
+    assert envelope["event_type"] == "message.accepted"
     assert envelope["schema_version"] == "v1alpha1"
     assert envelope["source_service"] == "api_gateway"
     assert envelope["session_id"] == "sess_fake_001"
     assert envelope["trace_id"] == "trace_fake_001"
-    assert envelope["payload"]["connection_status"] == "alive"
+    assert envelope["message_id"] == "msg_fake_001"
+
+
+def test_gateway_message_accepted_event_is_json_serializable_after_encoding():
+    module = load_gateway_module()
+    envelope = module.build_event_envelope(
+        session={
+            "session_id": "sess_fake_001",
+            "trace_id": "trace_fake_001",
+        },
+        event_type="message.accepted",
+        payload={
+            "message_id": "msg_fake_001",
+            "submitted_at": datetime(2026, 3, 8, 10, 30, tzinfo=timezone.utc),
+        },
+        message_id="msg_fake_001",
+    )
+
+    encoded = module.jsonable_encoder(envelope)
+
+    assert encoded["payload"]["submitted_at"] == "2026-03-08T10:30:00+00:00"
+    assert json.loads(json.dumps(encoded))["message_id"] == "msg_fake_001"
