@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, and 17:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, and 19:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -24,6 +24,9 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, and 17:
   recording, and shows browser-side recording status without uploading audio
 - step 17: each recorded browser audio chunk is now uploaded to the gateway when a
   session exists, and the UI shows 音频分片 upload progress plus the latest stored chunk id
+- step 19: after recording stops, the page now submits one finalized audio blob, waits
+  for the 最终转写 result, shows the transcript in the chat flow, and consumes the same
+  mock assistant reply path used by text input
 
 ## Files
 
@@ -34,7 +37,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, and 17:
 - `app.js`
   - panel readiness check, session bootstrap flow, realtime connection, text submit
     ack handling, mock dialogue reply handling, chat timeline rendering, and session
-    history restore plus session export, microphone recording, and audio chunk upload
+    history restore plus session export, microphone recording, audio chunk upload, and
+    finalized audio submission back into the text dialogue loop
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -61,6 +65,9 @@ Then open:
 - `Send Text` is live only after session bootstrap and a connected realtime channel
 - microphone controls can now upload temporary audio chunks to the gateway after a
   session exists; without a session they stay in local-only mode
+- when `window.__APP_CONFIG__.enableAudioFinalize !== false`, stopping a recording also
+  submits one complete audio blob to `/api/session/{session_id}/audio/finalize` and
+  waits for the final transcript realtime acknowledgement
 - the latest assistant reply shown in transcript, avatar, and fusion cards is derived
   from the same live events that feed the timeline
 - the current active `sessionId` is stored in browser storage and used to restore
@@ -81,3 +88,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py`

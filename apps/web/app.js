@@ -21,6 +21,7 @@
       activeSessionStorageKey: config.activeSessionStorageKey || "virtual-human-active-session-id",
       heartbeatIntervalMs: config.heartbeatIntervalMs || 5000,
       reconnectDelayMs: config.reconnectDelayMs || 1000,
+      enableAudioFinalize: config.enableAudioFinalize !== false,
     };
   }
 
@@ -56,6 +57,7 @@
       textSubmitMessage: null,
       pendingMessageId: null,
       lastAcceptedMessageId: null,
+      lastAcceptedSourceKind: null,
       lastAcceptedTraceId: null,
       lastAcceptedAt: null,
       lastAcceptedText: "",
@@ -274,6 +276,12 @@
   function getAudioUploadStatusMessage(state) {
     if (state.audioUploadState === "uploading") {
       return state.audioUploadMessage || "音频分片上传中。";
+    }
+    if (state.audioUploadState === "processing_final") {
+      return state.audioUploadMessage || "录音结束，正在提交完整音频并等待 ASR 结果。";
+    }
+    if (state.audioUploadState === "awaiting_realtime") {
+      return state.audioUploadMessage || "完整音频已提交，等待实时确认事件。";
     }
     if (state.audioUploadState === "completed") {
       return state.audioUploadMessage || "音频分片已全部落盘。";
@@ -627,6 +635,40 @@
     return responsePayload;
   }
 
+  async function requestAudioFinalize(fetchImpl, appConfig, state, payload) {
+    const query = new URLSearchParams();
+    if (typeof payload.durationMs === "number") {
+      query.set("duration_ms", String(payload.durationMs));
+    }
+
+    const response = await fetchImpl(
+      `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(state.sessionId)}/audio/finalize?${query.toString()}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": payload.mimeType || "application/octet-stream",
+        },
+        body: payload.blob,
+      },
+    );
+
+    let responsePayload = null;
+    try {
+      responsePayload = await response.json();
+    } catch (error) {
+      responsePayload = null;
+    }
+
+    if (!response.ok) {
+      const message = responsePayload && typeof responsePayload.message === "string"
+        ? responsePayload.message
+        : `Audio finalize failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return responsePayload;
+  }
+
   async function requestSessionState(fetchImpl, appConfig, sessionId) {
     const response = await fetchImpl(
       `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/state`,
@@ -791,6 +833,7 @@
     let lastAcceptedText = "";
     let lastAcceptedAt = null;
     let lastAcceptedMessageId = null;
+    let lastAcceptedSourceKind = null;
     let lastAcceptedTraceId = null;
     let lastReplyText = "";
     let lastReplyAt = null;
@@ -809,6 +852,7 @@
         lastAcceptedText = message.content_text;
         lastAcceptedAt = message.submitted_at;
         lastAcceptedMessageId = message.message_id;
+        lastAcceptedSourceKind = typeof message.source_kind === "string" ? message.source_kind : null;
         lastAcceptedTraceId = typeof message.trace_id === "string" ? message.trace_id : null;
         timelineEntries.push({
           entryId: `timeline-${message.message_id}`,
@@ -865,6 +909,7 @@
       lastAcceptedText,
       lastAcceptedAt,
       lastAcceptedMessageId,
+      lastAcceptedSourceKind,
       lastAcceptedTraceId,
       lastReplyText,
       lastReplyAt,
@@ -894,6 +939,7 @@
     state.lastAcceptedText = reconstructed.lastAcceptedText;
     state.lastAcceptedAt = reconstructed.lastAcceptedAt;
     state.lastAcceptedMessageId = reconstructed.lastAcceptedMessageId;
+    state.lastAcceptedSourceKind = reconstructed.lastAcceptedSourceKind;
     state.lastAcceptedTraceId = reconstructed.lastAcceptedTraceId;
     state.lastReplyText = reconstructed.lastReplyText;
     state.lastReplyAt = reconstructed.lastReplyAt;
@@ -933,6 +979,8 @@
       mediaRecorder: null,
       pendingAudioUploads: 0,
       stopRequested: false,
+      recordedAudioParts: [],
+      finalizingAudio: false,
     };
 
     function clearHeartbeatTimer() {
@@ -960,6 +1008,8 @@
       clearRecordingTimer();
       runtime.stopRequested = true;
       runtime.pendingAudioUploads = 0;
+      runtime.recordedAudioParts = [];
+      runtime.finalizingAudio = false;
       if (runtime.mediaRecorder && runtime.mediaRecorder.state === "recording") {
         try {
           runtime.mediaRecorder.stop();
@@ -1055,9 +1105,13 @@
 
       if (envelope.event_type === "message.accepted") {
         const payload = envelope.payload || {};
+        const acceptedSourceKind = typeof payload.source_kind === "string"
+          ? payload.source_kind
+          : "text";
         state.status = "active";
         state.updatedAt = payload.submitted_at || envelope.emitted_at;
         state.lastAcceptedMessageId = payload.message_id || envelope.message_id || null;
+        state.lastAcceptedSourceKind = acceptedSourceKind;
         state.lastAcceptedTraceId = payload.trace_id || envelope.trace_id || state.traceId;
         state.lastAcceptedAt = payload.submitted_at || envelope.emitted_at;
         state.lastAcceptedText = payload.content_text || state.lastAcceptedText;
@@ -1068,11 +1122,17 @@
           text: state.lastAcceptedText || "user message",
           timestamp: state.lastAcceptedAt,
         });
-        state.textSubmitState = "sent";
-        state.textSubmitMessage = `发送成功: ${state.lastAcceptedMessageId || "message.accepted"}`;
         state.pendingMessageId = null;
-        state.draftText = "";
-        pushConnectionLog(state, `message accepted: ${state.lastAcceptedMessageId || "unknown"}`);
+        if (acceptedSourceKind === "audio") {
+          state.audioUploadState = "completed";
+          state.audioUploadMessage = `语音转写完成: ${state.lastAcceptedMessageId || "message.accepted"}`;
+          pushConnectionLog(state, `audio message accepted: ${state.lastAcceptedMessageId || "unknown"}`);
+        } else {
+          state.textSubmitState = "sent";
+          state.textSubmitMessage = `发送成功: ${state.lastAcceptedMessageId || "message.accepted"}`;
+          state.draftText = "";
+          pushConnectionLog(state, `message accepted: ${state.lastAcceptedMessageId || "unknown"}`);
+        }
         renderSessionState(rootDocument, elements, state, appConfig);
         return;
       }
@@ -1256,6 +1316,7 @@
       state.textSubmitMessage = null;
       state.pendingMessageId = null;
       state.lastAcceptedMessageId = null;
+      state.lastAcceptedSourceKind = null;
       state.lastAcceptedTraceId = null;
       state.lastAcceptedAt = null;
       state.lastAcceptedText = "";
@@ -1278,6 +1339,8 @@
       state.lastUploadedChunkId = null;
       state.lastUploadedAt = null;
       state.nextAudioChunkSeq = 1;
+      runtime.recordedAudioParts = [];
+      runtime.finalizingAudio = false;
       renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
@@ -1454,6 +1517,13 @@
         renderSessionState(rootDocument, elements, state, appConfig);
         return;
       }
+      if (
+        runtime.finalizingAudio
+        && (state.audioUploadState === "processing_final" || state.audioUploadState === "awaiting_realtime")
+      ) {
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
 
       if (!state.sessionId) {
         state.audioUploadState = "local_only";
@@ -1474,6 +1544,85 @@
         state.audioUploadMessage = `音频分片上传完成，共 ${state.uploadedChunkCount} 个。`;
       }
       renderSessionState(rootDocument, elements, state, appConfig);
+    }
+
+    function getBlobCtor() {
+      if (rootWindow && typeof rootWindow.Blob === "function") {
+        return rootWindow.Blob;
+      }
+      if (typeof Blob === "function") {
+        return Blob;
+      }
+      return null;
+    }
+
+    async function waitForPendingAudioUploads() {
+      while (runtime.pendingAudioUploads > 0) {
+        await new Promise(function (resolve) {
+          rootWindow.setTimeout(resolve, 20);
+        });
+      }
+    }
+
+    async function finalizeRecordedAudio() {
+      if (!appConfig.enableAudioFinalize || runtime.finalizingAudio) {
+        return;
+      }
+      if (!state.sessionId || !runtime.recordedAudioParts.length) {
+        finalizeAudioUploadState();
+        return;
+      }
+
+      const BlobCtor = getBlobCtor();
+      if (!BlobCtor) {
+        state.audioUploadState = "error";
+        state.audioUploadMessage = "当前环境不支持 Blob，无法提交完整录音。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
+      runtime.finalizingAudio = true;
+      state.dialogueReplyState = "idle";
+      state.lastReplyMessageId = null;
+      state.lastReplyTraceId = null;
+      state.lastReplyAt = null;
+      state.lastReplyText = "";
+      state.lastReplyEmotion = "pending";
+      state.lastReplyRiskLevel = "pending";
+      state.lastReplyNextAction = "pending";
+      state.lastStageTransition = `${state.stage} → ${state.stage}`;
+      state.audioUploadState = "processing_final";
+      state.audioUploadMessage = "录音结束，正在提交完整音频并等待 ASR 结果。";
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        await waitForPendingAudioUploads();
+        const finalBlob = new BlobCtor(runtime.recordedAudioParts, {
+          type: state.recordingMimeType === "pending"
+            ? "application/octet-stream"
+            : state.recordingMimeType,
+        });
+        const payload = await requestAudioFinalize(resolvedFetch, appConfig, state, {
+          blob: finalBlob,
+          durationMs: Math.max(0, Math.round(state.recordingDurationMs)),
+          mimeType: finalBlob.type || state.recordingMimeType || "application/octet-stream",
+        });
+
+        state.pendingMessageId = payload.message_id || null;
+        if (state.lastAcceptedMessageId === payload.message_id) {
+          state.audioUploadState = "completed";
+          state.audioUploadMessage = `语音转写完成: ${payload.message_id}`;
+        } else {
+          state.audioUploadState = "awaiting_realtime";
+          state.audioUploadMessage = "完整音频已提交，等待实时确认事件。";
+        }
+      } catch (error) {
+        state.audioUploadState = "error";
+        state.audioUploadMessage = error instanceof Error ? error.message : String(error);
+      } finally {
+        runtime.finalizingAudio = false;
+        renderSessionState(rootDocument, elements, state, appConfig);
+      }
     }
 
     async function uploadAudioChunk(blob, options) {
@@ -1539,6 +1688,8 @@
       clearRecordingTimer();
       runtime.stopRequested = false;
       runtime.pendingAudioUploads = 0;
+      runtime.recordedAudioParts = [];
+      runtime.finalizingAudio = false;
       state.recordingState = "recording";
       state.recordingDurationMs = 0;
       state.recordingChunkCount = 0;
@@ -1557,6 +1708,7 @@
       runtime.mediaRecorder = recorder;
       recorder.addEventListener("dataavailable", function (event) {
         if (event && event.data && (typeof event.data.size !== "number" || event.data.size > 0)) {
+          runtime.recordedAudioParts.push(event.data);
           state.recordingChunkCount += 1;
           if (event.data.type) {
             state.recordingMimeType = event.data.type;
@@ -1579,6 +1731,9 @@
         state.recordingState = "stopped";
         runtime.mediaRecorder = null;
         finalizeAudioUploadState();
+        if (appConfig.enableAudioFinalize) {
+          void finalizeRecordedAudio();
+        }
       });
       recorder.addEventListener("error", function (event) {
         clearRecordingTimer();

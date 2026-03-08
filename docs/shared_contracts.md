@@ -110,9 +110,32 @@ response is persisted into `media_indexes`.
 | `storage_path` | string | Yes | Local path or object key for the stored chunk. |
 | `media_id` | string | Yes | Stable media index id returned by the gateway. |
 
+## Audio Finalize And Accepted Audio Message
+
+This contract is used by `POST /api/session/{id}/audio/finalize`. The raw request body
+contains one complete recording. The gateway stores the binary as `audio_final`, calls
+the standalone ASR service, writes one user message with `source_kind='audio'`, and then
+reuses the existing `message.accepted -> dialogue.reply` realtime path.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `media_id` | string | Yes | Stored `audio_final` media id created by the gateway. |
+| `message_id` | string | Yes | Accepted user message id created from the final transcript. |
+| `session_id` | string | Yes | Target session id. |
+| `trace_id` | string | Yes | Session trace id copied into the accepted user message. |
+| `role` | string | Yes | Always `user` for the accepted transcript message. |
+| `status` | string | Yes | `accepted` when the final transcript is ready. |
+| `source_kind` | string | Yes | Always `audio` for this path. |
+| `content_text` | string | Yes | Final ASR transcript text written into `messages`. |
+| `mime_type` | string | Yes | Media type of the finalized recording, for example `audio/wav`. |
+| `duration_ms` | integer | No | Browser-reported recording duration passed to the gateway. |
+| `submitted_at` | string | Yes | Time when the accepted transcript message was stored. |
+
 ## Transcript Result
 
-This payload is used for both offline ASR backfill and live transcript events.
+This payload is used for offline ASR backfill and later live transcript events. In step
+19, the live audio path still emits only the accepted final user message and does not
+emit a separate `transcript.partial` or `transcript.final` event yet.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |

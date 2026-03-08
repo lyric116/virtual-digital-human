@@ -362,6 +362,7 @@ function executeApp() {
       heartbeatIntervalMs: 200,
       reconnectDelayMs: 150,
       activeSessionStorageKey: "virtual-human-active-session-id",
+      enableAudioFinalize: false,
     },
     setTimeout,
     clearTimeout,

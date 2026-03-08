@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Literal, Protocol
+from urllib import parse as urllib_parse
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 from uuid import uuid4
@@ -72,6 +73,8 @@ class GatewaySettings:
     cors_origins: list[str]
     orchestrator_base_url: str
     orchestrator_timeout_seconds: float
+    asr_service_base_url: str
+    asr_timeout_seconds: float
     media_storage_root: str
 
     @classmethod
@@ -101,6 +104,12 @@ class GatewaySettings:
             orchestrator_timeout_seconds=float(
                 os.getenv("ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS", "60")
             ),
+            asr_service_base_url=(
+                f"http://"
+                f"{'127.0.0.1' if os.getenv('ASR_SERVICE_HOST', '127.0.0.1') in {'0.0.0.0', '::'} else os.getenv('ASR_SERVICE_HOST', '127.0.0.1')}"
+                f":{os.getenv('ASR_SERVICE_PORT', '8020')}"
+            ),
+            asr_timeout_seconds=float(os.getenv("ASR_TIMEOUT_SECONDS", "60")),
             media_storage_root=os.getenv("MEDIA_STORAGE_ROOT", DEFAULT_MEDIA_STORAGE_ROOT),
         )
 
@@ -178,6 +187,20 @@ class AudioChunkAcceptedResponse(BaseModel):
     created_at: datetime
 
 
+class AudioFinalAcceptedResponse(BaseModel):
+    media_id: str
+    message_id: str
+    session_id: str
+    trace_id: str
+    role: str
+    status: str
+    source_kind: str
+    content_text: str
+    mime_type: str
+    duration_ms: int | None = Field(default=None, ge=0)
+    submitted_at: datetime
+
+
 class MessageHistoryResponse(BaseModel):
     message_id: str
     session_id: str
@@ -252,6 +275,21 @@ class DialogueReplyResponse(BaseModel):
     safety_flags: list[str] = Field(default_factory=list)
 
 
+class ASRServiceTranscriptionResponse(BaseModel):
+    request_id: str
+    record_id: str | None = None
+    provider: str
+    model: str
+    transcript_text: str
+    transcript_language: str | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
+    confidence_mean: float | None = None
+    confidence_available: bool = False
+    transcript_segments: list[dict[str, Any]] = Field(default_factory=list)
+    audio: dict[str, Any] = Field(default_factory=dict)
+    generated_at: datetime
+
+
 class SessionRepository(Protocol):
     def create_session(self, payload: SessionCreateRequest) -> dict[str, Any]:
         ...
@@ -272,6 +310,15 @@ class SessionRepository(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def create_user_audio_message(
+        self,
+        session_id: str,
+        *,
+        content_text: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        ...
+
     def create_assistant_dialogue_message(
         self,
         session_id: str,
@@ -288,6 +335,17 @@ class SessionRepository(Protocol):
         chunk_started_at_ms: int | None,
         duration_ms: int | None,
         is_final: bool,
+        mime_type: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        ...
+
+    def create_audio_final_asset(
+        self,
+        session_id: str,
+        *,
+        content: bytes,
+        duration_ms: int | None,
         mime_type: str,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -361,6 +419,132 @@ class PostgresSessionRepository:
         except ValueError:
             storage_path = str(absolute_path)
         return absolute_path, storage_path
+
+    def _resolve_audio_final_path(
+        self,
+        session_id: str,
+        media_id: str,
+        mime_type: str,
+    ) -> tuple[Path, str]:
+        configured_root = Path(self.media_storage_root)
+        if configured_root.is_absolute():
+            storage_root = configured_root
+            storage_prefix = configured_root
+        else:
+            storage_root = ROOT / configured_root
+            storage_prefix = ROOT
+
+        extension = MIME_EXTENSION_MAP.get(mime_type, ".bin")
+        absolute_path = storage_root / "audio_final" / session_id / f"{media_id}{extension}"
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            storage_path = str(absolute_path.relative_to(storage_prefix))
+        except ValueError:
+            storage_path = str(absolute_path)
+        return absolute_path, storage_path
+
+    def _create_user_message(
+        self,
+        session_id: str,
+        *,
+        content_text: str,
+        source_kind: Literal["text", "audio"],
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        message_id = f"msg_{uuid4().hex[:24]}"
+
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT session_id, trace_id, status, stage
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                session_row = cur.fetchone()
+                if session_row is None:
+                    raise KeyError(session_id)
+
+                row_metadata = dict(metadata or {})
+                cur.execute(
+                    """
+                    INSERT INTO messages (
+                        message_id,
+                        session_id,
+                        trace_id,
+                        role,
+                        status,
+                        source_kind,
+                        content_text,
+                        metadata,
+                        submitted_at,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        %(message_id)s,
+                        %(session_id)s,
+                        %(trace_id)s,
+                        'user',
+                        'accepted',
+                        %(source_kind)s,
+                        %(content_text)s,
+                        %(metadata)s,
+                        %(submitted_at)s,
+                        %(created_at)s,
+                        %(updated_at)s
+                    )
+                    RETURNING
+                        message_id,
+                        session_id,
+                        trace_id,
+                        role,
+                        status,
+                        source_kind,
+                        content_text,
+                        submitted_at
+                    """,
+                    {
+                        "message_id": message_id,
+                        "session_id": session_id,
+                        "trace_id": session_row["trace_id"],
+                        "source_kind": source_kind,
+                        "content_text": content_text,
+                        "metadata": Jsonb(row_metadata),
+                        "submitted_at": now,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                )
+                message_row = cur.fetchone()
+
+                cur.execute(
+                    """
+                    UPDATE sessions
+                    SET status = 'active', updated_at = %(updated_at)s
+                    WHERE session_id = %(session_id)s
+                    RETURNING session_id, trace_id, status, stage, updated_at
+                    """,
+                    {
+                        "session_id": session_id,
+                        "updated_at": now,
+                    },
+                )
+                updated_session = cur.fetchone()
+
+        if message_row is None or updated_session is None:
+            raise RuntimeError("user message insert returned no row")
+
+        accepted_message = dict(message_row)
+        client_seq = row_metadata.get("client_seq")
+        if isinstance(client_seq, int):
+            accepted_message["client_seq"] = client_seq
+        return {
+            "session": dict(updated_session),
+            "message": accepted_message,
+        }
 
     def create_session(self, payload: SessionCreateRequest) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
@@ -627,100 +811,29 @@ class PostgresSessionRepository:
         session_id: str,
         payload: TextMessageSubmitRequest,
     ) -> dict[str, Any]:
-        now = datetime.now(timezone.utc)
-        message_id = f"msg_{uuid4().hex[:24]}"
+        metadata = dict(payload.metadata)
+        if payload.client_seq is not None:
+            metadata["client_seq"] = payload.client_seq
+        return self._create_user_message(
+            session_id,
+            content_text=payload.content_text,
+            source_kind="text",
+            metadata=metadata,
+        )
 
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT session_id, trace_id, status, stage
-                    FROM sessions
-                    WHERE session_id = %s
-                    """,
-                    (session_id,),
-                )
-                session_row = cur.fetchone()
-                if session_row is None:
-                    raise KeyError(session_id)
-
-                metadata = dict(payload.metadata)
-                if payload.client_seq is not None:
-                    metadata["client_seq"] = payload.client_seq
-
-                cur.execute(
-                    """
-                    INSERT INTO messages (
-                        message_id,
-                        session_id,
-                        trace_id,
-                        role,
-                        status,
-                        source_kind,
-                        content_text,
-                        metadata,
-                        submitted_at,
-                        created_at,
-                        updated_at
-                    ) VALUES (
-                        %(message_id)s,
-                        %(session_id)s,
-                        %(trace_id)s,
-                        'user',
-                        'accepted',
-                        'text',
-                        %(content_text)s,
-                        %(metadata)s,
-                        %(submitted_at)s,
-                        %(created_at)s,
-                        %(updated_at)s
-                    )
-                    RETURNING
-                        message_id,
-                        session_id,
-                        trace_id,
-                        role,
-                        status,
-                        source_kind,
-                        content_text,
-                        submitted_at
-                    """,
-                    {
-                        "message_id": message_id,
-                        "session_id": session_id,
-                        "trace_id": session_row["trace_id"],
-                        "content_text": payload.content_text,
-                        "metadata": Jsonb(metadata),
-                        "submitted_at": now,
-                        "created_at": now,
-                        "updated_at": now,
-                    },
-                )
-                message_row = cur.fetchone()
-
-                cur.execute(
-                    """
-                    UPDATE sessions
-                    SET status = 'active', updated_at = %(updated_at)s
-                    WHERE session_id = %(session_id)s
-                    RETURNING session_id, trace_id, status, stage, updated_at
-                    """,
-                    {
-                        "session_id": session_id,
-                        "updated_at": now,
-                    },
-                )
-                updated_session = cur.fetchone()
-
-        if message_row is None or updated_session is None:
-            raise RuntimeError("text message insert returned no row")
-
-        accepted_message = dict(message_row)
-        accepted_message["client_seq"] = payload.client_seq
-        return {
-            "session": dict(updated_session),
-            "message": accepted_message,
-        }
+    def create_user_audio_message(
+        self,
+        session_id: str,
+        *,
+        content_text: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._create_user_message(
+            session_id,
+            content_text=content_text,
+            source_kind="audio",
+            metadata=metadata,
+        )
 
     def create_assistant_dialogue_message(
         self,
@@ -937,6 +1050,99 @@ class PostgresSessionRepository:
             "chunk_started_at_ms": chunk_started_at_ms,
             "is_final": is_final,
         }
+
+    def create_audio_final_asset(
+        self,
+        session_id: str,
+        *,
+        content: bytes,
+        duration_ms: int | None,
+        mime_type: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        media_id = f"media_{uuid4().hex[:24]}"
+
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT session_id, trace_id
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                session_row = cur.fetchone()
+                if session_row is None:
+                    raise KeyError(session_id)
+
+                absolute_path, storage_path = self._resolve_audio_final_path(
+                    session_id=session_id,
+                    media_id=media_id,
+                    mime_type=mime_type,
+                )
+                absolute_path.write_bytes(content)
+
+                cur.execute(
+                    """
+                    INSERT INTO media_indexes (
+                        media_id,
+                        session_id,
+                        trace_id,
+                        message_id,
+                        media_kind,
+                        storage_backend,
+                        storage_path,
+                        mime_type,
+                        duration_ms,
+                        byte_size,
+                        metadata,
+                        created_at
+                    ) VALUES (
+                        %(media_id)s,
+                        %(session_id)s,
+                        %(trace_id)s,
+                        %(message_id)s,
+                        'audio_final',
+                        'local',
+                        %(storage_path)s,
+                        %(mime_type)s,
+                        %(duration_ms)s,
+                        %(byte_size)s,
+                        %(metadata)s,
+                        %(created_at)s
+                    )
+                    RETURNING
+                        media_id,
+                        session_id,
+                        trace_id,
+                        media_kind,
+                        storage_backend,
+                        storage_path,
+                        mime_type,
+                        duration_ms,
+                        byte_size,
+                        created_at
+                    """,
+                    {
+                        "media_id": media_id,
+                        "session_id": session_id,
+                        "trace_id": session_row["trace_id"],
+                        "message_id": None,
+                        "storage_path": storage_path,
+                        "mime_type": mime_type,
+                        "duration_ms": duration_ms,
+                        "byte_size": len(content),
+                        "metadata": Jsonb(metadata or {}),
+                        "created_at": now,
+                    },
+                )
+                row = cur.fetchone()
+
+        if row is None:
+            raise RuntimeError("audio final insert returned no row")
+        return dict(row)
 
     def record_system_event(self, envelope: dict[str, Any]) -> None:
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
@@ -1155,6 +1361,53 @@ def create_audio_chunk_record(
         )
 
 
+def create_audio_finalize_asset_record(
+    repository: SessionRepository,
+    session_id: str,
+    *,
+    content: bytes,
+    duration_ms: int | None,
+    mime_type: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any] | JSONResponse:
+    if not content:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_payload(
+                error_code="audio_final_empty",
+                message="Audio finalize body must not be empty",
+                session_id=session_id,
+            ),
+        )
+
+    try:
+        return repository.create_audio_final_asset(
+            session_id,
+            content=content,
+            duration_ms=duration_ms,
+            mime_type=mime_type,
+            metadata=metadata,
+        )
+    except KeyError:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=error_payload(
+                error_code="session_not_found",
+                message="Session not found",
+                session_id=session_id,
+            ),
+        )
+    except (OSError, psycopg.Error):
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error_payload(
+                error_code="audio_final_store_failed",
+                message="Failed to store final audio",
+                session_id=session_id,
+            ),
+        )
+
+
 def create_session_state_record(
     repository: SessionRepository,
     session_id: str,
@@ -1228,6 +1481,181 @@ def request_dialogue_reply(
         raise RuntimeError(f"invalid dialogue reply: {exc}") from exc
 
 
+def request_asr_transcription(
+    settings: GatewaySettings,
+    *,
+    body: bytes,
+    mime_type: str,
+) -> ASRServiceTranscriptionResponse:
+    extension = MIME_EXTENSION_MAP.get(mime_type, ".bin")
+    request = urllib_request.Request(
+        url=(
+            f"{settings.asr_service_base_url.rstrip('/')}/api/asr/transcribe?"
+            f"{urllib_parse.urlencode({'filename': f'recording{extension}'})}"
+        ),
+        data=body,
+        headers={"Content-Type": mime_type},
+        method="POST",
+    )
+
+    try:
+        with urllib_request.urlopen(request, timeout=settings.asr_timeout_seconds) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"asr service http {exc.code}: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError(f"asr service unavailable: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("asr service returned invalid json") from exc
+
+    try:
+        return ASRServiceTranscriptionResponse.model_validate(raw_payload)
+    except ValidationError as exc:
+        raise RuntimeError(f"invalid asr transcription: {exc}") from exc
+
+
+def create_audio_message_record(
+    repository: SessionRepository,
+    settings: GatewaySettings,
+    session_id: str,
+    *,
+    content: bytes,
+    duration_ms: int | None,
+    mime_type: str,
+) -> dict[str, Any] | JSONResponse:
+    audio_asset = create_audio_finalize_asset_record(
+        repository,
+        session_id,
+        content=content,
+        duration_ms=duration_ms,
+        mime_type=mime_type,
+        metadata={"source": "web-shell"},
+    )
+    if isinstance(audio_asset, JSONResponse):
+        return audio_asset
+
+    try:
+        transcription = request_asr_transcription(
+            settings,
+            body=content,
+            mime_type=mime_type,
+        )
+    except RuntimeError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content=error_payload(
+                error_code="audio_transcription_failed",
+                message=str(exc),
+                session_id=session_id,
+                retryable=True,
+            ),
+        )
+
+    transcript_text = transcription.transcript_text.strip()
+    if not transcript_text:
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content=error_payload(
+                error_code="audio_transcription_empty",
+                message="ASR service returned an empty transcript",
+                session_id=session_id,
+                retryable=True,
+            ),
+        )
+
+    try:
+        result = repository.create_user_audio_message(
+            session_id,
+            content_text=transcript_text,
+            metadata={
+                "source": "audio_finalize",
+                "audio_media_id": audio_asset["media_id"],
+                "audio_mime_type": mime_type,
+                "audio_duration_ms": duration_ms,
+                "asr_provider": transcription.provider,
+                "asr_model": transcription.model,
+                "transcript_language": transcription.transcript_language,
+                "confidence_mean": transcription.confidence_mean,
+                "confidence_available": transcription.confidence_available,
+            },
+        )
+    except KeyError:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=error_payload(
+                error_code="session_not_found",
+                message="Session not found",
+                session_id=session_id,
+            ),
+        )
+    except psycopg.Error:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error_payload(
+                error_code="audio_message_submit_failed",
+                message="Failed to create audio transcript message",
+                session_id=session_id,
+            ),
+        )
+
+    result["audio"] = audio_asset
+    result["transcription"] = transcription.model_dump(mode="json")
+    return result
+
+
+async def dispatch_message_pipeline(
+    request: Request,
+    session_id: str,
+    result: dict[str, Any],
+) -> None:
+    repository = request.app.state.session_repository
+    settings: GatewaySettings = request.app.state.settings
+
+    accepted_event = build_event_envelope(
+        session=result["session"],
+        event_type="message.accepted",
+        payload=result["message"],
+        message_id=result["message"]["message_id"],
+    )
+    accepted_event = jsonable_encoder(accepted_event)
+    repository.record_system_event(accepted_event)
+    await request.app.state.connection_registry.enqueue_event(session_id, accepted_event)
+
+    try:
+        dialogue_reply = request_dialogue_reply(settings, result["session"], result["message"])
+        assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
+        dialogue_event = build_event_envelope(
+            session=assistant_result["session"],
+            event_type="dialogue.reply",
+            payload={
+                **dialogue_reply.model_dump(mode="json"),
+                "submitted_at": assistant_result["message"]["submitted_at"],
+            },
+            message_id=dialogue_reply.message_id,
+            source_service="orchestrator",
+        )
+        dialogue_event = jsonable_encoder(dialogue_event)
+        repository.record_system_event(dialogue_event)
+        await request.app.state.connection_registry.enqueue_event(session_id, dialogue_event)
+    except (KeyError, psycopg.Error, RuntimeError) as exc:
+        error_event = build_event_envelope(
+            session=result["session"],
+            event_type="session.error",
+            payload=error_payload(
+                error_code="dialogue_reply_failed",
+                message=str(exc),
+                trace_id=result["session"]["trace_id"],
+                session_id=session_id,
+                retryable=True,
+            ),
+            source_service="api_gateway",
+        )
+        error_event = jsonable_encoder(error_event)
+        repository.record_system_event(error_event)
+        await request.app.state.connection_registry.enqueue_event(session_id, error_event)
+
+
 def create_app(repository: SessionRepository | None = None) -> FastAPI:
     bootstrap_runtime_env()
     settings = GatewaySettings.from_env()
@@ -1285,49 +1713,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         result = create_text_message_record(repository, session_id, payload)
         if isinstance(result, JSONResponse):
             return result
-
-        accepted_event = build_event_envelope(
-            session=result["session"],
-            event_type="message.accepted",
-            payload=result["message"],
-            message_id=result["message"]["message_id"],
-        )
-        accepted_event = jsonable_encoder(accepted_event)
-        repository.record_system_event(accepted_event)
-        await request.app.state.connection_registry.enqueue_event(session_id, accepted_event)
-
-        try:
-            dialogue_reply = request_dialogue_reply(settings, result["session"], result["message"])
-            assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
-            dialogue_event = build_event_envelope(
-                session=assistant_result["session"],
-                event_type="dialogue.reply",
-                payload={
-                    **dialogue_reply.model_dump(mode="json"),
-                    "submitted_at": assistant_result["message"]["submitted_at"],
-                },
-                message_id=dialogue_reply.message_id,
-                source_service="orchestrator",
-            )
-            dialogue_event = jsonable_encoder(dialogue_event)
-            repository.record_system_event(dialogue_event)
-            await request.app.state.connection_registry.enqueue_event(session_id, dialogue_event)
-        except (KeyError, psycopg.Error, RuntimeError) as exc:
-            error_event = build_event_envelope(
-                session=result["session"],
-                event_type="session.error",
-                payload=error_payload(
-                    error_code="dialogue_reply_failed",
-                    message=str(exc),
-                    trace_id=result["session"]["trace_id"],
-                    session_id=session_id,
-                    retryable=True,
-                ),
-                source_service="api_gateway",
-            )
-            error_event = jsonable_encoder(error_event)
-            repository.record_system_event(error_event)
-            await request.app.state.connection_registry.enqueue_event(session_id, error_event)
+        await dispatch_message_pipeline(request, session_id, result)
         return result["message"]
 
     @app.post(
@@ -1357,6 +1743,39 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             metadata={"source": "web-shell"},
         )
         return result
+
+    @app.post(
+        "/api/session/{session_id}/audio/finalize",
+        response_model=AudioFinalAcceptedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def finalize_audio(
+        session_id: str,
+        request: Request,
+        duration_ms: int | None = None,
+    ) -> Any:
+        repository = request.app.state.session_repository
+        settings: GatewaySettings = request.app.state.settings
+        body = await request.body()
+        mime_type = request.headers.get("content-type", "application/octet-stream")
+        result = create_audio_message_record(
+            repository,
+            settings,
+            session_id,
+            content=body,
+            duration_ms=duration_ms,
+            mime_type=mime_type,
+        )
+        if isinstance(result, JSONResponse):
+            return result
+
+        await dispatch_message_pipeline(request, session_id, result)
+        return {
+            **result["message"],
+            "media_id": result["audio"]["media_id"],
+            "mime_type": mime_type,
+            "duration_ms": duration_ms,
+        }
 
     @app.websocket("/ws/session/{session_id}")
     async def session_realtime(websocket: WebSocket, session_id: str) -> None:

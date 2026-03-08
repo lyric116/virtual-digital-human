@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - Audio Finalize Reuses The Existing Turn Pipeline
+
+- POST /api/session/{session_id}/audio/finalize is now the only live boundary between browser recording and ASR: chunk uploads remain temporary media ingestion, while only the finalized recording is allowed to create a user message and trigger dialogue orchestration.
+- The gateway no longer needs a separate audio-specific reply path; once ASR returns a final transcript, dispatch_message_pipeline treats the accepted audio turn exactly like text, which keeps realtime events, persistence, export, and trace behavior aligned across input modalities.
+- scripts/web_audio_final_transcript_harness.js is now the runtime gate for this boundary because it proves one fake recording can still accumulate chunk uploads, then transition into a finalized transcript and assistant reply without requiring a real browser or microphone.
+
 ## 2026-03-08 - Transcript Review Now Has A Single Control Surface
 
 - scripts/manage_transcript_review.py is now the only approved write path for human transcript review state: queue-report exposes the active worklist, start-review moves a draft into pending_review, and complete-review is the gate that can produce verified human_verified text.

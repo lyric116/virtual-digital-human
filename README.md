@@ -21,6 +21,9 @@ Current repository state:
   temporary `media_indexes` records before ASR is connected
 - `services/asr-service` now provides an offline whole-file transcription baseline for
   normalized enterprise audio samples
+- browser-recorded audio can now be finalized through the gateway, transcribed by
+  `services/asr-service`, rendered as the final transcript in the frontend, and pushed
+  into the same mock reply loop used by text input
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -78,6 +81,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/asr-service main:app --host 0.0.0.0 --port 8020`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_service.py`
 

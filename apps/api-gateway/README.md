@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, and 17:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, and 19:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -17,6 +17,9 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, and 17:
   envelopes, system events, and exported session artifacts
 - step 17: accept fixed-window audio chunk uploads, store the binary locally, and
   persist temporary `audio_chunk` rows in `media_indexes`
+- step 19: accept one finalized recording, call the standalone ASR service, persist an
+  `audio_final` asset plus an `audio` user message, and reuse the existing realtime
+  `message.accepted -> dialogue.reply` pipeline
 
 ## Files
 
@@ -31,6 +34,7 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, and 17:
 - `GET /api/session/{session_id}/export`
 - `POST /api/session/{session_id}/text`
 - `POST /api/session/{session_id}/audio/chunk`
+- `POST /api/session/{session_id}/audio/finalize`
 - `GET /ws/session/{session_id}` as a WebSocket upgrade endpoint
 
 ## Local Run
@@ -62,3 +66,7 @@ From repository root:
   carry the same session `trace_id`.
 - `POST /api/session/{session_id}/audio/chunk` does not invoke ASR yet; it only stores
   the raw chunk under `MEDIA_STORAGE_ROOT` and records an `audio_chunk` index row.
+- `POST /api/session/{session_id}/audio/finalize` stores one complete recording under
+  `MEDIA_STORAGE_ROOT`, sends the binary to `services/asr-service`, writes the final
+  transcript as a user message with `source_kind='audio'`, and then triggers the same
+  mock dialogue flow used by the text path.

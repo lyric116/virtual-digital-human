@@ -21,6 +21,32 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Step 19 Audio Final Transcript Loop
+
+### Scope
+
+Completed implementation plan step 19 by wiring the finalized browser recording through the gateway, standalone ASR service, and existing realtime dialogue pipeline so audio input now lands in the same chat flow as text input without introducing partial transcript events.
+
+### Outputs
+
+- apps/api-gateway/main.py now exposes POST /api/session/{session_id}/audio/finalize, stores audio_final media, calls services/asr-service, writes one user message with source_kind='audio', and reuses dispatch_message_pipeline for message.accepted plus dialogue.reply.
+- apps/web/app.js now submits one finalized recording after stop, waits for the final ASR-backed acknowledgement, updates transcript/timeline cards from audio messages, and keeps step 17 chunk uploads intact.
+- scripts/web_audio_final_transcript_harness.js, scripts/verify_web_audio_final_transcript.py, tests/test_api_gateway_audio_finalize.py, and tests/test_web_audio_final_transcript.py now cover mock and live audio-finalize behavior.
+- README.md, apps/api-gateway/README.md, apps/web/README.md, and docs/shared_contracts.md now document the audio/finalize contract and the final-transcript boundary for step 19.
+
+### Checks
+
+- Ran node --check apps/web/app.js scripts/web_audio_final_transcript_harness.js scripts/web_audio_chunk_upload_harness.js.
+- Ran UV_CACHE_DIR=.uv-cache uv run python -m py_compile apps/api-gateway/main.py scripts/verify_web_audio_final_transcript.py tests/test_api_gateway_audio_finalize.py tests/test_web_audio_final_transcript.py.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest and confirmed 76 tests passed.
+- Ran live verification with scripts/verify_web_text_submit.py, scripts/verify_web_mock_reply.py, and scripts/verify_audio_chunk_upload.py against temporary local services.
+- Ran live verification with scripts/verify_web_audio_final_transcript.py and confirmed one finalized audio recording produced an audio user message, an audio_final media asset, and one assistant reply through qwen3-asr-flash.
+
+### Next
+
+- Proceed to implementation plan step 20 by adding partial transcript events without changing the final accepted audio message contract.
+- Keep POST /api/session/{session_id}/audio/chunk as the temporary media-ingestion boundary and avoid moving ASR work back into chunk uploads.
+
 ## 2026-03-08 - Step 18C Transcript Review Workflow
 
 ### Scope
