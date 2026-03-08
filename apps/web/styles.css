@@ -391,6 +391,17 @@ body::before {
   color: var(--ink);
 }
 
+.connection-log {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  color: var(--muted);
+  font: 0.85rem/1.6 "SFMono-Regular", "Consolas", monospace;
+  white-space: pre-wrap;
+}
+
 .control-notes {
   margin: 0;
   padding-left: 18px;

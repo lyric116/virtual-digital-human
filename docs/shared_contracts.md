@@ -64,6 +64,8 @@ envelope.
 ## Event Names
 
 - `session.created`
+- `session.connection.ready`
+- `session.heartbeat`
 - `session.state.updated`
 - `message.accepted`
 - `transcript.partial`

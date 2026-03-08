@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Step 10 Session Realtime Connection
+
+### Scope
+
+Implemented the first session-level realtime channel so the web shell can open a WebSocket after session bootstrap, send heartbeat pings, detect unexpected disconnects, and reconnect automatically without introducing business messages.
+
+### Outputs
+
+- Added /ws/session/{session_id} in apps/api-gateway/main.py with session.connection.ready, session.heartbeat, and session.error envelopes.
+- Extended apps/web/app.js and apps/web/index.html to show realtime status, last heartbeat, and connection logs, and to reconnect after an unexpected socket close.
+- Added runtime and mock verification assets: scripts/web_realtime_harness.js and scripts/verify_web_realtime_connection.py.
+- Installed the websockets dependency through uv so uvicorn can actually accept WebSocket upgrades.
+
+### Checks
+
+- Verified 28 automated tests pass, including mock realtime connection and forced reconnect coverage.
+- Verified live gateway session creation, frontend session bootstrap, and realtime reconnect flow against the running local services.
+
+### Next
+
+- Implement step 11: accept a text message from the web shell, write it into the database, and acknowledge it over the existing session channel.
+- Keep the websocket envelope stable so message.accepted can be added on top of the same connection without another frontend transport rewrite.
+
 ## 2026-03-07 - Step 9 Frontend Session Start
 
 ### Scope

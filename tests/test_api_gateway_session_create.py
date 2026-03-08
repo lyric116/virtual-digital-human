@@ -40,6 +40,15 @@ class FakeSessionRepository:
             "updated_at": "2026-03-07T14:00:00Z",
         }
 
+    def get_session_summary(self, session_id: str):
+        return {
+            "session_id": session_id,
+            "trace_id": "trace_fake_001",
+            "status": "created",
+            "stage": "engage",
+            "updated_at": "2026-03-07T14:00:00Z",
+        }
+
 
 def test_create_session_endpoint_returns_contract_shape():
     module = load_gateway_module()
@@ -73,7 +82,27 @@ def test_gateway_app_and_readme_document_endpoint():
 
     assert "/health" in paths
     assert "/api/session/create" in paths
+    assert "/ws/session/{session_id}" in paths
 
     content = GATEWAY_README.read_text(encoding="utf-8")
     assert "POST /api/session/create" in content
     assert "uvicorn" in content
+
+
+def test_gateway_event_envelope_matches_shared_shape():
+    module = load_gateway_module()
+    envelope = module.build_event_envelope(
+        session={
+            "session_id": "sess_fake_001",
+            "trace_id": "trace_fake_001",
+        },
+        event_type="session.heartbeat",
+        payload={"connection_status": "alive"},
+    )
+
+    assert envelope["event_type"] == "session.heartbeat"
+    assert envelope["schema_version"] == "v1alpha1"
+    assert envelope["source_service"] == "api_gateway"
+    assert envelope["session_id"] == "sess_fake_001"
+    assert envelope["trace_id"] == "trace_fake_001"
+    assert envelope["payload"]["connection_status"] == "alive"

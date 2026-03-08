@@ -2,8 +2,10 @@
 
 ## Purpose
 
-This is the step-8 gateway baseline. It currently exposes only the minimum session
-creation endpoint and writes a session row into PostgreSQL.
+This gateway currently covers steps 8 and 10:
+
+- step 8: create a session row in PostgreSQL
+- step 10: provide a session-level realtime WebSocket with ready and heartbeat events
 
 ## Files
 
@@ -14,6 +16,7 @@ creation endpoint and writes a session row into PostgreSQL.
 
 - `GET /health`
 - `POST /api/session/create`
+- `GET /ws/session/{session_id}` as a WebSocket upgrade endpoint
 
 ## Local Run
 
@@ -23,8 +26,10 @@ From repository root:
 
 ## Notes
 
-- This step intentionally does not create messages, WebSocket events, or orchestrator calls.
+- This step intentionally does not create messages or orchestrator calls.
 - The endpoint writes only to the `sessions` table defined in
   `infra/docker/postgres/init/001_base_schema.sql`.
 - `GATEWAY_CORS_ORIGINS` controls which local frontend preview origins can call the API
   from the browser.
+- The realtime endpoint currently emits only `session.connection.ready`,
+  `session.heartbeat`, and `session.error`.

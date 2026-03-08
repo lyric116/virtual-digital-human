@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import psycopg
@@ -18,6 +18,8 @@ from pydantic import BaseModel, Field, field_validator
 
 ROOT = Path(__file__).resolve().parents[2]
 ALLOWED_INPUT_MODES = {"text", "audio", "video"}
+SCHEMA_VERSION = "v1alpha1"
+HEARTBEAT_INTERVAL_MS = 5000
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -115,6 +117,9 @@ class SessionRepository(Protocol):
     def create_session(self, payload: SessionCreateRequest) -> dict[str, Any]:
         ...
 
+    def get_session_summary(self, session_id: str) -> dict[str, Any] | None:
+        ...
+
 
 class PostgresSessionRepository:
     def __init__(self, settings: GatewaySettings):
@@ -190,6 +195,20 @@ class PostgresSessionRepository:
             raise RuntimeError("session insert returned no row")
         return row
 
+    def get_session_summary(self, session_id: str) -> dict[str, Any] | None:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT session_id, trace_id, status, stage, updated_at
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                row = cur.fetchone()
+        return row
+
 
 def error_payload(*, error_code: str, message: str, trace_id: str | None = None) -> dict[str, Any]:
     return {
@@ -199,6 +218,25 @@ def error_payload(*, error_code: str, message: str, trace_id: str | None = None)
         "session_id": None,
         "retryable": False,
         "details": {},
+    }
+
+
+def build_event_envelope(
+    *,
+    session: dict[str, Any],
+    event_type: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "event_id": f"evt_{uuid4().hex[:24]}",
+        "event_type": event_type,
+        "schema_version": SCHEMA_VERSION,
+        "source_service": "api_gateway",
+        "session_id": session["session_id"],
+        "trace_id": session["trace_id"],
+        "message_id": None,
+        "emitted_at": datetime.now(timezone.utc).isoformat(),
+        "payload": payload,
     }
 
 
@@ -244,6 +282,58 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
     )
     def create_session(payload: SessionCreateRequest, request: Request) -> Any:
         return create_session_record(request.app.state.session_repository, payload)
+
+    @app.websocket("/ws/session/{session_id}")
+    async def session_realtime(websocket: WebSocket, session_id: str) -> None:
+        repository = websocket.app.state.session_repository
+        session = repository.get_session_summary(session_id)
+        if session is None:
+            await websocket.close(code=4404, reason="session_not_found")
+            return
+
+        await websocket.accept()
+        await websocket.send_json(
+            build_event_envelope(
+                session=session,
+                event_type="session.connection.ready",
+                payload={
+                    "connection_status": "connected",
+                    "heartbeat_interval_ms": HEARTBEAT_INTERVAL_MS,
+                    "reconnectable": True,
+                },
+            )
+        )
+
+        try:
+            while True:
+                client_message = await websocket.receive_json()
+                if client_message.get("type") != "ping":
+                    await websocket.send_json(
+                        build_event_envelope(
+                            session=session,
+                            event_type="session.error",
+                            payload={
+                                "error_code": "unsupported_realtime_message",
+                                "message": "Only heartbeat ping is supported in this step",
+                            },
+                        )
+                    )
+                    continue
+
+                await websocket.send_json(
+                    build_event_envelope(
+                        session=session,
+                        event_type="session.heartbeat",
+                        payload={
+                            "connection_status": "alive",
+                            "client_time": client_message.get("sent_at"),
+                            "server_time": datetime.now(timezone.utc).isoformat(),
+                            "heartbeat_interval_ms": HEARTBEAT_INTERVAL_MS,
+                        },
+                    )
+                )
+        except WebSocketDisconnect:
+            return
 
     return app
 

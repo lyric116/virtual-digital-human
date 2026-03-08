@@ -63,6 +63,13 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - Session Realtime Transport Baseline
+
+- apps/api-gateway/main.py now owns the minimal realtime transport contract for the project: it validates session existence, upgrades the session websocket, and emits only ready, heartbeat, and error envelopes in v1alpha1 shape.
+- apps/web/app.js now has a narrow client-side transport state machine separate from dialogue state: idle, connecting, connected, reconnecting, unsupported, and closed. This keeps step 10 focused on transport reliability rather than business logic.
+- scripts/web_realtime_harness.js provides a package-free Node harness for transport tests, while scripts/verify_web_realtime_connection.py is the live runtime gate that proves heartbeat and reconnect work against the actual gateway implementation.
+- The websockets package is now a required runtime dependency because uvicorn without it downgraded websocket upgrades to plain HTTP and caused false-negative transport failures.
+
 ## 2026-03-07 - Web Session Bootstrap Flow
 
 - apps/web/app.js now owns a narrow browser state machine for session bootstrap only: idle, loading, ready, and error; it does not yet manage messages, transcript buffers, or audio capture.

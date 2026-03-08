@@ -47,7 +47,7 @@ class FakeElement {
 
   async click() {
     const handlers = this.listeners.get("click") || [];
-    let lastResult = undefined;
+    let lastResult;
     for (const handler of handlers) {
       lastResult = handler({ currentTarget: this, preventDefault() {} });
       if (lastResult && typeof lastResult.then === "function") {
@@ -78,7 +78,11 @@ class FakeDocument {
       ["session-trace-value", "not assigned"],
       ["session-updated-at-value", "not started"],
       ["session-api-base-url-value", "http://127.0.0.1:8000"],
+      ["session-ws-url-value", "ws://127.0.0.1:8000/ws"],
       ["session-feedback", "点击 Start Session 创建新的会话编号。"],
+      ["connection-status-value", "idle"],
+      ["connection-heartbeat-value", "not started"],
+      ["connection-log", "realtime idle"],
     ];
 
     elements.forEach(([id, textContent]) => {
@@ -166,6 +170,8 @@ function collectSnapshot(document) {
     apiBaseUrl: document.getElementById("session-api-base-url-value").textContent,
     startButtonLabel: document.getElementById("session-start-button").textContent,
     startButtonDisabled: document.getElementById("session-start-button").disabled,
+    connectionStatus: document.getElementById("connection-status-value").textContent,
+    connectionLog: document.getElementById("connection-log").textContent,
     uiReady: document.body.dataset.uiReady || null,
     requestState: document.body.dataset.sessionState || null,
   };
@@ -176,21 +182,31 @@ function executeApp({ fetchImpl, apiBaseUrl }) {
   const window = {
     document,
     fetch: fetchImpl,
+    WebSocket: undefined,
     __APP_CONFIG__: {
       apiBaseUrl,
+      wsUrl: "ws://127.0.0.1:8000/ws",
       defaultAvatarId: "companion_female_01",
     },
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
   };
 
   const context = {
     window,
     document,
     fetch: fetchImpl,
+    WebSocket: undefined,
     console,
     Date,
+    URL,
+    URLSearchParams,
     setTimeout,
     clearTimeout,
-    URL,
+    setInterval,
+    clearInterval,
     navigator: {},
   };
 

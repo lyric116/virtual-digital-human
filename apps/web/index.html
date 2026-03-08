@@ -170,7 +170,8 @@
           </div>
           <p class="panel-summary">
             Session start is live. Pause, reset, and export remain disabled until message
-            handling and realtime state are connected.
+            handling is connected. This step adds session-level realtime connection and
+            heartbeat visibility only.
           </p>
           <div class="panel-body controls">
             <div class="session-overview">
@@ -200,7 +201,11 @@
               <li>Trace id: <span id="session-trace-value">not assigned</span></li>
               <li>Last update: <span id="session-updated-at-value">not started</span></li>
               <li>Gateway base URL: <span id="session-api-base-url-value">http://127.0.0.1:8000</span></li>
+              <li>Realtime: <span id="connection-status-value">idle</span></li>
+              <li>Last heartbeat: <span id="connection-heartbeat-value">not started</span></li>
+              <li>Realtime URL: <span id="session-ws-url-value">ws://127.0.0.1:8000/ws</span></li>
             </ul>
+            <pre class="connection-log" id="connection-log">realtime idle</pre>
           </div>
         </section>
       </main>
@@ -209,6 +214,7 @@
     <script>
       window.__APP_CONFIG__ = window.__APP_CONFIG__ || {
         apiBaseUrl: "http://127.0.0.1:8000",
+        wsUrl: "ws://127.0.0.1:8000/ws",
         defaultAvatarId: "companion_female_01"
       };
     </script>
