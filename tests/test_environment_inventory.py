@@ -19,7 +19,6 @@ REQUIRED_SECTIONS = [
     "## ASR",
     "## TTS",
     "## Avatar Driver",
-    "## Compatibility Aliases",
 ]
 
 REQUIRED_KEYS = [
@@ -91,6 +90,9 @@ REQUIRED_KEYS = [
     "AVATAR_DEFAULT_ID_A",
     "AVATAR_DEFAULT_ID_B",
     "AVATAR_MODEL_PATH",
+]
+
+REMOVED_ALIAS_KEYS = [
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
     "OPENAI_MODEL",
@@ -127,6 +129,17 @@ def test_environment_doc_covers_sections_and_keys():
     missing_keys = [key for key in REQUIRED_KEYS if f"`{key}`" not in content]
     assert not missing_sections, f"missing sections in environment.md: {missing_sections}"
     assert not missing_keys, f"missing keys in environment.md: {missing_keys}"
+
+
+def test_legacy_asr_aliases_are_removed_from_templates_and_docs():
+    env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
+    env_doc = ENV_DOC.read_text(encoding="utf-8")
+    readme = README.read_text(encoding="utf-8")
+
+    for key in REMOVED_ALIAS_KEYS:
+        assert f"{key}=" not in env_example
+        assert f"`{key}`" not in env_doc
+        assert f"`{key}`" not in readme
 
 
 def test_readme_points_to_environment_inventory_and_memory_bank_flow():

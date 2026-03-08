@@ -137,27 +137,12 @@ code or deployment files.
 | `AVATAR_DEFAULT_ID_B` | Yes | `coach_male_01` | Default avatar id for guide role. |
 | `AVATAR_MODEL_PATH` | No | empty | Local path for face-driving or animation model assets. |
 
-## Compatibility Aliases
-
-These aliases exist only because the current ASR tooling already supports them. New code
-should not introduce more aliases.
-
-| Alias | Canonical Variable | Current Use |
-| --- | --- | --- |
-| `OPENAI_API_KEY` | `ASR_API_KEY` or `LLM_API_KEY` | Accepted by `scripts/write_asr_drafts.py`. |
-| `OPENAI_BASE_URL` | `ASR_BASE_URL` or `LLM_BASE_URL` | Accepted by `scripts/write_asr_drafts.py`. |
-| `OPENAI_MODEL` | `ASR_MODEL` or `LLM_MODEL` | Accepted by `scripts/write_asr_drafts.py`. |
-| `DASHSCOPE_API_KEY` | `ASR_API_KEY` | Current live credential path for `qwen3-asr-flash`. |
-| `DASHSCOPE_BASE_URL` | `ASR_BASE_URL` | Optional provider-specific override. |
-| `key` | `OPENAI_API_KEY` | Legacy shorthand accepted when parsing `.env`. |
-| `baseurl` | `OPENAI_BASE_URL` | Legacy shorthand accepted when parsing `.env`. |
-| `model` | `OPENAI_MODEL` | Legacy shorthand accepted when parsing `.env`. |
-
 ## Current Baseline
 
 - ASR has been validated with `qwen3-asr-flash`.
 - The working route is DashScope OpenAI-compatible mode:
   `https://dashscope.aliyuncs.com/compatible-mode/v1`.
-- `scripts/write_asr_drafts.py` currently resolves credentials in this order:
-  `OPENAI_API_KEY` -> `DASHSCOPE_API_KEY`,
-  `OPENAI_BASE_URL` -> `DASHSCOPE_BASE_URL`.
+- The required variables for current ASR tooling are:
+  - `ASR_API_KEY`
+  - `ASR_BASE_URL`
+  - `ASR_MODEL`

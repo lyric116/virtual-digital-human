@@ -27,17 +27,6 @@ def parse_env_file(path: Path) -> dict[str, str]:
     if not path.exists():
         return values
 
-    alias_map = {
-        "key": "OPENAI_API_KEY",
-        "api_key": "OPENAI_API_KEY",
-        "openai_api_key": "OPENAI_API_KEY",
-        "baseurl": "OPENAI_BASE_URL",
-        "base_url": "OPENAI_BASE_URL",
-        "openai_base_url": "OPENAI_BASE_URL",
-        "model": "OPENAI_MODEL",
-        "openai_model": "OPENAI_MODEL",
-    }
-
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -52,7 +41,7 @@ def parse_env_file(path: Path) -> dict[str, str]:
         else:
             continue
 
-        key = alias_map.get(key.strip().lower(), key.strip())
+        key = key.strip()
         values[key] = value.strip().strip("'").strip('"')
     return values
 
@@ -140,17 +129,9 @@ class ASRSettings:
     @classmethod
     def from_env(cls) -> "ASRSettings":
         provider = os.getenv("ASR_PROVIDER", "dashscope")
-        model = os.getenv("ASR_MODEL") or os.getenv("OPENAI_MODEL") or "qwen3-asr-flash"
-        base_url = (
-            os.getenv("ASR_BASE_URL")
-            or os.getenv("OPENAI_BASE_URL")
-            or os.getenv("DASHSCOPE_BASE_URL")
-        )
-        api_key = (
-            os.getenv("ASR_API_KEY")
-            or os.getenv("OPENAI_API_KEY")
-            or os.getenv("DASHSCOPE_API_KEY")
-        )
+        model = os.getenv("ASR_MODEL", "qwen3-asr-flash")
+        base_url = os.getenv("ASR_BASE_URL")
+        api_key = os.getenv("ASR_API_KEY")
         return cls(
             service_host=os.getenv("ASR_SERVICE_HOST", DEFAULT_ASR_SERVICE_HOST),
             service_port=int(os.getenv("ASR_SERVICE_PORT", str(DEFAULT_ASR_SERVICE_PORT))),

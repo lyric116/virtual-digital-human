@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - Legacy ASR Env Aliases Removed
+
+- scripts/write_asr_drafts.py, services/asr-service/main.py, and scripts/verify_asr_service.py now resolve ASR configuration only from ASR_API_KEY, ASR_BASE_URL, and ASR_MODEL; future tooling must not reintroduce provider-specific or shorthand aliases such as key, baseurl, OPENAI_*, or DASHSCOPE_*.
+- The DashScope qwen3-asr-flash path still uses the OpenAI-compatible client at runtime, but that transport detail is now fully hidden behind canonical ASR_* environment variables so provider changes can stay internal to the ASR module boundary.
+
 ## 2026-03-08 - standalone asr baseline now sits before transcript workflow backfill
 
 - services/asr-service is now a true leaf service: it accepts one whole audio file, computes input audio metadata locally, calls the configured external ASR provider, and returns a stable offline transcript contract without any dependency on the gateway or orchestrator.

@@ -25,16 +25,6 @@ def parse_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     if not path.exists():
         return values
-    alias_map = {
-        "key": "OPENAI_API_KEY",
-        "api_key": "OPENAI_API_KEY",
-        "openai_api_key": "OPENAI_API_KEY",
-        "baseurl": "OPENAI_BASE_URL",
-        "base_url": "OPENAI_BASE_URL",
-        "openai_base_url": "OPENAI_BASE_URL",
-        "model": "OPENAI_MODEL",
-        "openai_model": "OPENAI_MODEL",
-    }
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -47,8 +37,7 @@ def parse_env_file(path: Path) -> dict[str, str]:
             key, value = line.split(":", 1)
         else:
             continue
-        canonical_key = alias_map.get(key.strip().lower(), key.strip())
-        values[canonical_key] = value.strip().strip("'").strip('"')
+        values[key.strip()] = value.strip().strip("'").strip('"')
     return values
 
 
@@ -114,12 +103,8 @@ def post_audio(base_url: str, record: dict) -> dict:
 
 def main() -> None:
     env = {**parse_env_file(ROOT / ".env.example"), **parse_env_file(ROOT / ".env"), **os.environ}
-    if not (
-        env.get("ASR_API_KEY")
-        or env.get("OPENAI_API_KEY")
-        or env.get("DASHSCOPE_API_KEY")
-    ):
-        raise RuntimeError("missing ASR credential: set ASR_API_KEY, OPENAI_API_KEY, or DASHSCOPE_API_KEY")
+    if not env.get("ASR_API_KEY"):
+        raise RuntimeError("missing ASR credential: set ASR_API_KEY")
 
     manifest_rows = {row["record_id"]: row for row in load_jsonl(MANIFEST_FILE)}
     sample_rows = load_jsonl(BATCH_FILE)[:3]

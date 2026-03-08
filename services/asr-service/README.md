@@ -46,6 +46,10 @@ baseline.
 From repository root:
 
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/asr-service main:app --host 0.0.0.0 --port 8020`
+- required environment variables:
+  - `ASR_API_KEY`
+  - `ASR_BASE_URL`
+  - `ASR_MODEL`
 
 ## Verification
 

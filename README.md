@@ -107,16 +107,11 @@ The initial PostgreSQL schema reference is:
 - `docs/database_schema.md`
 - `infra/docker/postgres/init/001_base_schema.sql`
 
-For DashScope ASR with the current script, prefer:
+For DashScope ASR with the current script, use:
 
-- `DASHSCOPE_API_KEY`
-- `OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`
-
-Supported shorthand keys in `.env`:
-
-- `key`
-- `baseurl`
-- `model`
+- `ASR_API_KEY`
+- `ASR_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`
+- `ASR_MODEL=qwen3-asr-flash`
 
 Do not point the current ASR script at
 `https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription`; that is a

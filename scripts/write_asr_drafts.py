@@ -37,17 +37,6 @@ def load_env_file(path: Path) -> None:
     if not path.exists():
         return
 
-    alias_map = {
-        "key": "OPENAI_API_KEY",
-        "api_key": "OPENAI_API_KEY",
-        "openai_api_key": "OPENAI_API_KEY",
-        "baseurl": "OPENAI_BASE_URL",
-        "base_url": "OPENAI_BASE_URL",
-        "openai_base_url": "OPENAI_BASE_URL",
-        "model": "OPENAI_MODEL",
-        "openai_model": "OPENAI_MODEL",
-    }
-
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -62,15 +51,15 @@ def load_env_file(path: Path) -> None:
         else:
             continue
 
-        key = alias_map.get(key.strip().lower(), key.strip())
+        key = key.strip()
         value = value.strip().strip("'").strip('"')
         if key and key not in os.environ:
             os.environ[key] = value
 
 
 def resolve_api_credentials() -> tuple[str | None, str | None]:
-    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
-    base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("DASHSCOPE_BASE_URL")
+    api_key = os.getenv("ASR_API_KEY")
+    base_url = os.getenv("ASR_BASE_URL")
     return api_key, base_url
 
 
@@ -291,16 +280,22 @@ def cmd_transcribe_openai(args: argparse.Namespace) -> None:
 
     batch_rows = load_jsonl(args.batch)
     transcript_rows = load_jsonl(args.transcripts)
+    model = args.model or os.getenv("ASR_MODEL") or "qwen3-asr-flash"
     api_key, base_url = resolve_api_credentials()
-    base_url = normalize_base_url_for_model(args.model, base_url)
+    if not api_key:
+        raise RuntimeError("missing ASR_API_KEY in environment")
+    if not base_url:
+        raise RuntimeError("missing ASR_BASE_URL in environment")
+
+    base_url = normalize_base_url_for_model(model, base_url)
     client = OpenAI(api_key=api_key, base_url=base_url)
     results: list[dict] = []
 
     for batch_row in batch_rows[: args.limit] if args.limit is not None else batch_rows:
         audio_path = ROOT / batch_row["audio_path_16k_mono"]
-        if args.model.startswith("qwen3-asr-flash"):
+        if model.startswith("qwen3-asr-flash"):
             completion = client.chat.completions.create(
-                model=args.model,
+                model=model,
                 messages=[
                     {
                         "role": "user",
@@ -325,7 +320,7 @@ def cmd_transcribe_openai(args: argparse.Namespace) -> None:
         else:
             with audio_path.open("rb") as audio_file:
                 transcription = client.audio.transcriptions.create(
-                    model=args.model,
+                    model=model,
                     file=audio_file,
                     response_format="json",
                 )
@@ -343,21 +338,21 @@ def cmd_transcribe_openai(args: argparse.Namespace) -> None:
                 "draft_confidence_mean": None,
                 "draft_confidence_min": None,
                 "draft_confidence_max": None,
-                "asr_engine": args.model,
+                "asr_engine": model,
                 "asr_engine_version": None,
                 "asr_generated_at": datetime.now(timezone.utc).isoformat(),
                 "transcript_source": "openai_audio_transcriptions",
             }
         )
 
-    results_output = args.output or (args.batch.parent / f"{args.batch.stem}_{args.model}_results.jsonl")
+    results_output = args.output or (args.batch.parent / f"{args.batch.stem}_{model}_results.jsonl")
     write_jsonl(results_output, results)
 
     summary = apply_results_to_rows(
         transcript_rows,
         results,
         force=args.force,
-        engine=args.model,
+        engine=model,
         engine_version=None,
         transcript_source="openai_audio_transcriptions",
     )
@@ -396,7 +391,7 @@ def build_parser() -> argparse.ArgumentParser:
     openai_parser.add_argument("--transcripts", type=Path, default=DEFAULT_TRANSCRIPTS)
     openai_parser.add_argument("--batch", type=Path, required=True)
     openai_parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
-    openai_parser.add_argument("--model", default="gpt-4o-transcribe")
+    openai_parser.add_argument("--model", default=None)
     openai_parser.add_argument("--limit", type=int, default=None)
     openai_parser.add_argument("--output", type=Path, default=None)
     openai_parser.add_argument("--force", action="store_true")

@@ -129,3 +129,21 @@ def test_asr_service_routes_and_docs_are_present():
     assert "POST /api/asr/transcribe" in service_readme
     assert "scripts/verify_asr_service.py" in service_readme
     assert "scripts/verify_asr_service.py" in root_readme
+
+
+def test_asr_settings_only_use_canonical_asr_environment(monkeypatch):
+    module = load_asr_module()
+    monkeypatch.setenv("ASR_API_KEY", "canonical-key")
+    monkeypatch.setenv("ASR_BASE_URL", "https://canonical.example/v1")
+    monkeypatch.setenv("ASR_MODEL", "canonical-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "legacy-openai-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://legacy-openai.example/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "legacy-openai-model")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "legacy-dashscope-key")
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", "https://legacy-dashscope.example/v1")
+
+    settings = module.ASRSettings.from_env()
+
+    assert settings.api_key == "canonical-key"
+    assert settings.base_url == "https://canonical.example/v1"
+    assert settings.model == "canonical-model"

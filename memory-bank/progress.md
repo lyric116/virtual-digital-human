@@ -21,6 +21,35 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Canonical ASR Environment Variables
+
+### Scope
+
+Removed legacy ASR env alias support from the ASR service, ASR draft import script, and live ASR verifier so the repository now resolves ASR configuration only through ASR_API_KEY, ASR_BASE_URL, and ASR_MODEL.
+
+### Outputs
+
+- scripts/write_asr_drafts.py
+- services/asr-service/main.py
+- scripts/verify_asr_service.py
+- .env.example
+- docs/environment.md
+- README.md
+- tests/test_environment_inventory.py
+- tests/test_asr_service.py
+
+### Checks
+
+- Ran uv run python -m py_compile scripts/write_asr_drafts.py services/asr-service/main.py scripts/verify_asr_service.py.
+- Ran uv run pytest tests/test_environment_inventory.py tests/test_asr_service.py and confirmed 8 tests passed.
+- Ran uv run pytest and confirmed 64 tests passed.
+- Ran live ASR verification against qwen3-asr-flash with scripts/verify_asr_service.py and confirmed 3 enterprise samples transcribed successfully.
+
+### Next
+
+- Continue implementation plan step 18B by writing a small new ASR draft batch with the canonical ASR_* variables.
+- Keep all future ASR tooling and deployment docs on ASR_API_KEY, ASR_BASE_URL, and ASR_MODEL only.
+
 ## 2026-03-08 - step 18 standalone offline asr baseline service
 
 ### Scope
