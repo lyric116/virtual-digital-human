@@ -21,6 +21,39 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Step 18B Service Batch Write-Back
+
+### Scope
+
+Completed implementation plan step 18B by adding a service-backed ASR batch write-back command, verifying it against a temporary live batch, and then writing a new balanced 4-record batch into the real transcript workflow without touching final_text.
+
+### Outputs
+
+- scripts/write_asr_drafts.py
+- scripts/verify_asr_draft_batch.py
+- tests/test_write_asr_drafts.py
+- data/derived/transcripts/batches/review_batch_003.jsonl
+- data/derived/transcripts/batches/review_batch_003_service_results.jsonl
+- data/derived/transcripts/review_tasks/review_batch_003_manual_review.md
+- data/derived/qc_report.md
+- data/derived/transcripts/val_transcripts_template.jsonl
+- README.md
+- docs/03-asr.md
+- docs/08-data-ops-eval.md
+
+### Checks
+
+- Ran uv run python -m py_compile scripts/write_asr_drafts.py scripts/verify_asr_draft_batch.py.
+- Ran uv run pytest tests/test_write_asr_drafts.py tests/test_asr_service.py tests/test_environment_inventory.py and confirmed 11 tests passed.
+- Ran live verification with scripts/verify_asr_draft_batch.py and confirmed 4 temporary rows transitioned to draft_ready while 1114 untouched rows stayed pending_asr.
+- Ran uv run pytest and confirmed 67 tests passed.
+- Wrote review_batch_003 into the real transcript workflow and confirmed current counts are draft_ready=12 and pending_asr=1114.
+
+### Next
+
+- Proceed to implementation plan step 18C by defining how reviewers move draft_ready records into pending_review or verified.
+- Use review_batch_003_manual_review.md as the first active checklist for manual transcript validation.
+
 ## 2026-03-08 - Canonical ASR Environment Variables
 
 ### Scope

@@ -9,6 +9,8 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+import urllib.parse
+import urllib.request
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,6 +75,36 @@ def normalize_base_url_for_model(model: str, base_url: str | None) -> str | None
     if "/api/v1/services/audio/asr/transcription" in base_url:
         return compatible_url
     return base_url
+
+
+def resolve_service_base_url(explicit_base_url: str | None) -> str:
+    if explicit_base_url:
+        return explicit_base_url.rstrip("/")
+
+    host = os.getenv("ASR_SERVICE_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    if host in {"0.0.0.0", "::"}:
+        host = "127.0.0.1"
+    port = os.getenv("ASR_SERVICE_PORT", "8020").strip() or "8020"
+    return f"http://{host}:{port}"
+
+
+def transcribe_via_service(
+    service_base_url: str,
+    audio_path: Path,
+    record_id: str,
+) -> dict:
+    request = urllib.request.Request(
+        (
+            f"{service_base_url}/api/asr/transcribe?"
+            f"{urllib.parse.urlencode({'filename': audio_path.name, 'record_id': record_id})}"
+        ),
+        data=audio_path.read_bytes(),
+        headers={"Content-Type": "audio/wav"},
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=180) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -363,6 +395,53 @@ def cmd_transcribe_openai(args: argparse.Namespace) -> None:
     print(json.dumps(summary, ensure_ascii=False))
 
 
+def cmd_transcribe_service(args: argparse.Namespace) -> None:
+    load_env_file(args.env_file)
+
+    batch_rows = load_jsonl(args.batch)
+    transcript_rows = load_jsonl(args.transcripts)
+    service_base_url = resolve_service_base_url(args.service_base_url)
+    results: list[dict] = []
+
+    for batch_row in batch_rows[: args.limit] if args.limit is not None else batch_rows:
+        audio_path = ROOT / batch_row["audio_path_16k_mono"]
+        response = transcribe_via_service(service_base_url, audio_path, batch_row["record_id"])
+        transcript_text = (response.get("transcript_text") or "").strip()
+        results.append(
+            {
+                "record_id": batch_row["record_id"],
+                "draft_text_raw": transcript_text,
+                "draft_text_normalized": transcript_text,
+                "draft_segments": response.get("transcript_segments") or [],
+                "draft_confidence_mean": response.get("confidence_mean"),
+                "draft_confidence_min": None,
+                "draft_confidence_max": None,
+                "asr_engine": response.get("model"),
+                "asr_engine_version": None,
+                "asr_generated_at": response.get("generated_at") or datetime.now(timezone.utc).isoformat(),
+                "transcript_source": "asr_service_batch",
+            }
+        )
+
+    results_output = args.output or (args.batch.parent / f"{args.batch.stem}_service_results.jsonl")
+    write_jsonl(results_output, results)
+
+    summary = apply_results_to_rows(
+        transcript_rows,
+        results,
+        force=args.force,
+        engine=None,
+        engine_version=None,
+        transcript_source="asr_service_batch",
+    )
+    write_jsonl(args.transcripts, transcript_rows)
+    summary["service_base_url"] = service_base_url
+    summary["results_output"] = display_path(results_output)
+    summary["transcripts"] = display_path(args.transcripts)
+
+    print(json.dumps(summary, ensure_ascii=False))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -396,6 +475,16 @@ def build_parser() -> argparse.ArgumentParser:
     openai_parser.add_argument("--output", type=Path, default=None)
     openai_parser.add_argument("--force", action="store_true")
     openai_parser.set_defaults(func=cmd_transcribe_openai)
+
+    service_parser = sub.add_parser("transcribe-service")
+    service_parser.add_argument("--transcripts", type=Path, default=DEFAULT_TRANSCRIPTS)
+    service_parser.add_argument("--batch", type=Path, required=True)
+    service_parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
+    service_parser.add_argument("--service-base-url", default=None)
+    service_parser.add_argument("--limit", type=int, default=None)
+    service_parser.add_argument("--output", type=Path, default=None)
+    service_parser.add_argument("--force", action="store_true")
+    service_parser.set_defaults(func=cmd_transcribe_service)
 
     return parser
 

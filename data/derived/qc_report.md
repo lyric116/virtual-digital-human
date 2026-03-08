@@ -1,6 +1,6 @@
 # QC Report
 
-Generated at: 2026-03-07T11:01:46.301704+00:00
+Generated at: 2026-03-08T10:35:01.922232+00:00
 
 ## 1. Scope
 
@@ -45,17 +45,17 @@ Generated at: 2026-03-07T11:01:46.301704+00:00
 
 | Workflow status | Count |
 | --- | ---: |
-| draft_ready | 8 |
-| pending_asr | 1118 |
+| draft_ready | 12 |
+| pending_asr | 1114 |
 
 ### Transcript Workflow By Dataset And Role
 
 | Dataset | Canonical role | pending_asr | draft_ready | pending_review | verified |
 | --- | --- | ---: | ---: | ---: | ---: |
-| noxi | speaker_a | 551 | 2 | 0 | 0 |
-| noxi | speaker_b | 551 | 2 | 0 | 0 |
-| recola | speaker_a | 8 | 2 | 0 | 0 |
-| recola | speaker_b | 8 | 2 | 0 | 0 |
+| noxi | speaker_a | 550 | 3 | 0 | 0 |
+| noxi | speaker_b | 550 | 3 | 0 | 0 |
+| recola | speaker_a | 7 | 3 | 0 | 0 |
+| recola | speaker_b | 7 | 3 | 0 | 0 |
 
 ## 7. Mapping Status
 

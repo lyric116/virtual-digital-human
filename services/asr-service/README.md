@@ -54,7 +54,12 @@ From repository root:
 ## Verification
 
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_service.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_draft_batch.py`
 
 The live verifier uploads three enterprise validation samples, checks transcript
 availability, confirms duration and audio metadata fields, and prints original-vs-derived
 audio format differences.
+
+The batch verifier starts the same service locally, writes a small temporary ASR review
+batch through `scripts/write_asr_drafts.py transcribe-service`, and confirms the selected
+rows move from `pending_asr` to `draft_ready` without altering untouched rows.

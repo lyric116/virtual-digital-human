@@ -21,6 +21,9 @@ Current repository state:
   temporary `media_indexes` records before ASR is connected
 - `services/asr-service` now provides an offline whole-file transcription baseline for
   normalized enterprise audio samples
+- standalone ASR batch write-back is now available through
+  `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
+  real `draft_ready` records plus generated manual review checklists
 
 ## Repository Structure
 
@@ -84,8 +87,12 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/prepare_asr_audio.py`
 - Select an ASR review batch:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py select-batch --batch-id review_batch_001 --limit 8 --balanced-by-group --per-group 2`
+- Batch-write drafts through the standalone ASR service:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py transcribe-service --batch data/derived/transcripts/batches/review_batch_001.jsonl`
 - Run DashScope `qwen3-asr-flash` on a batch:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py transcribe-openai --batch data/derived/transcripts/batches/review_batch_001.jsonl --model qwen3-asr-flash`
+- Verify standalone ASR batch write-back:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_draft_batch.py`
 - Import external ASR draft results from a JSONL file:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py import-results --results <results.jsonl>`
 - Generate a manual review checklist:

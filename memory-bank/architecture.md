@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - ASR Drafts Now Flow Through The Standalone Service
+
+- scripts/write_asr_drafts.py now has a transcribe-service path that treats services/asr-service as the only batch write-back boundary; transcript draft generation should go through the local ASR HTTP contract instead of calling provider APIs directly from downstream tooling whenever the repository wants reproducible batch behavior.
+- review_batch_003 establishes the stable artifact pattern for ASR rollout: select a balanced pending_asr batch, write draft results into val_transcripts_template.jsonl, regenerate qc_report.md, and produce a matching manual review checklist before any reviewer updates state.
+
 ## 2026-03-08 - Legacy ASR Env Aliases Removed
 
 - scripts/write_asr_drafts.py, services/asr-service/main.py, and scripts/verify_asr_service.py now resolve ASR configuration only from ASR_API_KEY, ASR_BASE_URL, and ASR_MODEL; future tooling must not reintroduce provider-specific or shorthand aliases such as key, baseurl, OPENAI_*, or DASHSCOPE_*.
