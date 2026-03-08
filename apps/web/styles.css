@@ -414,6 +414,31 @@ body::before {
   line-height: 1.5;
 }
 
+.capture-status,
+.capture-meta {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.capture-status {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.capture-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.capture-meta span,
+.capture-meta small {
+  color: var(--muted);
+}
+
 .text-submit-status,
 .text-submit-meta {
   margin: 0;

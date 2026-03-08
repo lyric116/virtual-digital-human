@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - local recording stays browser-only in step 16
+
+- Step 16 intentionally keeps captured audio inside the browser: permission, recording state, duration, and chunk counters are proven before any upload contract is introduced, which isolates browser capture failures from backend media ingestion work.
+- scripts/verify_web_recording_controls.py is now the runtime gate for microphone safety because it proves allow and deny behavior without depending on host microphone hardware or a real browser automation stack.
+
 ## 2026-03-08 - trace continuity is now an explicit runtime contract
 
 - The text path no longer treats trace_id as an implicit session field only: the active session, latest user turn, latest assistant turn, persisted business events, and exported stage history all surface the same trace so one interaction can be correlated without reconstructing context from timestamps alone.

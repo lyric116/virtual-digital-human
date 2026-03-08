@@ -52,6 +52,12 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert '<script src="./app.js"></script>' in content
     assert 'id="session-start-button"' in content
     assert 'id="text-input-field"' in content
+    assert 'id="mic-request-button"' in content
+    assert 'id="mic-start-button"' in content
+    assert 'id="mic-stop-button"' in content
+    assert 'id="mic-permission-status"' in content
+    assert 'id="mic-recording-state-value"' in content
+    assert 'id="mic-recording-detail-value"' in content
     assert 'id="text-submit-button"' in content
     assert 'id="transcript-user-final-text"' in content
     assert 'id="transcript-assistant-reply-text"' in content

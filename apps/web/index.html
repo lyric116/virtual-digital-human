@@ -33,8 +33,8 @@
             <h2>Capture Panel</h2>
           </div>
           <p class="panel-summary">
-            Text input is now live. Camera and microphone remain placeholders until the
-            audio path is connected.
+            Text input is live, and microphone permission plus local recording controls
+            are now available. Audio still stays in the browser and is not uploaded yet.
           </p>
           <div class="panel-body stacked">
             <div class="media-preview">
@@ -42,9 +42,9 @@
               <span>Camera preview unavailable in static mode</span>
             </div>
             <div class="pill-row">
-              <span class="pill">Mic: idle</span>
-              <span class="pill">Camera: blocked</span>
-              <span class="pill">Input: text</span>
+              <span class="pill" id="capture-mic-pill">Mic: idle</span>
+              <span class="pill" id="capture-camera-pill">Camera: blocked</span>
+              <span class="pill" id="capture-input-pill">Input: text</span>
             </div>
             <div class="mock-input">
               <label for="text-input-field">Text input</label>
@@ -54,7 +54,18 @@
               >我这两天总是睡不好，脑子停不下来。</textarea>
             </div>
             <div class="button-row">
+              <button type="button" id="mic-request-button">Enable Mic</button>
+              <button type="button" id="mic-start-button">Start Recording</button>
+              <button type="button" id="mic-stop-button">Stop Recording</button>
               <button type="button" id="text-submit-button">Send Text</button>
+            </div>
+            <p class="capture-status" id="mic-permission-status" aria-live="polite">
+              麦克风尚未授权。
+            </p>
+            <div class="capture-meta">
+              <span>Recording state</span>
+              <strong id="mic-recording-state-value">idle</strong>
+              <small id="mic-recording-detail-value">尚未开始录音。</small>
             </div>
             <p class="text-submit-status" id="text-submit-status" aria-live="polite">
               建立会话并连接实时通道后可发送文本。

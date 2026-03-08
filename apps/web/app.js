@@ -36,6 +36,13 @@
       connectionStatus: "idle",
       lastHeartbeatAt: null,
       connectionLog: ["realtime idle"],
+      micPermissionState: "idle",
+      micPermissionMessage: "麦克风尚未授权。",
+      recordingState: "idle",
+      recordingDurationMs: 0,
+      recordingChunkCount: 0,
+      recordingMimeType: "pending",
+      recordingStartedAt: null,
       draftText: "我这两天总是睡不好，脑子停不下来。",
       timelineEntries: [],
       historyRestoreState: "idle",
@@ -78,8 +85,17 @@
   function getViewElements(rootDocument) {
     return {
       startButton: findRequiredElement(rootDocument, "session-start-button"),
+      micRequestButton: findOptionalElement(rootDocument, "mic-request-button"),
+      micStartButton: findOptionalElement(rootDocument, "mic-start-button"),
+      micStopButton: findOptionalElement(rootDocument, "mic-stop-button"),
       textInputField: findRequiredElement(rootDocument, "text-input-field"),
       textSubmitButton: findRequiredElement(rootDocument, "text-submit-button"),
+      captureMicPill: findOptionalElement(rootDocument, "capture-mic-pill"),
+      captureCameraPill: findOptionalElement(rootDocument, "capture-camera-pill"),
+      captureInputPill: findOptionalElement(rootDocument, "capture-input-pill"),
+      micPermissionStatus: findOptionalElement(rootDocument, "mic-permission-status"),
+      micRecordingStateValue: findOptionalElement(rootDocument, "mic-recording-state-value"),
+      micRecordingDetailValue: findOptionalElement(rootDocument, "mic-recording-detail-value"),
       textSubmitStatus: findRequiredElement(rootDocument, "text-submit-status"),
       textLastMessageIdValue: findRequiredElement(rootDocument, "text-last-message-id-value"),
       textLastMessageTimeValue: findRequiredElement(rootDocument, "text-last-message-time-value"),
@@ -121,6 +137,33 @@
     }
 
     return date.toLocaleString("zh-CN", { hour12: false });
+  }
+
+  function formatDurationMs(value) {
+    if (!value || value < 0) {
+      return "0.0s";
+    }
+    return `${(value / 1000).toFixed(1)}s`;
+  }
+
+  function getNavigatorLike(rootWindow) {
+    if (rootWindow && rootWindow.navigator) {
+      return rootWindow.navigator;
+    }
+    if (typeof navigator !== "undefined") {
+      return navigator;
+    }
+    return null;
+  }
+
+  function getMediaRecorderCtor(rootWindow) {
+    if (rootWindow && typeof rootWindow.MediaRecorder === "function") {
+      return rootWindow.MediaRecorder;
+    }
+    if (typeof MediaRecorder === "function") {
+      return MediaRecorder;
+    }
+    return null;
   }
 
   function getStartButtonLabel(state) {
@@ -184,6 +227,40 @@
       return state.textSubmitMessage || "文本发送失败。";
     }
     return "输入文本并点击 Send Text。";
+  }
+
+  function getMicPermissionStatusMessage(state) {
+    if (state.micPermissionState === "requesting") {
+      return "正在请求麦克风权限。";
+    }
+    if (state.micPermissionState === "granted") {
+      return state.recordingState === "recording"
+        ? "麦克风已授权，录音进行中。"
+        : "麦克风已授权，可以开始录音。";
+    }
+    if (state.micPermissionState === "denied") {
+      return state.micPermissionMessage || "麦克风权限被拒绝。";
+    }
+    if (state.micPermissionState === "unsupported") {
+      return "当前环境不支持麦克风采集。";
+    }
+    if (state.micPermissionState === "error") {
+      return state.micPermissionMessage || "麦克风初始化失败。";
+    }
+    return state.micPermissionMessage || "麦克风尚未授权。";
+  }
+
+  function getRecordingDetailMessage(state) {
+    if (state.recordingState === "recording") {
+      return `录音进行中，已收集 ${state.recordingChunkCount} 个分片，时长 ${formatDurationMs(state.recordingDurationMs)}。`;
+    }
+    if (state.recordingState === "stopped") {
+      return `录音已停止，共收集 ${state.recordingChunkCount} 个分片，时长 ${formatDurationMs(state.recordingDurationMs)}，格式 ${state.recordingMimeType}。`;
+    }
+    if (state.recordingState === "error") {
+      return state.micPermissionMessage || "录音失败。";
+    }
+    return "尚未开始录音。";
   }
 
   function getTextSubmitButtonLabel(state) {
@@ -289,6 +366,43 @@
     elements.sessionFeedback.textContent = getFeedbackMessage(state);
     elements.startButton.textContent = getStartButtonLabel(state);
     elements.startButton.disabled = state.requestState === "loading" || state.requestState === "restoring";
+    if (elements.captureMicPill) {
+      elements.captureMicPill.textContent = `Mic: ${state.micPermissionState}`;
+    }
+    if (elements.captureCameraPill) {
+      elements.captureCameraPill.textContent = "Camera: blocked";
+    }
+    if (elements.captureInputPill) {
+      elements.captureInputPill.textContent = (
+        state.recordingState === "recording"
+          ? "Input: text + audio"
+          : "Input: text"
+      );
+    }
+    if (elements.micPermissionStatus) {
+      elements.micPermissionStatus.textContent = getMicPermissionStatusMessage(state);
+    }
+    if (elements.micRecordingStateValue) {
+      elements.micRecordingStateValue.textContent = state.recordingState;
+    }
+    if (elements.micRecordingDetailValue) {
+      elements.micRecordingDetailValue.textContent = getRecordingDetailMessage(state);
+    }
+    if (elements.micRequestButton) {
+      elements.micRequestButton.disabled = (
+        state.micPermissionState === "requesting"
+        || state.recordingState === "recording"
+      );
+    }
+    if (elements.micStartButton) {
+      elements.micStartButton.disabled = (
+        state.micPermissionState !== "granted"
+        || state.recordingState === "recording"
+      );
+    }
+    if (elements.micStopButton) {
+      elements.micStopButton.disabled = state.recordingState !== "recording";
+    }
     if (elements.exportButton) {
       elements.exportButton.textContent = getExportButtonLabel(state);
       elements.exportButton.disabled = (
@@ -336,6 +450,8 @@
     rootDocument.body.dataset.dialogueReplyState = state.dialogueReplyState;
     rootDocument.body.dataset.historyRestoreState = state.historyRestoreState;
     rootDocument.body.dataset.exportState = state.exportState;
+    rootDocument.body.dataset.micPermissionState = state.micPermissionState;
+    rootDocument.body.dataset.recordingState = state.recordingState;
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -739,9 +855,12 @@
       socket: null,
       heartbeatTimerId: null,
       reconnectTimerId: null,
+      recordingTimerId: null,
       reconnectAttempt: 0,
       connectionToken: 0,
       manualClose: false,
+      micStream: null,
+      mediaRecorder: null,
     };
 
     function clearHeartbeatTimer() {
@@ -756,6 +875,33 @@
         rootWindow.clearTimeout(runtime.reconnectTimerId);
         runtime.reconnectTimerId = null;
       }
+    }
+
+    function clearRecordingTimer() {
+      if (runtime.recordingTimerId) {
+        rootWindow.clearInterval(runtime.recordingTimerId);
+        runtime.recordingTimerId = null;
+      }
+    }
+
+    function teardownMicrophone() {
+      clearRecordingTimer();
+      if (runtime.mediaRecorder && runtime.mediaRecorder.state === "recording") {
+        try {
+          runtime.mediaRecorder.stop();
+        } catch (error) {
+          console.warn("Failed to stop media recorder cleanly", error);
+        }
+      }
+      runtime.mediaRecorder = null;
+      if (runtime.micStream && typeof runtime.micStream.getTracks === "function") {
+        runtime.micStream.getTracks().forEach(function (track) {
+          if (track && typeof track.stop === "function") {
+            track.stop();
+          }
+        });
+      }
+      runtime.micStream = null;
     }
 
     function teardownRealtime(manualClose) {
@@ -1172,6 +1318,146 @@
       return { ...state };
     }
 
+    async function requestMicrophoneAccess() {
+      if (state.recordingState === "recording") {
+        return { ...state };
+      }
+
+      const navigatorLike = getNavigatorLike(rootWindow);
+      if (
+        !navigatorLike
+        || !navigatorLike.mediaDevices
+        || typeof navigatorLike.mediaDevices.getUserMedia !== "function"
+      ) {
+        state.micPermissionState = "unsupported";
+        state.micPermissionMessage = "当前环境不支持麦克风采集。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      state.micPermissionState = "requesting";
+      state.micPermissionMessage = "正在请求麦克风权限。";
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        if (runtime.micStream) {
+          state.micPermissionState = "granted";
+          state.micPermissionMessage = "麦克风已授权，可以开始录音。";
+          renderSessionState(rootDocument, elements, state, appConfig);
+          return { ...state };
+        }
+
+        runtime.micStream = await navigatorLike.mediaDevices.getUserMedia({
+          audio: true,
+          video: false,
+        });
+        state.micPermissionState = "granted";
+        state.micPermissionMessage = "麦克风已授权，可以开始录音。";
+      } catch (error) {
+        const name = error && typeof error === "object" ? error.name : "";
+        state.recordingState = "idle";
+        if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+          state.micPermissionState = "denied";
+          state.micPermissionMessage = "麦克风权限被拒绝，请检查浏览器授权设置。";
+        } else {
+          state.micPermissionState = "error";
+          state.micPermissionMessage = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      renderSessionState(rootDocument, elements, state, appConfig);
+      return { ...state };
+    }
+
+    async function startRecording() {
+      if (state.recordingState === "recording") {
+        return { ...state };
+      }
+
+      if (state.micPermissionState !== "granted" || !runtime.micStream) {
+        await requestMicrophoneAccess();
+      }
+
+      if (state.micPermissionState !== "granted" || !runtime.micStream) {
+        state.recordingState = "error";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      const MediaRecorderCtor = getMediaRecorderCtor(rootWindow);
+      if (!MediaRecorderCtor) {
+        state.recordingState = "error";
+        state.micPermissionMessage = "当前环境不支持 MediaRecorder。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      clearRecordingTimer();
+      state.recordingState = "recording";
+      state.recordingDurationMs = 0;
+      state.recordingChunkCount = 0;
+      state.recordingStartedAt = new Date().toISOString();
+      state.recordingMimeType = "pending";
+
+      const recorder = new MediaRecorderCtor(runtime.micStream);
+      runtime.mediaRecorder = recorder;
+      recorder.addEventListener("dataavailable", function (event) {
+        if (event && event.data && (typeof event.data.size !== "number" || event.data.size > 0)) {
+          state.recordingChunkCount += 1;
+          if (event.data.type) {
+            state.recordingMimeType = event.data.type;
+          }
+          renderSessionState(rootDocument, elements, state, appConfig);
+        }
+      });
+      recorder.addEventListener("stop", function () {
+        clearRecordingTimer();
+        state.recordingState = "stopped";
+        runtime.mediaRecorder = null;
+        renderSessionState(rootDocument, elements, state, appConfig);
+      });
+      recorder.addEventListener("error", function (event) {
+        clearRecordingTimer();
+        runtime.mediaRecorder = null;
+        state.recordingState = "error";
+        state.micPermissionMessage = event && event.error && event.error.message
+          ? event.error.message
+          : "录音过程中发生错误。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+      });
+
+      recorder.start(250);
+      runtime.recordingTimerId = rootWindow.setInterval(function () {
+        if (!state.recordingStartedAt) {
+          return;
+        }
+        state.recordingDurationMs = Math.max(
+          0,
+          Date.now() - new Date(state.recordingStartedAt).getTime(),
+        );
+        renderSessionState(rootDocument, elements, state, appConfig);
+      }, 100);
+
+      renderSessionState(rootDocument, elements, state, appConfig);
+      return { ...state };
+    }
+
+    function stopRecording() {
+      if (!runtime.mediaRecorder || runtime.mediaRecorder.state !== "recording") {
+        return { ...state };
+      }
+      try {
+        runtime.mediaRecorder.stop();
+      } catch (error) {
+        clearRecordingTimer();
+        runtime.mediaRecorder = null;
+        state.recordingState = "error";
+        state.micPermissionMessage = error instanceof Error ? error.message : String(error);
+        renderSessionState(rootDocument, elements, state, appConfig);
+      }
+      return { ...state };
+    }
+
     function forceRealtimeDropForTest() {
       if (!runtime.socket) {
         return false;
@@ -1183,6 +1469,7 @@
 
     function shutdownForTest() {
       teardownRealtime(true);
+      teardownMicrophone();
       state.connectionStatus = "closed";
       pushConnectionLog(state, "realtime shutdown");
       renderSessionState(rootDocument, elements, state, appConfig);
@@ -1192,6 +1479,21 @@
     elements.startButton.addEventListener("click", function () {
       return startSession();
     });
+    if (elements.micRequestButton) {
+      elements.micRequestButton.addEventListener("click", function () {
+        return requestMicrophoneAccess();
+      });
+    }
+    if (elements.micStartButton) {
+      elements.micStartButton.addEventListener("click", function () {
+        return startRecording();
+      });
+    }
+    if (elements.micStopButton) {
+      elements.micStopButton.addEventListener("click", function () {
+        return stopRecording();
+      });
+    }
     elements.textSubmitButton.addEventListener("click", function () {
       return submitText();
     });
@@ -1216,6 +1518,9 @@
         return { ...state };
       },
       startSession,
+      requestMicrophoneAccess,
+      startRecording,
+      stopRecording,
       submitText,
       exportSession,
       restoreSessionFromStorage,

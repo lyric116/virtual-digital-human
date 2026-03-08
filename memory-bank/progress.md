@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - step 16 microphone permission and local recording controls
+
+### Scope
+
+Completed implementation_plan step 16 by adding browser-side microphone permission handling, start/stop recording controls, clear allow/deny status messaging, and local recording state tracking without uploading audio.
+
+### Outputs
+
+- apps/web/app.js, apps/web/index.html, and apps/web/styles.css now provide microphone permission, local recording start/stop controls, status pills, and capture-state rendering without any upload behavior
+- scripts/web_recording_harness.js and scripts/verify_web_recording_controls.py now validate allow and deny permission flows plus start/stop recording state transitions
+- tests/test_web_recording_controls.py, tests/test_web_shell.py, README.md, and apps/web/README.md now cover the new browser-side recording surface and verification command
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_web_shell.py tests/test_web_recording_controls.py tests/test_web_trace_lineage.py tests/test_web_export.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_gateway_session_create.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py
+
+### Next
+
+- Proceed to implementation_plan step 17: upload recorded audio in fixed-size chunks to the gateway and persist temporary media chunk indexes without ASR.
+
 ## 2026-03-08 - step 15 trace continuity across text flow
 
 ### Scope

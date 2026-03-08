@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, and 15:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, and 16:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -20,6 +20,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, and 15:
   test inspection, and downloads it in browser runtimes that support Blob URLs
 - step 15: the page now surfaces the active session trace plus the latest user and reply
   trace values so one text turn can be correlated with realtime events and exported data
+- step 16: the capture panel now requests microphone permission, starts and stops local
+  recording, and shows browser-side recording status without uploading audio
 
 ## Files
 
@@ -55,6 +57,7 @@ Then open:
 - `.env.example` exposes `WEB_PUBLIC_API_BASE_URL`, `WEB_PUBLIC_WS_URL`, and `GATEWAY_CORS_ORIGINS` for local browser preview
 - only `Start Session` and `Export` are live in this step; pause and reset remain disabled
 - `Send Text` is live only after session bootstrap and a connected realtime channel
+- microphone controls stay local to the browser in this step and do not upload media
 - the latest assistant reply shown in transcript, avatar, and fusion cards is derived
   from the same live events that feed the timeline
 - the current active `sessionId` is stored in browser storage and used to restore
@@ -73,3 +76,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`

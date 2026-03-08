@@ -15,6 +15,8 @@ Current repository state:
   persisted system events
 - the text path now has an explicit trace continuity check across database rows, realtime
   envelopes, and export payloads
+- the frontend capture panel now supports browser-side microphone permission and local
+  recording controls without uploading audio
 
 ## Repository Structure
 
@@ -67,6 +69,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`
