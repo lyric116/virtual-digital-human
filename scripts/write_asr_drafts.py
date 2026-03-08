@@ -122,10 +122,12 @@ def infer_state(row: dict) -> tuple[str, str, str]:
 
     if row.get("locked_for_eval") and final_text:
         return ("verified", "done", "human_verified")
-    if review_decision == "approved" and final_text:
+    if review_status == "completed" and review_decision == "approved" and final_text:
         return ("verified", "done", "human_verified")
     if review_status in {"queued", "in_progress"} and draft_text:
         return ("pending_review", "manual_review", "asr_generated")
+    if review_status == "completed" and review_decision in {"needs_revision", "rejected"}:
+        return ("pending_review", "manual_review", "asr_generated" if draft_text else "missing")
     if draft_text:
         return ("draft_ready", "manual_review", "asr_generated")
     return ("pending_asr", "run_asr_draft", "missing")

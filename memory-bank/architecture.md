@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - Transcript Review Now Has A Single Control Surface
+
+- scripts/manage_transcript_review.py is now the only approved write path for human transcript review state: queue-report exposes the active worklist, start-review moves a draft into pending_review, and complete-review is the gate that can produce verified human_verified text.
+- review_queue_active.md is now the operational queue artifact for reviewers, while per-batch checklist files such as review_batch_003_manual_review.md are task-focused drill-down documents; future review tooling should update the queue and checklist pair together instead of relying on ad hoc spreadsheets or direct JSONL edits.
+
 ## 2026-03-08 - ASR Drafts Now Flow Through The Standalone Service
 
 - scripts/write_asr_drafts.py now has a transcribe-service path that treats services/asr-service as the only batch write-back boundary; transcript draft generation should go through the local ASR HTTP contract instead of calling provider APIs directly from downstream tooling whenever the repository wants reproducible batch behavior.

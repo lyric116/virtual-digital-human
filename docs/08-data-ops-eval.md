@@ -153,6 +153,7 @@
 - 日志中除 `session_id` 和 `trace_id` 外，还应记录 `record_id`、`dataset`、`canonical_role`、`segment_id`。
 - 评测任务应优先读取 `data/manifests/val_manifest.jsonl`，而不是直接遍历原始目录。
 - 转录评测任务应优先读取 `data/derived/transcripts/val_transcripts_template.jsonl`，并显式区分 `pending_asr`、`draft_ready`、`pending_review`、`verified`。
+- 日常复核排队应优先读取 `data/derived/transcripts/review_tasks/review_queue_active.md`，并通过统一复核脚本推进状态，而不是手改 JSONL。
 - 数据质控至少覆盖三类问题：隐藏文件污染、模态缺失、情绪 CSV 与 3D 特征步数不一致。
 - QC 报告必须按 `dataset + canonical_role` 输出覆盖率、问题样本和转录状态拆表，便于直接转成开发待办和回归样本池。
 - 正式 ASR 指标只允许使用 `verified` 且 `locked_for_eval` 的样本，禁止把机器初稿直接当参考文本。

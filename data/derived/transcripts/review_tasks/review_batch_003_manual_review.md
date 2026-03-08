@@ -12,9 +12,9 @@
 1. Listen to the full `audio_path_16k_mono` file for each record.
 2. Compare the audio against `draft_text_raw` and correct omissions, misrecognitions, punctuation, and sentence boundaries.
 3. Fill `final_text` and `final_text_normalized` only after the draft is fully checked.
-4. Update `review_status`, `review_decision`, `reviewer`, `reviewed_at`, and `quality_flags` in the transcript workflow file.
+4. Use `scripts/manage_transcript_review.py start-review` when work begins, then use `complete-review` when the item is finished.
 5. If the language metadata is wrong, correct `language` during review.
-6. Keep `workflow_status=draft_ready` until review starts; move to `pending_review` or `verified` according to the review result.
+6. Let the review script move `workflow_status` to `pending_review` or `verified`; do not hand-edit state fields unless recovery is required.
 
 ## Batch Summary
 
@@ -39,10 +39,11 @@
 - Draft text: `de réflexe mais compact, je sais pas si tu connais un petit peu, c'est genre les, c'est des appareils photo qu'ont la taille de, d'appareils compacts, mais tu peux, au lieu d'avoir un objectif qui se rentre comme ça, tu peux choisir des objectifs, les changer, etc. Et en fait la photo, les trois quarts de, ce qui va faire une bonne photo souvent c'est l'optique, si t'as une bonne optique, tu vas pouvoir laisser passer plus ou moins de lumière et avoir des, des détails, des, des plans qui vont être plus ou moins fins.`
 
 Reviewer actions:
+- Start review: `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py start-review --record-id noxi/001_2016-03-17_Paris/speaker_a/3 --reviewer <reviewer>`
 - Confirm the spoken language and update `language` if needed.
-- Correct transcript content into `final_text` and `final_text_normalized`.
-- If the draft is acceptable, set `review_decision=approved`; otherwise use `needs_revision` and add notes.
-- Add any reviewer observations into `quality_flags` and `notes`.
+- Correct transcript content into `final_text` and `final_text_normalized` via the review CLI.
+- Complete review: `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py complete-review --record-id noxi/001_2016-03-17_Paris/speaker_a/3 --reviewer <reviewer> --decision approved --final-text "..."`
+- If the draft is not acceptable, complete review with `--decision needs_revision` and add notes or quality flags.
 
 ### 2. `noxi/001_2016-03-17_Paris/speaker_b/3`
 
@@ -56,10 +57,11 @@ Reviewer actions:
 - Draft text: `Pas beaucoup, non. D'accord. D'accord. Ok.`
 
 Reviewer actions:
+- Start review: `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py start-review --record-id noxi/001_2016-03-17_Paris/speaker_b/3 --reviewer <reviewer>`
 - Confirm the spoken language and update `language` if needed.
-- Correct transcript content into `final_text` and `final_text_normalized`.
-- If the draft is acceptable, set `review_decision=approved`; otherwise use `needs_revision` and add notes.
-- Add any reviewer observations into `quality_flags` and `notes`.
+- Correct transcript content into `final_text` and `final_text_normalized` via the review CLI.
+- Complete review: `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py complete-review --record-id noxi/001_2016-03-17_Paris/speaker_b/3 --reviewer <reviewer> --decision approved --final-text "..."`
+- If the draft is not acceptable, complete review with `--decision needs_revision` and add notes or quality flags.
 
 ### 3. `recola/group-2/speaker_a/3`
 
@@ -73,10 +75,11 @@ Reviewer actions:
 - Draft text: `Le couteau, si j'ose demander ? Non, je suis d'accord. Ah ouais, ok, d'accord, je comprends. Bon, je savais pas si, bon, ok, la prochaine ville est là, 128.`
 
 Reviewer actions:
+- Start review: `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py start-review --record-id recola/group-2/speaker_a/3 --reviewer <reviewer>`
 - Confirm the spoken language and update `language` if needed.
-- Correct transcript content into `final_text` and `final_text_normalized`.
-- If the draft is acceptable, set `review_decision=approved`; otherwise use `needs_revision` and add notes.
-- Add any reviewer observations into `quality_flags` and `notes`.
+- Correct transcript content into `final_text` and `final_text_normalized` via the review CLI.
+- Complete review: `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py complete-review --record-id recola/group-2/speaker_a/3 --reviewer <reviewer> --decision approved --final-text "..."`
+- If the draft is not acceptable, complete review with `--decision needs_revision` and add notes or quality flags.
 
 ### 4. `recola/group-2/speaker_b/3`
 
@@ -90,8 +93,9 @@ Reviewer actions:
 - Draft text: `Parce que c'est utile pour beaucoup de choses. Non, mais parce que je sais pas. Vu qu'ils sont dans une région où il y a des branchages et tout, je me suis dit, je sais pas, genre histoire. Et toi, pourquoi la boussole ?`
 
 Reviewer actions:
+- Start review: `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py start-review --record-id recola/group-2/speaker_b/3 --reviewer <reviewer>`
 - Confirm the spoken language and update `language` if needed.
-- Correct transcript content into `final_text` and `final_text_normalized`.
-- If the draft is acceptable, set `review_decision=approved`; otherwise use `needs_revision` and add notes.
-- Add any reviewer observations into `quality_flags` and `notes`.
+- Correct transcript content into `final_text` and `final_text_normalized` via the review CLI.
+- Complete review: `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py complete-review --record-id recola/group-2/speaker_b/3 --reviewer <reviewer> --decision approved --final-text "..."`
+- If the draft is not acceptable, complete review with `--decision needs_revision` and add notes or quality flags.
 

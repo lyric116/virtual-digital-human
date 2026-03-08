@@ -93,6 +93,14 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py transcribe-openai --batch data/derived/transcripts/batches/review_batch_001.jsonl --model qwen3-asr-flash`
 - Verify standalone ASR batch write-back:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_draft_batch.py`
+- Export the active transcript review queue:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py queue-report --output data/derived/transcripts/review_tasks/review_queue_active.md`
+- Start a manual transcript review item:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py start-review --record-id <record_id> --reviewer <reviewer>`
+- Complete a verified transcript review item:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py complete-review --record-id <record_id> --reviewer <reviewer> --decision approved --final-text "..."`
+- Verify transcript review state transitions:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_transcript_review_flow.py`
 - Import external ASR draft results from a JSONL file:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py import-results --results <results.jsonl>`
 - Generate a manual review checklist:

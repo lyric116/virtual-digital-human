@@ -146,6 +146,10 @@ flowchart LR
 - 转录状态应按 `pending_asr -> draft_ready -> pending_review -> verified` 推进；人工复核完成前，不得把样本计入正式评测集。
 - 参考文本必须写回统一转录工作流文件，并通过 `text_status` 区分 `asr_generated` 与 `human_verified`。
 - 最终 WER/SER 报告只允许使用 `human_verified` 参考文本，不允许模型生成结果自评。
+- 人工复核推进必须通过统一脚本执行，至少覆盖：
+  - `queue-report`
+  - `start-review`
+  - `complete-review`
 - 当前已生成 `data/derived/transcripts/val_transcripts_template.jsonl`，共 `1126` 条转录工作流记录；实时状态以 `data/derived/qc_report.md` 为准，后续 ASR 流程应直接回填这一文件链路。
 
 ## 14. 当前落地状态
@@ -161,4 +165,5 @@ flowchart LR
 - 输入优先使用企业 manifest 中的 `audio_path_16k_mono`
 - 当前 live 校验脚本为 `scripts/verify_asr_service.py`
 - 当前批量写回入口为 `scripts/write_asr_drafts.py transcribe-service`
+- 当前人工复核入口为 `scripts/manage_transcript_review.py`
 - 当前 `qwen3-asr-flash` 兼容路径可稳定返回文本，但不暴露 token 级置信度，因此服务响应保留 `confidence_mean=null` 和 `confidence_available=false`

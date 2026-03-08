@@ -21,6 +21,38 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Step 18C Transcript Review Workflow
+
+### Scope
+
+Completed implementation plan step 18C by adding a dedicated transcript review CLI for queue export, review start, and review completion, then generating the active review queue and updating the current manual review checklist to use the standardized workflow instead of hand-editing JSONL state.
+
+### Outputs
+
+- scripts/manage_transcript_review.py
+- scripts/verify_transcript_review_flow.py
+- tests/test_manage_transcript_review.py
+- data/derived/transcripts/review_tasks/review_queue_active.md
+- data/derived/transcripts/review_tasks/review_batch_003_manual_review.md
+- README.md
+- docs/03-asr.md
+- docs/08-data-ops-eval.md
+- docs/data_spec.md
+- scripts/generate_review_checklist.py
+
+### Checks
+
+- Ran uv run python -m py_compile scripts/manage_transcript_review.py scripts/verify_transcript_review_flow.py scripts/generate_review_checklist.py scripts/write_asr_drafts.py scripts/build_data_artifacts.py.
+- Ran uv run pytest tests/test_manage_transcript_review.py tests/test_write_asr_drafts.py tests/test_asr_service.py tests/test_environment_inventory.py and confirmed 14 tests passed.
+- Ran uv run python scripts/verify_transcript_review_flow.py and confirmed one temporary row moved to pending_review while another moved to verified with review_history preserved.
+- Generated data/derived/transcripts/review_tasks/review_queue_active.md with 12 active review records and regenerated the active review_batch_003 checklist.
+- Ran uv run pytest and confirmed 70 tests passed.
+
+### Next
+
+- Proceed to implementation plan step 19 by wiring verified ASR final text back into the main gateway and frontend flow.
+- Keep reviewer state changes on manage_transcript_review.py and avoid manual edits to workflow_status, review_status, or review_history.
+
 ## 2026-03-08 - Step 18B Service Batch Write-Back
 
 ### Scope

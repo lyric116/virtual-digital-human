@@ -161,9 +161,11 @@ def infer_transcript_state(payload: dict) -> tuple[str, str, str]:
 
     if payload.get("locked_for_eval") and final_text:
         return ("verified", "done", "human_verified")
-    if review_decision == "approved" and final_text:
+    if review_status == "completed" and review_decision == "approved" and final_text:
         return ("verified", "done", "human_verified")
     if review_status in {"in_progress", "queued"}:
+        return ("pending_review", "manual_review", "asr_generated" if draft_text else "missing")
+    if review_status == "completed" and review_decision in {"needs_revision", "rejected"}:
         return ("pending_review", "manual_review", "asr_generated" if draft_text else "missing")
     if draft_text:
         return ("draft_ready", "manual_review", "asr_generated")
