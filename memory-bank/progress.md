@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Step 12 Mock Orchestrator Reply Loop
+
+### Scope
+
+Completed implementation plan step 12 by introducing a dedicated mock orchestrator service, calling it from the gateway after user text acceptance, persisting the assistant reply, and delivering a validated dialogue.reply event back to the frontend.
+
+### Outputs
+
+- Added apps/orchestrator/main.py and apps/orchestrator/README.md with GET /health and POST /internal/dialogue/respond returning schema-validated mock dialogue output.
+- Extended apps/api-gateway/main.py so POST /api/session/{session_id}/text now bridges to the orchestrator, persists the assistant reply into PostgreSQL, and queues dialogue.reply or session.error over the existing session websocket.
+- Updated apps/web/app.js and apps/web/index.html so the frontend consumes dialogue.reply, updates latest reply placeholders, fusion summary, and stage transition text, and rejects invalid reply payloads.
+- Added dedicated verification assets for step 12: scripts/web_mock_reply_harness.js, scripts/verify_web_mock_reply.py, tests/test_orchestrator_mock_reply.py, and tests/test_web_mock_reply.py.
+
+### Checks
+
+- Verified Node syntax checks pass for apps/web/app.js and all browser harness scripts.
+- Verified py_compile passes for apps/api-gateway/main.py, apps/orchestrator/main.py, scripts/verify_web_text_submit.py, and scripts/verify_web_mock_reply.py.
+- Verified targeted step 12 regression tests pass across environment inventory, gateway, orchestrator, and web harness coverage.
+- Verified live gateway session creation, session bootstrap, realtime reconnect, text submit, and mock dialogue reply flows against local PostgreSQL-backed services.
+
+### Next
+
+- Implement step 13: render user message, assistant reply, and stage updates as a recoverable chat timeline instead of only latest-value placeholders.
+- Keep dialogue.reply field names and stage enum stable so the later real dialogue service can replace the mock orchestrator without a frontend contract rewrite.
+
 ## 2026-03-08 - Step 11 Text Submission Gateway Flow
 
 ### Scope

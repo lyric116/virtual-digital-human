@@ -1,5 +1,7 @@
 (function () {
   const panelIds = ["capture", "avatar", "transcript", "emotion", "chat", "control"];
+  const dialogueStages = new Set(["engage", "assess", "intervene", "reassess", "handoff"]);
+  const dialogueRiskLevels = new Set(["low", "medium", "high"]);
   const defaultSessionIdLabel = "未创建";
   const defaultApiBaseUrl = "http://127.0.0.1:8000";
   const defaultWsUrl = "ws://127.0.0.1:8000/ws";
@@ -39,6 +41,15 @@
       pendingMessageId: null,
       lastAcceptedMessageId: null,
       lastAcceptedAt: null,
+      lastAcceptedText: "",
+      dialogueReplyState: "idle",
+      lastReplyMessageId: null,
+      lastReplyAt: null,
+      lastReplyText: "",
+      lastReplyEmotion: "pending",
+      lastReplyRiskLevel: "pending",
+      lastReplyNextAction: "pending",
+      lastStageTransition: "idle → idle",
       nextClientSeq: 1,
     };
   }
@@ -59,6 +70,14 @@
       textSubmitStatus: findRequiredElement(rootDocument, "text-submit-status"),
       textLastMessageIdValue: findRequiredElement(rootDocument, "text-last-message-id-value"),
       textLastMessageTimeValue: findRequiredElement(rootDocument, "text-last-message-time-value"),
+      transcriptUserFinalText: findRequiredElement(rootDocument, "transcript-user-final-text"),
+      transcriptAssistantReplyText: findRequiredElement(rootDocument, "transcript-assistant-reply-text"),
+      avatarLatestReplyText: findRequiredElement(rootDocument, "avatar-latest-reply-text"),
+      fusionRiskValue: findRequiredElement(rootDocument, "fusion-risk-value"),
+      fusionStageValue: findRequiredElement(rootDocument, "fusion-stage-value"),
+      timelineUserText: findRequiredElement(rootDocument, "timeline-user-text"),
+      timelineAssistantText: findRequiredElement(rootDocument, "timeline-assistant-text"),
+      timelineStageText: findRequiredElement(rootDocument, "timeline-stage-text"),
       sessionIdValue: findRequiredElement(rootDocument, "session-id-value"),
       sessionStatusValue: findRequiredElement(rootDocument, "session-status-value"),
       sessionStageValue: findRequiredElement(rootDocument, "session-stage-value"),
@@ -177,11 +196,56 @@
     elements.textSubmitStatus.textContent = getTextSubmitStatusMessage(state);
     elements.textLastMessageIdValue.textContent = state.lastAcceptedMessageId || "not sent";
     elements.textLastMessageTimeValue.textContent = formatTimestamp(state.lastAcceptedAt);
+    elements.transcriptUserFinalText.textContent = state.lastAcceptedText || "等待用户提交文本...";
+    elements.transcriptAssistantReplyText.textContent = state.lastReplyText || "等待 mock orchestrator reply...";
+    elements.avatarLatestReplyText.textContent = state.lastReplyText || "等待 mock reply...";
+    elements.fusionRiskValue.textContent = state.lastReplyRiskLevel;
+    elements.fusionStageValue.textContent = `stage: ${state.stage} / next: ${state.lastReplyNextAction}`;
+    elements.timelineUserText.textContent = state.lastAcceptedText || "等待用户消息...";
+    elements.timelineAssistantText.textContent = state.lastReplyText || "等待系统回复...";
+    elements.timelineStageText.textContent = state.lastStageTransition;
 
     rootDocument.body.dataset.uiReady = "true";
     rootDocument.body.dataset.sessionState = state.requestState;
     rootDocument.body.dataset.connectionState = state.connectionStatus;
     rootDocument.body.dataset.textSubmitState = state.textSubmitState;
+    rootDocument.body.dataset.dialogueReplyState = state.dialogueReplyState;
+  }
+
+  function validateDialogueReplyPayload(payload) {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+
+    const requiredStringFields = [
+      "session_id",
+      "trace_id",
+      "message_id",
+      "reply",
+      "emotion",
+      "risk_level",
+      "stage",
+      "next_action",
+    ];
+    for (const fieldName of requiredStringFields) {
+      if (typeof payload[fieldName] !== "string" || payload[fieldName].trim() === "") {
+        return null;
+      }
+    }
+    if (!dialogueStages.has(payload.stage)) {
+      return null;
+    }
+    if (!dialogueRiskLevels.has(payload.risk_level)) {
+      return null;
+    }
+    if (payload.knowledge_refs && !Array.isArray(payload.knowledge_refs)) {
+      return null;
+    }
+    if (payload.safety_flags && !Array.isArray(payload.safety_flags)) {
+      return null;
+    }
+
+    return payload;
   }
 
   async function requestSession(fetchImpl, appConfig) {
@@ -374,6 +438,7 @@
         state.updatedAt = payload.submitted_at || envelope.emitted_at;
         state.lastAcceptedMessageId = payload.message_id || envelope.message_id || null;
         state.lastAcceptedAt = payload.submitted_at || envelope.emitted_at;
+        state.lastAcceptedText = payload.content_text || state.lastAcceptedText;
         state.textSubmitState = "sent";
         state.textSubmitMessage = `发送成功: ${state.lastAcceptedMessageId || "message.accepted"}`;
         state.pendingMessageId = null;
@@ -383,10 +448,38 @@
         return;
       }
 
+      if (envelope.event_type === "dialogue.reply") {
+        const payload = validateDialogueReplyPayload(envelope.payload || null);
+        if (!payload) {
+          state.dialogueReplyState = "invalid";
+          pushConnectionLog(state, "dialogue reply rejected: invalid payload");
+          renderSessionState(rootDocument, elements, state, appConfig);
+          return;
+        }
+
+        state.status = "active";
+        state.updatedAt = envelope.emitted_at;
+        state.lastReplyMessageId = payload.message_id;
+        state.lastReplyAt = envelope.emitted_at;
+        state.lastReplyText = payload.reply;
+        state.lastReplyEmotion = payload.emotion;
+        state.lastReplyRiskLevel = payload.risk_level;
+        state.lastReplyNextAction = payload.next_action;
+        state.lastStageTransition = `${state.stage} → ${payload.stage}`;
+        state.stage = payload.stage;
+        state.dialogueReplyState = "received";
+        pushConnectionLog(state, `dialogue reply received: ${payload.message_id}`);
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
       if (envelope.event_type === "session.error") {
         const errorCode = envelope.payload && envelope.payload.error_code
           ? envelope.payload.error_code
           : "unknown_error";
+        if (typeof errorCode === "string" && errorCode.startsWith("dialogue_")) {
+          state.dialogueReplyState = "error";
+        }
         pushConnectionLog(state, `socket error event: ${errorCode}`);
         renderSessionState(rootDocument, elements, state, appConfig);
       }
@@ -482,6 +575,15 @@
       state.pendingMessageId = null;
       state.lastAcceptedMessageId = null;
       state.lastAcceptedAt = null;
+      state.lastAcceptedText = "";
+      state.dialogueReplyState = "idle";
+      state.lastReplyMessageId = null;
+      state.lastReplyAt = null;
+      state.lastReplyText = "";
+      state.lastReplyEmotion = "pending";
+      state.lastReplyRiskLevel = "pending";
+      state.lastReplyNextAction = "pending";
+      state.lastStageTransition = "idle → idle";
       renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
@@ -527,6 +629,14 @@
 
       state.textSubmitState = "sending";
       state.textSubmitMessage = null;
+      state.dialogueReplyState = "idle";
+      state.lastReplyMessageId = null;
+      state.lastReplyAt = null;
+      state.lastReplyText = "";
+      state.lastReplyEmotion = "pending";
+      state.lastReplyRiskLevel = "pending";
+      state.lastReplyNextAction = "pending";
+      state.lastStageTransition = `${state.stage} → ${state.stage}`;
       renderSessionState(rootDocument, elements, state, appConfig);
 
       const clientSeq = state.nextClientSeq;
@@ -551,6 +661,7 @@
           state.textSubmitState = "awaiting_ack";
           state.textSubmitMessage = null;
         }
+        sendHeartbeat(runtime.connectionToken);
       } catch (error) {
         state.textSubmitState = "error";
         state.textSubmitMessage = error instanceof Error ? error.message : String(error);

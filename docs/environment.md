@@ -47,6 +47,7 @@ code or deployment files.
 | --- | --- | --- | --- |
 | `ORCHESTRATOR_HOST` | Yes | `0.0.0.0` | Bind address for workflow orchestration. |
 | `ORCHESTRATOR_PORT` | Yes | `8010` | Internal HTTP port for orchestration APIs. |
+| `ORCHESTRATOR_BASE_URL` | Yes | `http://127.0.0.1:8010` | Gateway-facing base URL used for internal orchestration calls. |
 | `ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS` | Yes | `60` | Upper bound for one orchestration request. |
 | `ORCHESTRATOR_SESSION_TTL_SECONDS` | Yes | `1800` | Idle session retention window in cache. |
 

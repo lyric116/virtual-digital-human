@@ -133,12 +133,12 @@ class FakeDocument {
   }
 }
 
-function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null) {
+function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null, sourceService = "api_gateway") {
   return {
     event_id: `evt_${Math.random().toString(16).slice(2, 10)}`,
     event_type: eventType,
     schema_version: "v1alpha1",
-    source_service: "api_gateway",
+    source_service: sourceService,
     session_id: sessionId,
     trace_id: traceId,
     message_id: messageId,
@@ -147,7 +147,7 @@ function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null)
   };
 }
 
-function createMockRuntime() {
+function createMockRuntime(mode) {
   let currentSocket = null;
   const sessionPayload = {
     session_id: "sess_mock_text_001",
@@ -252,6 +252,34 @@ function createMockRuntime() {
         client_seq: submitted.client_seq,
       };
 
+      const dialoguePayload = mode === "mock-invalid"
+        ? {
+            session_id: sessionPayload.session_id,
+            trace_id: sessionPayload.trace_id,
+            message_id: "msg_assistant_invalid_001",
+            reply: "这是一条非法阶段的 mock reply",
+            emotion: "anxious",
+            risk_level: "medium",
+            stage: "invalid_stage",
+            next_action: "ask_followup",
+            knowledge_refs: [],
+            avatar_style: "warm_support",
+            safety_flags: [],
+          }
+        : {
+            session_id: sessionPayload.session_id,
+            trace_id: sessionPayload.trace_id,
+            message_id: "msg_assistant_mock_001",
+            reply: "谢谢你愿意说出来。最近这种睡不稳和停不下来的感觉，是这几天一直这样，还是晚上更明显？",
+            emotion: "anxious",
+            risk_level: "medium",
+            stage: "assess",
+            next_action: "ask_followup",
+            knowledge_refs: ["sleep_hygiene_basic"],
+            avatar_style: "warm_support",
+            safety_flags: [],
+          };
+
       setTimeout(() => {
         if (!currentSocket || currentSocket.readyState !== MockWebSocket.OPEN) {
           return;
@@ -264,6 +292,19 @@ function createMockRuntime() {
               "message.accepted",
               messagePayload,
               messagePayload.message_id,
+              "api_gateway",
+            ),
+          ),
+        });
+        currentSocket.emit("message", {
+          data: JSON.stringify(
+            buildEnvelope(
+              sessionPayload.session_id,
+              sessionPayload.trace_id,
+              "dialogue.reply",
+              dialoguePayload,
+              dialoguePayload.message_id,
+              "orchestrator",
             ),
           ),
         });
@@ -297,11 +338,21 @@ function collectSnapshot(document) {
   return {
     sessionId: document.getElementById("session-id-value").textContent,
     status: document.getElementById("session-status-value").textContent,
+    stage: document.getElementById("session-stage-value").textContent,
     traceId: document.getElementById("session-trace-value").textContent,
     textSubmitState: document.body.dataset.textSubmitState || null,
+    dialogueReplyState: document.body.dataset.dialogueReplyState || null,
     textSubmitStatus: document.getElementById("text-submit-status").textContent,
     lastMessageId: document.getElementById("text-last-message-id-value").textContent,
     lastMessageTime: document.getElementById("text-last-message-time-value").textContent,
+    userTranscript: document.getElementById("transcript-user-final-text").textContent,
+    assistantReply: document.getElementById("transcript-assistant-reply-text").textContent,
+    avatarReply: document.getElementById("avatar-latest-reply-text").textContent,
+    fusionRisk: document.getElementById("fusion-risk-value").textContent,
+    fusionStage: document.getElementById("fusion-stage-value").textContent,
+    timelineUser: document.getElementById("timeline-user-text").textContent,
+    timelineAssistant: document.getElementById("timeline-assistant-text").textContent,
+    timelineStage: document.getElementById("timeline-stage-text").textContent,
     connectionStatus: document.getElementById("connection-status-value").textContent,
     connectionLog: document.getElementById("connection-log").textContent,
     draftText: document.getElementById("text-input-field").value,
@@ -370,7 +421,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const runtimeConfig = args.mode === "live"
     ? { fetchImpl: fetch, WebSocketImpl: WebSocket }
-    : createMockRuntime();
+    : createMockRuntime(args.mode);
 
   if (typeof runtimeConfig.fetchImpl !== "function") {
     throw new Error("fetch is not available in this runtime");
@@ -395,8 +446,7 @@ async function main() {
   );
 
   const afterConnect = collectSnapshot(runtime.document);
-  const input = runtime.textInputField;
-  input.dispatchInput("最近总觉得脑子停不下来，晚上更明显。\n想先试着说出来。\n");
+  runtime.textInputField.dispatchInput("最近总觉得脑子停不下来，晚上更明显。\n想先试着说出来。\n");
   await runtime.textSubmitButton.click();
 
   await waitFor(
@@ -405,9 +455,16 @@ async function main() {
     "text submit did not reach sent state",
   );
 
-  const afterSubmit = collectSnapshot(runtime.document);
+  const expectedReplyState = args.mode === "mock-invalid" ? "invalid" : "received";
+  await waitFor(
+    () => runtime.document.body.dataset.dialogueReplyState === expectedReplyState,
+    5000,
+    `dialogue reply did not reach ${expectedReplyState} state`,
+  );
+
+  const afterReply = collectSnapshot(runtime.document);
   runtime.window.__virtualHumanConsoleController.shutdownForTest();
-  process.stdout.write(`${JSON.stringify({ beforeCreate, afterConnect, afterSubmit }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ beforeCreate, afterConnect, afterReply }, null, 2)}\n`);
 }
 
 main().catch((error) => {

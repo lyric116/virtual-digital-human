@@ -87,8 +87,8 @@
               <p class="avatar-meta">Structured guidance / stronger pacing / clearer cues</p>
             </div>
             <div class="subtitle-bar">
-              <span>Subtitle placeholder</span>
-              <strong>谢谢你愿意说出来，我们先慢一点。</strong>
+              <span>Latest reply</span>
+              <strong id="avatar-latest-reply-text">等待 mock reply...</strong>
             </div>
           </div>
         </section>
@@ -108,11 +108,11 @@
             </div>
             <div class="line final">
               <span class="line-label">final</span>
-              <p>我这两天总是睡不好，脑子停不下来。</p>
+              <p id="transcript-user-final-text">等待用户提交文本...</p>
             </div>
             <div class="line assistant">
               <span class="line-label">reply</span>
-              <p>谢谢你愿意告诉我这件事。最近这种状态是一直持续，还是晚上更明显？</p>
+              <p id="transcript-assistant-reply-text">等待 mock orchestrator reply...</p>
             </div>
           </div>
         </section>
@@ -143,8 +143,8 @@
             </article>
             <article class="signal-card fusion">
               <span>Fusion</span>
-              <strong>medium risk</strong>
-              <small>stage: assess / confidence: 0.71</small>
+              <strong id="fusion-risk-value">pending</strong>
+              <small id="fusion-stage-value">stage: idle / next: pending</small>
             </article>
           </div>
         </section>
@@ -160,15 +160,15 @@
           <div class="timeline">
             <article class="timeline-item user">
               <span class="timeline-role">User</span>
-              <p>我这两天总是睡不好，脑子停不下来。</p>
+              <p id="timeline-user-text">等待用户消息...</p>
             </article>
             <article class="timeline-item assistant">
               <span class="timeline-role">Assistant</span>
-              <p>谢谢你愿意告诉我这件事。最近这种状态是一直持续，还是晚上更明显？</p>
+              <p id="timeline-assistant-text">等待系统回复...</p>
             </article>
             <article class="timeline-item system">
               <span class="timeline-role">Stage</span>
-              <p>engage → assess</p>
+              <p id="timeline-stage-text">idle → idle</p>
             </article>
           </div>
         </section>

@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - Mock Dialogue Reply Now Sits Between Text Accept And UI Rendering
+
+- apps/orchestrator/main.py is now the stable mock business-logic boundary for early dialogue work: it owns the structured dialogue reply contract, while the gateway remains responsible for persistence and websocket fan-out.
+- The frontend no longer treats text submission as the end of a turn; a turn is now only complete after a valid dialogue.reply passes client-side contract checks and updates the current stage plus latest reply placeholders.
+- ORCHESTRATOR_BASE_URL is now a required internal runtime variable because the gateway must call the orchestrator as a client and cannot safely derive a usable client address from the orchestrator bind host alone.
+
 ## 2026-03-08 - Text Submit Ack Is A Realtime Contract Boundary
 
 - apps/api-gateway/main.py now treats message.accepted as a queued session event, not just an HTTP response; the browser send flow is only complete after the websocket acknowledgement is received.

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
@@ -14,7 +17,7 @@ from fastapi.responses import JSONResponse
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -57,6 +60,8 @@ class GatewaySettings:
     gateway_host: str
     gateway_port: int
     cors_origins: list[str]
+    orchestrator_base_url: str
+    orchestrator_timeout_seconds: float
 
     @classmethod
     def from_env(cls) -> "GatewaySettings":
@@ -79,6 +84,11 @@ class GatewaySettings:
             cors_origins=parse_csv_env(
                 os.getenv("GATEWAY_CORS_ORIGINS"),
                 ["http://127.0.0.1:4173", "http://localhost:4173"],
+            ),
+            orchestrator_base_url=os.getenv("ORCHESTRATOR_BASE_URL")
+            or f"http://127.0.0.1:{os.getenv('ORCHESTRATOR_PORT', '8010')}",
+            orchestrator_timeout_seconds=float(
+                os.getenv("ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS", "60")
             ),
         )
 
@@ -140,6 +150,29 @@ class TextMessageAcceptedResponse(BaseModel):
     client_seq: int | None = None
 
 
+class DialogueReplyRequest(BaseModel):
+    session_id: str
+    trace_id: str
+    user_message_id: str
+    content_text: str
+    current_stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DialogueReplyResponse(BaseModel):
+    session_id: str
+    trace_id: str
+    message_id: str
+    reply: str
+    emotion: str
+    risk_level: Literal["low", "medium", "high"]
+    stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    next_action: str
+    knowledge_refs: list[str] = Field(default_factory=list)
+    avatar_style: str | None = None
+    safety_flags: list[str] = Field(default_factory=list)
+
+
 class SessionRepository(Protocol):
     def create_session(self, payload: SessionCreateRequest) -> dict[str, Any]:
         ...
@@ -151,6 +184,13 @@ class SessionRepository(Protocol):
         self,
         session_id: str,
         payload: TextMessageSubmitRequest,
+    ) -> dict[str, Any]:
+        ...
+
+    def create_assistant_dialogue_message(
+        self,
+        session_id: str,
+        payload: DialogueReplyResponse,
     ) -> dict[str, Any]:
         ...
 
@@ -378,6 +418,110 @@ class PostgresSessionRepository:
             "message": accepted_message,
         }
 
+    def create_assistant_dialogue_message(
+        self,
+        session_id: str,
+        payload: DialogueReplyResponse,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT session_id, trace_id
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                session_row = cur.fetchone()
+                if session_row is None:
+                    raise KeyError(session_id)
+
+                cur.execute(
+                    """
+                    INSERT INTO messages (
+                        message_id,
+                        session_id,
+                        trace_id,
+                        role,
+                        status,
+                        source_kind,
+                        content_text,
+                        metadata,
+                        submitted_at,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        %(message_id)s,
+                        %(session_id)s,
+                        %(trace_id)s,
+                        'assistant',
+                        'completed',
+                        'text',
+                        %(content_text)s,
+                        %(metadata)s,
+                        %(submitted_at)s,
+                        %(created_at)s,
+                        %(updated_at)s
+                    )
+                    RETURNING
+                        message_id,
+                        session_id,
+                        trace_id,
+                        role,
+                        status,
+                        source_kind,
+                        content_text,
+                        submitted_at
+                    """,
+                    {
+                        "message_id": payload.message_id,
+                        "session_id": session_id,
+                        "trace_id": payload.trace_id,
+                        "content_text": payload.reply,
+                        "metadata": Jsonb(
+                            {
+                                "emotion": payload.emotion,
+                                "risk_level": payload.risk_level,
+                                "stage": payload.stage,
+                                "next_action": payload.next_action,
+                                "knowledge_refs": payload.knowledge_refs,
+                                "avatar_style": payload.avatar_style,
+                                "safety_flags": payload.safety_flags,
+                            }
+                        ),
+                        "submitted_at": now,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                )
+                message_row = cur.fetchone()
+
+                cur.execute(
+                    """
+                    UPDATE sessions
+                    SET status = 'active', stage = %(stage)s, updated_at = %(updated_at)s
+                    WHERE session_id = %(session_id)s
+                    RETURNING session_id, trace_id, status, stage, updated_at
+                    """,
+                    {
+                        "session_id": session_id,
+                        "stage": payload.stage,
+                        "updated_at": now,
+                    },
+                )
+                updated_session = cur.fetchone()
+
+        if message_row is None or updated_session is None:
+            raise RuntimeError("assistant message insert returned no row")
+
+        return {
+            "session": dict(updated_session),
+            "message": dict(message_row),
+        }
+
 
 def error_payload(
     *,
@@ -403,12 +547,13 @@ def build_event_envelope(
     event_type: str,
     payload: dict[str, Any],
     message_id: str | None = None,
+    source_service: str = "api_gateway",
 ) -> dict[str, Any]:
     return {
         "event_id": f"evt_{uuid4().hex[:24]}",
         "event_type": event_type,
         "schema_version": SCHEMA_VERSION,
-        "source_service": "api_gateway",
+        "source_service": source_service,
         "session_id": session["session_id"],
         "trace_id": session["trace_id"],
         "message_id": message_id,
@@ -460,6 +605,44 @@ def create_text_message_record(
         )
 
 
+def request_dialogue_reply(
+    settings: GatewaySettings,
+    session: dict[str, Any],
+    message: dict[str, Any],
+) -> DialogueReplyResponse:
+    request_payload = DialogueReplyRequest(
+        session_id=session["session_id"],
+        trace_id=session["trace_id"],
+        user_message_id=message["message_id"],
+        content_text=message["content_text"],
+        current_stage=session["stage"],
+        metadata={"source_service": "api_gateway"},
+    )
+    body = json.dumps(request_payload.model_dump()).encode("utf-8")
+    request = urllib_request.Request(
+        url=f"{settings.orchestrator_base_url.rstrip('/')}/internal/dialogue/respond",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib_request.urlopen(request, timeout=settings.orchestrator_timeout_seconds) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"orchestrator http {exc.code}: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError(f"orchestrator unavailable: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("orchestrator returned invalid json") from exc
+
+    try:
+        return DialogueReplyResponse.model_validate(raw_payload)
+    except ValidationError as exc:
+        raise RuntimeError(f"invalid dialogue reply: {exc}") from exc
+
+
 def create_app(repository: SessionRepository | None = None) -> FastAPI:
     bootstrap_runtime_env()
     settings = GatewaySettings.from_env()
@@ -498,7 +681,9 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         payload: TextMessageSubmitRequest,
         request: Request,
     ) -> Any:
-        result = create_text_message_record(request.app.state.session_repository, session_id, payload)
+        repository = request.app.state.session_repository
+        settings: GatewaySettings = request.app.state.settings
+        result = create_text_message_record(repository, session_id, payload)
         if isinstance(result, JSONResponse):
             return result
 
@@ -510,6 +695,34 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         )
         accepted_event = jsonable_encoder(accepted_event)
         await request.app.state.connection_registry.enqueue_event(session_id, accepted_event)
+
+        try:
+            dialogue_reply = request_dialogue_reply(settings, result["session"], result["message"])
+            assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
+            dialogue_event = build_event_envelope(
+                session=assistant_result["session"],
+                event_type="dialogue.reply",
+                payload=dialogue_reply.model_dump(mode="json"),
+                message_id=dialogue_reply.message_id,
+                source_service="orchestrator",
+            )
+            dialogue_event = jsonable_encoder(dialogue_event)
+            await request.app.state.connection_registry.enqueue_event(session_id, dialogue_event)
+        except (KeyError, psycopg.Error, RuntimeError) as exc:
+            error_event = build_event_envelope(
+                session=result["session"],
+                event_type="session.error",
+                payload=error_payload(
+                    error_code="dialogue_reply_failed",
+                    message=str(exc),
+                    trace_id=result["session"]["trace_id"],
+                    session_id=session_id,
+                    retryable=True,
+                ),
+                source_service="api_gateway",
+            )
+            error_event = jsonable_encoder(error_event)
+            await request.app.state.connection_registry.enqueue_event(session_id, error_event)
         return result["message"]
 
     @app.websocket("/ws/session/{session_id}")
