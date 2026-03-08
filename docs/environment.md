@@ -103,6 +103,8 @@ code or deployment files.
 
 | Variable | Required | Default / Example | Purpose |
 | --- | --- | --- | --- |
+| `ASR_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for the standalone ASR service. |
+| `ASR_SERVICE_PORT` | Yes | `8020` | HTTP port for the standalone ASR service. |
 | `ASR_PROVIDER` | Yes | `dashscope` | Logical provider name for ASR. |
 | `ASR_BASE_URL` | Yes | `https://dashscope.aliyuncs.com/compatible-mode/v1` | Canonical ASR endpoint used by service wrappers. |
 | `ASR_API_KEY` | Yes | empty | Canonical ASR credential used by future service code. |

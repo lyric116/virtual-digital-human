@@ -19,6 +19,8 @@ Current repository state:
   recording controls without uploading audio
 - recorded browser audio chunks can now be uploaded to the gateway and indexed into
   temporary `media_indexes` records before ASR is connected
+- `services/asr-service` now provides an offline whole-file transcription baseline for
+  normalized enterprise audio samples
 
 ## Repository Structure
 
@@ -73,6 +75,8 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
+- `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/asr-service main:app --host 0.0.0.0 --port 8020`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_service.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

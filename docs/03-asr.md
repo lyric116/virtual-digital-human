@@ -147,3 +147,17 @@ flowchart LR
 - 参考文本必须写回统一转录工作流文件，并通过 `text_status` 区分 `asr_generated` 与 `human_verified`。
 - 最终 WER/SER 报告只允许使用 `human_verified` 参考文本，不允许模型生成结果自评。
 - 当前已生成 `data/derived/transcripts/val_transcripts_template.jsonl`，共 `1126` 条转录工作流记录，当前状态基线为 `pending_asr=1126`，后续 ASR 流程应直接回填这一文件链路。
+
+## 14. 当前落地状态
+
+步骤 18 的离线基线服务已经落到独立目录：
+
+- `services/asr-service/main.py`
+- `services/asr-service/README.md`
+
+当前边界：
+
+- 只支持上传一个完整音频文件并返回整句结果
+- 输入优先使用企业 manifest 中的 `audio_path_16k_mono`
+- 当前 live 校验脚本为 `scripts/verify_asr_service.py`
+- 当前 `qwen3-asr-flash` 兼容路径可稳定返回文本，但不暴露 token 级置信度，因此服务响应保留 `confidence_mean=null` 和 `confidence_available=false`

@@ -124,6 +124,7 @@ This payload is used for both offline ASR backfill and live transcript events.
 | `text` | string | Yes | Transcript text emitted to downstream consumers. |
 | `language` | string | No | Language tag such as `fr-FR` or `zh-CN`. |
 | `confidence` | number | No | Mean confidence for the transcript result. |
+| `confidence_available` | boolean | No | Whether the provider exposed a real confidence score. |
 | `duration_ms` | integer | No | Audio duration that produced the transcript. |
 | `asr_engine` | string | No | Model or provider identifier. |
 | `workflow_status` | string | No | Offline workflow state such as `pending_asr`, `draft_ready`, `pending_review`, `verified`. |

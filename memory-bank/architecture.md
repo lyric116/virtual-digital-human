@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - standalone asr baseline now sits before transcript workflow backfill
+
+- services/asr-service is now a true leaf service: it accepts one whole audio file, computes input audio metadata locally, calls the configured external ASR provider, and returns a stable offline transcript contract without any dependency on the gateway or orchestrator.
+- The live gate for step 18 is scripts/verify_asr_service.py, which proves two things together: the service can transcribe normalized enterprise audio, and the preprocessed 16kHz mono assets preserve duration while changing sample rate and channel count from the original 44.1kHz stereo source.
+- qwen3-asr-flash currently provides text but not provider confidence in the compatible route used here, so the service contract now distinguishes between confidence_mean and confidence_available instead of fabricating a score.
+
 ## 2026-03-08 - audio upload is now a separate boundary before ASR
 
 - Step 17 introduces a clean media ingestion boundary: the browser emits fixed-window audio chunks, the gateway stores raw bytes plus media_indexes metadata, and ASR still remains completely out of band.

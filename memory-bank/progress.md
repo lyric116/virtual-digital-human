@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - step 18 standalone offline asr baseline service
+
+### Scope
+
+Completed implementation_plan step 18 by adding an independent ASR service that accepts one complete audio file, returns one final transcript result, and validates the baseline against three preprocessed enterprise samples without introducing streaming or partial transcript events.
+
+### Outputs
+
+- services/asr-service/main.py and services/asr-service/README.md now provide GET /health and POST /api/asr/transcribe for complete-file transcription using the configured external ASR provider
+- scripts/verify_asr_service.py now starts the standalone service, uploads three enterprise validation samples from audio_path_16k_mono, verifies transcript and duration fields, and prints original-vs-derived audio format differences
+- tests/test_asr_service.py, docs/03-asr.md, docs/environment.md, docs/shared_contracts.md, README.md, and .env.example now document the offline ASR boundary, runtime variables, and current confidence limitations for qwen3-asr-flash
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_asr_service.py tests/test_environment_inventory.py tests/test_shared_contracts.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_service.py
+
+### Next
+
+- Proceed to implementation_plan step 18B: use the standalone ASR service baseline to batch-write draft transcripts back into the transcript workflow without touching final_text.
+
 ## 2026-03-08 - step 17 audio chunk upload and temporary media indexing
 
 ### Scope
