@@ -155,9 +155,10 @@
             <h2>Chat Timeline</h2>
           </div>
           <p class="panel-summary">
-            Multi-turn history panel that will later sync to session storage and export.
+            Multi-turn history panel. The latest turn summary stays pinned, while the
+            full timeline is restored from backend session state after refresh.
           </p>
-          <div class="timeline">
+          <div class="timeline-summary">
             <article class="timeline-item user">
               <span class="timeline-role">User</span>
               <p id="timeline-user-text">等待用户消息...</p>
@@ -169,6 +170,12 @@
             <article class="timeline-item system">
               <span class="timeline-role">Stage</span>
               <p id="timeline-stage-text">idle → idle</p>
+            </article>
+          </div>
+          <div class="timeline" id="chat-timeline-list" aria-live="polite">
+            <article class="timeline-item system timeline-empty">
+              <span class="timeline-role">History</span>
+              <p>等待会话历史...</p>
             </article>
           </div>
         </section>

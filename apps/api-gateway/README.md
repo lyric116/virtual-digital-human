@@ -2,13 +2,15 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, and 12:
+This gateway currently covers steps 8, 10, 11, 12, and 13:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
 - step 11: accept plain text input, write it into PostgreSQL, and emit `message.accepted`
 - step 12: call the mock orchestrator, persist the assistant reply, and emit
   `dialogue.reply`
+- step 13: expose session state and ordered message history so the frontend can
+  restore the chat timeline after refresh
 
 ## Files
 
@@ -19,6 +21,7 @@ This gateway currently covers steps 8, 10, 11, and 12:
 
 - `GET /health`
 - `POST /api/session/create`
+- `GET /api/session/{session_id}/state`
 - `POST /api/session/{session_id}/text`
 - `GET /ws/session/{session_id}` as a WebSocket upgrade endpoint
 
@@ -33,6 +36,8 @@ From repository root:
 - `POST /api/session/{session_id}/text` now writes both the accepted user message and the
   mock assistant reply into the `messages` table defined in
   `infra/docker/postgres/init/001_base_schema.sql`.
+- `GET /api/session/{session_id}/state` returns the current session metadata and the
+  ordered message list used by the frontend to rebuild chat history.
 - The gateway calls the orchestrator through `ORCHESTRATOR_BASE_URL`.
 - `GATEWAY_CORS_ORIGINS` controls which local frontend preview origins can call the API
   from the browser.

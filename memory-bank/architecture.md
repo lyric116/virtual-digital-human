@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - timeline restore uses persisted message timestamps
+
+- The gateway realtime dialogue.reply event must carry the assistant message submitted_at from PostgreSQL, and the frontend must prefer that value over envelope emitted_at; otherwise refresh rebuilds a different timeline than the live view.
+- The frontend restore path depends on one stable session-state contract: browser storage keeps the active session id, GET /api/session/{session_id}/state returns ordered messages, and app.js reconstructs stage transition entries locally from assistant metadata.
+
 ## 2026-03-08 - Mock Dialogue Reply Now Sits Between Text Accept And UI Rendering
 
 - apps/orchestrator/main.py is now the stable mock business-logic boundary for early dialogue work: it owns the structured dialogue reply contract, while the gateway remains responsible for persistence and websocket fan-out.

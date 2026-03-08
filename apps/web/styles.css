@@ -285,10 +285,15 @@ body::before {
 }
 
 .transcript-lines,
-.timeline {
+.timeline,
+.timeline-summary {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.timeline-summary {
+  margin-bottom: 16px;
 }
 
 .line,
@@ -313,6 +318,13 @@ body::before {
   line-height: 1.5;
 }
 
+.timeline-meta {
+  display: block;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .line.assistant,
 .timeline-item.assistant {
   background: #eef6f3;
@@ -325,6 +337,10 @@ body::before {
 
 .timeline-item.system {
   background: #edf0e5;
+}
+
+.timeline-empty {
+  border: 1px dashed rgba(15, 108, 104, 0.24);
 }
 
 .signal-grid {

@@ -9,6 +9,8 @@ Current repository state:
 - external ASR draft generation has been verified with `qwen3-asr-flash`
 - the monorepo engineering skeleton from `implementation_plan` step 1 is now in place
 - the text loop now reaches a mock structured assistant reply through `apps/orchestrator`
+- the frontend now renders a recoverable chat timeline and restores session history from
+  the gateway session state endpoint
 
 ## Repository Structure
 
@@ -58,6 +60,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

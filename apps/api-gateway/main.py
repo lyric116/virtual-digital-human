@@ -150,6 +150,23 @@ class TextMessageAcceptedResponse(BaseModel):
     client_seq: int | None = None
 
 
+class MessageHistoryResponse(BaseModel):
+    message_id: str
+    session_id: str
+    trace_id: str
+    role: str
+    status: str
+    source_kind: str
+    content_text: str
+    submitted_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SessionStateResponse(BaseModel):
+    session: SessionCreatedResponse
+    messages: list[MessageHistoryResponse] = Field(default_factory=list)
+
+
 class DialogueReplyRequest(BaseModel):
     session_id: str
     trace_id: str
@@ -178,6 +195,9 @@ class SessionRepository(Protocol):
         ...
 
     def get_session_summary(self, session_id: str) -> dict[str, Any] | None:
+        ...
+
+    def get_session_state(self, session_id: str) -> dict[str, Any] | None:
         ...
 
     def create_user_text_message(
@@ -317,6 +337,54 @@ class PostgresSessionRepository:
                 )
                 row = cur.fetchone()
         return row
+
+    def get_session_state(self, session_id: str) -> dict[str, Any] | None:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        session_id,
+                        trace_id,
+                        status,
+                        stage,
+                        input_modes,
+                        avatar_id,
+                        started_at,
+                        updated_at
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                session_row = cur.fetchone()
+                if session_row is None:
+                    return None
+
+                cur.execute(
+                    """
+                    SELECT
+                        message_id,
+                        session_id,
+                        trace_id,
+                        role,
+                        status,
+                        source_kind,
+                        content_text,
+                        submitted_at,
+                        metadata
+                    FROM messages
+                    WHERE session_id = %s
+                    ORDER BY submitted_at ASC, created_at ASC, message_id ASC
+                    """,
+                    (session_id,),
+                )
+                message_rows = cur.fetchall()
+
+        return {
+            "session": dict(session_row),
+            "messages": [dict(row) for row in message_rows],
+        }
 
     def create_user_text_message(
         self,
@@ -605,6 +673,23 @@ def create_text_message_record(
         )
 
 
+def create_session_state_record(
+    repository: SessionRepository,
+    session_id: str,
+) -> dict[str, Any] | JSONResponse:
+    result = repository.get_session_state(session_id)
+    if result is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=error_payload(
+                error_code="session_not_found",
+                message="Session not found",
+                session_id=session_id,
+            ),
+        )
+    return result
+
+
 def request_dialogue_reply(
     settings: GatewaySettings,
     session: dict[str, Any],
@@ -671,6 +756,13 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
     def create_session(payload: SessionCreateRequest, request: Request) -> Any:
         return create_session_record(request.app.state.session_repository, payload)
 
+    @app.get(
+        "/api/session/{session_id}/state",
+        response_model=SessionStateResponse,
+    )
+    def get_session_state(session_id: str, request: Request) -> Any:
+        return create_session_state_record(request.app.state.session_repository, session_id)
+
     @app.post(
         "/api/session/{session_id}/text",
         response_model=TextMessageAcceptedResponse,
@@ -702,7 +794,10 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             dialogue_event = build_event_envelope(
                 session=assistant_result["session"],
                 event_type="dialogue.reply",
-                payload=dialogue_reply.model_dump(mode="json"),
+                payload={
+                    **dialogue_reply.model_dump(mode="json"),
+                    "submitted_at": assistant_result["message"]["submitted_at"],
+                },
                 message_id=dialogue_reply.message_id,
                 source_service="orchestrator",
             )

@@ -89,6 +89,36 @@ def build_mock_dialogue_reply(payload: DialogueReplyRequest) -> DialogueReplyRes
             safety_flags=["high_risk_expression"],
         )
 
+    if payload.current_stage == "intervene":
+        return DialogueReplyResponse(
+            session_id=payload.session_id,
+            trace_id=payload.trace_id,
+            message_id=message_id,
+            reply="刚才这些方法里，哪一种对你最有帮助？如果只看现在这一刻，紧绷感有没有比刚才轻一点？",
+            emotion="calmer",
+            risk_level="low",
+            stage="reassess",
+            next_action="reassess",
+            knowledge_refs=["reassess_checkin_basic"],
+            avatar_style="warm_support",
+            safety_flags=[],
+        )
+
+    if payload.current_stage == "assess":
+        return DialogueReplyResponse(
+            session_id=payload.session_id,
+            trace_id=payload.trace_id,
+            message_id=message_id,
+            reply="我们先不急着一下子解决全部问题。你现在可以先试一次慢呼吸：吸气四拍，停两拍，呼气六拍，做两轮看看身体有没有一点放松。",
+            emotion="anxious",
+            risk_level="medium",
+            stage="intervene",
+            next_action="breathing",
+            knowledge_refs=["breathing_426"],
+            avatar_style="warm_support",
+            safety_flags=[],
+        )
+
     if any(token in text for token in ["睡不好", "睡不着", "晚上", "停不下来", "焦虑"]) or "sleep" in lowered:
         return DialogueReplyResponse(
             session_id=payload.session_id,

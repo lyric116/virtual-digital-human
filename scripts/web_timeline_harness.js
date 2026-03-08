@@ -44,6 +44,7 @@ class FakeElement {
     this.disabled = false;
     this.dataset = {};
     this.listeners = new Map();
+    this.innerHTML = "";
   }
 
   addEventListener(eventName, handler) {
@@ -134,12 +135,30 @@ class FakeDocument {
   }
 }
 
-function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null) {
+class SharedStorage {
+  constructor() {
+    this.values = new Map();
+  }
+
+  getItem(key) {
+    return this.values.has(key) ? this.values.get(key) : null;
+  }
+
+  setItem(key, value) {
+    this.values.set(key, String(value));
+  }
+
+  removeItem(key) {
+    this.values.delete(key);
+  }
+}
+
+function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null, sourceService = "api_gateway") {
   return {
     event_id: `evt_${Math.random().toString(16).slice(2, 10)}`,
     event_type: eventType,
     schema_version: "v1alpha1",
-    source_service: "api_gateway",
+    source_service: sourceService,
     session_id: sessionId,
     trace_id: traceId,
     message_id: messageId,
@@ -149,17 +168,39 @@ function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null)
 }
 
 function createMockRuntime() {
-  let currentSocket = null;
-  const sessionPayload = {
-    session_id: "sess_mock_text_001",
-    trace_id: "trace_mock_text_001",
-    status: "created",
-    stage: "engage",
-    input_modes: ["text", "audio"],
-    avatar_id: "companion_female_01",
-    started_at: "2026-03-08T10:10:00Z",
-    updated_at: "2026-03-08T10:10:00Z",
+  const store = {
+    session: null,
+    messages: [],
+    turnIndex: 0,
+    currentSocket: null,
   };
+
+  const mockTurns = [
+    {
+      reply: "谢谢你愿意说出来。最近这种睡不稳和停不下来的感觉，是这几天一直这样，还是晚上更明显？",
+      emotion: "anxious",
+      risk_level: "medium",
+      stage: "assess",
+      next_action: "ask_followup",
+      knowledge_refs: ["sleep_hygiene_basic"],
+    },
+    {
+      reply: "我们先不急着解决全部问题。你现在先试一次慢呼吸：吸气四拍，停两拍，呼气六拍，做两轮看看身体有没有一点放松。",
+      emotion: "anxious",
+      risk_level: "medium",
+      stage: "intervene",
+      next_action: "breathing",
+      knowledge_refs: ["breathing_426"],
+    },
+    {
+      reply: "现在回头看刚才这几轮，你觉得身体和脑子有没有比最开始稍微松一点？",
+      emotion: "calmer",
+      risk_level: "low",
+      stage: "reassess",
+      next_action: "reassess",
+      knowledge_refs: ["reassess_checkin_basic"],
+    },
+  ];
 
   class MockWebSocket {
     constructor(url) {
@@ -168,7 +209,7 @@ function createMockRuntime() {
       this.listeners = new Map();
       this.sessionId = decodeURIComponent(url.split("/session/")[1].split("?")[0]);
       this.traceId = new URL(url).searchParams.get("trace_id") || "trace_missing";
-      currentSocket = this;
+      store.currentSocket = this;
 
       setTimeout(() => {
         this.readyState = MockWebSocket.OPEN;
@@ -230,41 +271,123 @@ function createMockRuntime() {
 
   async function mockFetch(url, options = {}) {
     if (url.endsWith("/api/session/create")) {
+      store.session = {
+        session_id: "sess_mock_timeline_001",
+        trace_id: "trace_mock_timeline_001",
+        status: "created",
+        stage: "engage",
+        input_modes: ["text", "audio"],
+        avatar_id: "companion_female_01",
+        started_at: "2026-03-08T11:00:00Z",
+        updated_at: "2026-03-08T11:00:00Z",
+      };
+      store.messages = [];
+      store.turnIndex = 0;
       return {
         ok: true,
         status: 201,
         async json() {
-          return sessionPayload;
+          return store.session;
         },
       };
     }
 
-    if (url.includes(`/api/session/${sessionPayload.session_id}/text`)) {
+    if (store.session && url.endsWith(`/api/session/${store.session.session_id}/state`)) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            session: store.session,
+            messages: store.messages,
+          };
+        },
+      };
+    }
+
+    if (store.session && url.includes(`/api/session/${store.session.session_id}/text`)) {
       const submitted = JSON.parse(options.body || "{}");
-      const messagePayload = {
-        message_id: "msg_mock_text_001",
-        session_id: sessionPayload.session_id,
-        trace_id: sessionPayload.trace_id,
+      const turn = mockTurns[Math.min(store.turnIndex, mockTurns.length - 1)];
+      const submittedAt = new Date(Date.UTC(2026, 2, 8, 11, 0, 2 + store.turnIndex * 8)).toISOString();
+      const replyAt = new Date(Date.UTC(2026, 2, 8, 11, 0, 4 + store.turnIndex * 8)).toISOString();
+      const userMessage = {
+        message_id: `msg_mock_user_${String(store.turnIndex + 1).padStart(3, "0")}`,
+        session_id: store.session.session_id,
+        trace_id: store.session.trace_id,
         role: "user",
         status: "accepted",
         source_kind: "text",
         content_text: submitted.content_text,
-        submitted_at: "2026-03-08T10:10:02Z",
+        submitted_at: submittedAt,
         client_seq: submitted.client_seq,
       };
+      const assistantMessage = {
+        session_id: store.session.session_id,
+        trace_id: store.session.trace_id,
+        message_id: `msg_mock_assistant_${String(store.turnIndex + 1).padStart(3, "0")}`,
+        reply: turn.reply,
+        submitted_at: replyAt,
+        emotion: turn.emotion,
+        risk_level: turn.risk_level,
+        stage: turn.stage,
+        next_action: turn.next_action,
+        knowledge_refs: turn.knowledge_refs,
+        avatar_style: "warm_support",
+        safety_flags: [],
+      };
+
+      store.messages.push({ ...userMessage, metadata: { client_seq: submitted.client_seq } });
+      store.messages.push({
+        message_id: assistantMessage.message_id,
+        session_id: assistantMessage.session_id,
+        trace_id: assistantMessage.trace_id,
+        role: "assistant",
+        status: "completed",
+        source_kind: "text",
+        content_text: assistantMessage.reply,
+        submitted_at: replyAt,
+        metadata: {
+          stage: assistantMessage.stage,
+          emotion: assistantMessage.emotion,
+          risk_level: assistantMessage.risk_level,
+          next_action: assistantMessage.next_action,
+          knowledge_refs: assistantMessage.knowledge_refs,
+          avatar_style: assistantMessage.avatar_style,
+          safety_flags: assistantMessage.safety_flags,
+        },
+      });
+      store.session = {
+        ...store.session,
+        status: "active",
+        stage: assistantMessage.stage,
+        updated_at: replyAt,
+      };
+      store.turnIndex += 1;
 
       setTimeout(() => {
-        if (!currentSocket || currentSocket.readyState !== MockWebSocket.OPEN) {
+        if (!store.currentSocket || store.currentSocket.readyState !== MockWebSocket.OPEN) {
           return;
         }
-        currentSocket.emit("message", {
+        store.currentSocket.emit("message", {
           data: JSON.stringify(
             buildEnvelope(
-              sessionPayload.session_id,
-              sessionPayload.trace_id,
+              store.session.session_id,
+              store.session.trace_id,
               "message.accepted",
-              messagePayload,
-              messagePayload.message_id,
+              userMessage,
+              userMessage.message_id,
+            ),
+          ),
+        });
+        store.currentSocket.emit("message", {
+          data: JSON.stringify(
+            buildEnvelope(
+              store.session.session_id,
+              store.session.trace_id,
+              "dialogue.reply",
+              assistantMessage,
+              assistantMessage.message_id,
+              "orchestrator",
             ),
           ),
         });
@@ -274,7 +397,7 @@ function createMockRuntime() {
         ok: true,
         status: 202,
         async json() {
-          return messagePayload;
+          return userMessage;
         },
       };
     }
@@ -294,33 +417,39 @@ function createMockRuntime() {
   };
 }
 
-function collectSnapshot(document) {
+function collectSnapshot(document, storage) {
+  const timelineText = document.getElementById("chat-timeline-list").textContent;
+  const timelineEntries = timelineText.split("\n").map((item) => item.trim()).filter(Boolean);
   return {
     sessionId: document.getElementById("session-id-value").textContent,
     status: document.getElementById("session-status-value").textContent,
+    stage: document.getElementById("session-stage-value").textContent,
     traceId: document.getElementById("session-trace-value").textContent,
+    historyRestoreState: document.body.dataset.historyRestoreState || null,
     textSubmitState: document.body.dataset.textSubmitState || null,
-    textSubmitStatus: document.getElementById("text-submit-status").textContent,
-    lastMessageId: document.getElementById("text-last-message-id-value").textContent,
-    lastMessageTime: document.getElementById("text-last-message-time-value").textContent,
+    dialogueReplyState: document.body.dataset.dialogueReplyState || null,
     connectionStatus: document.getElementById("connection-status-value").textContent,
-    connectionLog: document.getElementById("connection-log").textContent,
-    draftText: document.getElementById("text-input-field").value,
+    timelineEntryCount: timelineEntries.length,
+    timelineText,
+    storedSessionId: storage.getItem("virtual-human-active-session-id"),
+    latestStage: document.getElementById("timeline-stage-text").textContent,
   };
 }
 
-function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl }) {
+function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl, localStorage }) {
   const document = new FakeDocument();
   const window = {
     document,
     fetch: fetchImpl,
     WebSocket: WebSocketImpl,
+    localStorage,
     __APP_CONFIG__: {
       apiBaseUrl,
       wsUrl,
       defaultAvatarId: "companion_female_01",
       heartbeatIntervalMs: 200,
       reconnectDelayMs: 150,
+      activeSessionStorageKey: "virtual-human-active-session-id",
     },
     setTimeout,
     clearTimeout,
@@ -333,6 +462,7 @@ function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl }) {
     document,
     fetch: fetchImpl,
     WebSocket: WebSocketImpl,
+    localStorage,
     console,
     Date,
     URL,
@@ -367,48 +497,79 @@ async function waitFor(condition, timeoutMs, message) {
   throw new Error(message);
 }
 
+async function submitTurn(runtime, text, expectedEntryCount) {
+  runtime.textInputField.dispatchInput(text);
+  await runtime.textSubmitButton.click();
+  await waitFor(
+    () => runtime.document.body.dataset.dialogueReplyState === "received",
+    5000,
+    "dialogue reply did not reach received state",
+  );
+  await waitFor(
+    () => {
+      const items = runtime.document.getElementById("chat-timeline-list").textContent
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      return items.length >= expectedEntryCount;
+    },
+    5000,
+    "timeline did not reach expected entry count",
+  );
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const sharedStorage = new SharedStorage();
   const runtimeConfig = args.mode === "live"
     ? { fetchImpl: fetch, WebSocketImpl: WebSocket }
     : createMockRuntime();
 
-  if (typeof runtimeConfig.fetchImpl !== "function") {
-    throw new Error("fetch is not available in this runtime");
-  }
-  if (typeof runtimeConfig.WebSocketImpl !== "function") {
-    throw new Error("WebSocket is not available in this runtime");
-  }
-
-  const runtime = executeApp({
+  const firstPage = executeApp({
     fetchImpl: runtimeConfig.fetchImpl,
     WebSocketImpl: runtimeConfig.WebSocketImpl,
     apiBaseUrl: args.apiBaseUrl,
     wsUrl: args.wsUrl,
+    localStorage: sharedStorage,
   });
 
-  const beforeCreate = collectSnapshot(runtime.document);
-  await runtime.startButton.click();
+  const beforeCreate = collectSnapshot(firstPage.document, sharedStorage);
+  await firstPage.startButton.click();
   await waitFor(
-    () => runtime.document.getElementById("connection-status-value").textContent === "connected",
+    () => firstPage.document.getElementById("connection-status-value").textContent === "connected",
     5000,
-    "realtime connection did not reach connected state before text submit",
+    "realtime connection did not reach connected state before timeline test",
   );
 
-  const afterConnect = collectSnapshot(runtime.document);
-  const input = runtime.textInputField;
-  input.dispatchInput("最近总觉得脑子停不下来，晚上更明显。\n想先试着说出来。\n");
-  await runtime.textSubmitButton.click();
+  await submitTurn(firstPage, "我这两天晚上总是睡不稳。", 3);
+  await submitTurn(firstPage, "我愿意先试试你说的慢呼吸。", 6);
+  await submitTurn(firstPage, "现在比刚才稍微松一点了。", 9);
+  const afterThreeTurns = collectSnapshot(firstPage.document, sharedStorage);
+
+  const secondPage = executeApp({
+    fetchImpl: runtimeConfig.fetchImpl,
+    WebSocketImpl: runtimeConfig.WebSocketImpl,
+    apiBaseUrl: args.apiBaseUrl,
+    wsUrl: args.wsUrl,
+    localStorage: sharedStorage,
+  });
 
   await waitFor(
-    () => runtime.document.body.dataset.textSubmitState === "sent",
+    () => secondPage.document.body.dataset.historyRestoreState === "restored",
     5000,
-    "text submit did not reach sent state",
+    "restored page did not finish history recovery",
+  );
+  await waitFor(
+    () => secondPage.document.getElementById("connection-status-value").textContent === "connected",
+    5000,
+    "restored page did not reconnect realtime channel",
   );
 
-  const afterSubmit = collectSnapshot(runtime.document);
-  runtime.window.__virtualHumanConsoleController.shutdownForTest();
-  process.stdout.write(`${JSON.stringify({ beforeCreate, afterConnect, afterSubmit }, null, 2)}\n`);
+  const afterRefresh = collectSnapshot(secondPage.document, sharedStorage);
+  secondPage.window.__virtualHumanConsoleController.shutdownForTest();
+  firstPage.window.__virtualHumanConsoleController.shutdownForTest();
+
+  process.stdout.write(`${JSON.stringify({ beforeCreate, afterThreeTurns, afterRefresh }, null, 2)}\n`);
 }
 
 main().catch((error) => {

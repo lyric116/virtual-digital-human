@@ -86,6 +86,7 @@ class FakeDocument {
       ["timeline-user-text", "等待用户消息...", ""],
       ["timeline-assistant-text", "等待系统回复...", ""],
       ["timeline-stage-text", "idle → idle", ""],
+      ["chat-timeline-list", "History | 等待会话历史...", ""],
       ["session-id-value", "未创建", ""],
       ["session-status-value", "idle", ""],
       ["session-stage-value", "idle", ""],

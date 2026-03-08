@@ -18,6 +18,7 @@
       apiBaseUrl: config.apiBaseUrl || config.gatewayBaseUrl || defaultApiBaseUrl,
       wsUrl: config.wsUrl || defaultWsUrl,
       defaultAvatarId: config.defaultAvatarId || "companion_female_01",
+      activeSessionStorageKey: config.activeSessionStorageKey || "virtual-human-active-session-id",
       heartbeatIntervalMs: config.heartbeatIntervalMs || 5000,
       reconnectDelayMs: config.reconnectDelayMs || 1000,
     };
@@ -36,6 +37,8 @@
       lastHeartbeatAt: null,
       connectionLog: ["realtime idle"],
       draftText: "我这两天总是睡不好，脑子停不下来。",
+      timelineEntries: [],
+      historyRestoreState: "idle",
       textSubmitState: "idle",
       textSubmitMessage: null,
       pendingMessageId: null,
@@ -78,6 +81,7 @@
       timelineUserText: findRequiredElement(rootDocument, "timeline-user-text"),
       timelineAssistantText: findRequiredElement(rootDocument, "timeline-assistant-text"),
       timelineStageText: findRequiredElement(rootDocument, "timeline-stage-text"),
+      chatTimelineList: findRequiredElement(rootDocument, "chat-timeline-list"),
       sessionIdValue: findRequiredElement(rootDocument, "session-id-value"),
       sessionStatusValue: findRequiredElement(rootDocument, "session-status-value"),
       sessionStageValue: findRequiredElement(rootDocument, "session-stage-value"),
@@ -106,6 +110,9 @@
   }
 
   function getStartButtonLabel(state) {
+    if (state.requestState === "restoring") {
+      return "Restoring Session...";
+    }
     if (state.requestState === "loading") {
       return "Creating Session...";
     }
@@ -119,6 +126,9 @@
   }
 
   function getFeedbackMessage(state) {
+    if (state.requestState === "restoring") {
+      return "正在恢复最近一次会话和历史消息。";
+    }
     if (state.requestState === "loading") {
       return "正在创建会话，请稍候。";
     }
@@ -126,6 +136,9 @@
       return state.error || "会话创建失败。";
     }
     if (state.sessionId) {
+      if (state.historyRestoreState === "restored") {
+        return "最近一次会话已恢复，页面会继续保持会话级实时连接。";
+      }
       return "会话已建立，当前页面会保持会话级实时连接并自动处理断线重连。";
     }
     return "点击 Start Session 创建新的会话编号。";
@@ -170,6 +183,58 @@
     state.connectionLog = [message].concat(state.connectionLog).slice(0, 6);
   }
 
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll("\"", "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  function renderTimeline(elements, state) {
+    if (!state.timelineEntries.length) {
+      const emptyMarkup = [
+        '<article class="timeline-item system timeline-empty">',
+        '<span class="timeline-role">History</span>',
+        "<p>等待会话历史...</p>",
+        "</article>",
+      ].join("");
+      elements.chatTimelineList.innerHTML = emptyMarkup;
+      if (typeof elements.chatTimelineList.querySelector !== "function") {
+        elements.chatTimelineList.textContent = "History | 等待会话历史...";
+      }
+      if (typeof elements.chatTimelineList.dataset === "object" && elements.chatTimelineList.dataset) {
+        elements.chatTimelineList.dataset.timelineText = "History | 等待会话历史...";
+      }
+      return;
+    }
+
+    const markup = state.timelineEntries.map(function (entry) {
+      const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "not started";
+      return [
+        `<article class="timeline-item ${escapeHtml(entry.kind)}">`,
+        `<span class="timeline-role">${escapeHtml(entry.label)}</span>`,
+        `<p>${escapeHtml(entry.text)}</p>`,
+        `<small class="timeline-meta">${escapeHtml(timestampLabel)}</small>`,
+        "</article>",
+      ].join("");
+    }).join("");
+
+    const plainText = state.timelineEntries.map(function (entry) {
+      const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "not started";
+      return `${entry.label} | ${timestampLabel} | ${entry.text}`;
+    }).join("\n");
+
+    elements.chatTimelineList.innerHTML = markup;
+    if (typeof elements.chatTimelineList.querySelector !== "function") {
+      elements.chatTimelineList.textContent = plainText;
+    }
+    if (typeof elements.chatTimelineList.dataset === "object" && elements.chatTimelineList.dataset) {
+      elements.chatTimelineList.dataset.timelineText = plainText;
+    }
+  }
+
   function renderSessionState(rootDocument, elements, state, appConfig) {
     elements.sessionIdValue.textContent = state.sessionId || defaultSessionIdLabel;
     elements.sessionStatusValue.textContent = state.status;
@@ -180,16 +245,19 @@
     elements.sessionWsUrlValue.textContent = appConfig.wsUrl;
     elements.sessionFeedback.textContent = getFeedbackMessage(state);
     elements.startButton.textContent = getStartButtonLabel(state);
-    elements.startButton.disabled = state.requestState === "loading";
+    elements.startButton.disabled = state.requestState === "loading" || state.requestState === "restoring";
     elements.connectionStatusValue.textContent = state.connectionStatus;
     elements.connectionHeartbeatValue.textContent = formatTimestamp(state.lastHeartbeatAt);
     elements.connectionLogValue.textContent = state.connectionLog.join("\n");
     elements.textInputField.value = state.draftText;
-    elements.textInputField.disabled = state.requestState === "loading";
+    elements.textInputField.disabled = (
+      state.requestState === "loading" || state.requestState === "restoring"
+    );
     elements.textSubmitButton.textContent = getTextSubmitButtonLabel(state);
     elements.textSubmitButton.disabled = (
       !state.sessionId
       || state.requestState === "loading"
+      || state.requestState === "restoring"
       || state.connectionStatus !== "connected"
       || state.textSubmitState === "sending"
     );
@@ -204,12 +272,14 @@
     elements.timelineUserText.textContent = state.lastAcceptedText || "等待用户消息...";
     elements.timelineAssistantText.textContent = state.lastReplyText || "等待系统回复...";
     elements.timelineStageText.textContent = state.lastStageTransition;
+    renderTimeline(elements, state);
 
     rootDocument.body.dataset.uiReady = "true";
     rootDocument.body.dataset.sessionState = state.requestState;
     rootDocument.body.dataset.connectionState = state.connectionStatus;
     rootDocument.body.dataset.textSubmitState = state.textSubmitState;
     rootDocument.body.dataset.dialogueReplyState = state.dialogueReplyState;
+    rootDocument.body.dataset.historyRestoreState = state.historyRestoreState;
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -315,9 +385,190 @@
     return payload;
   }
 
+  async function requestSessionState(fetchImpl, appConfig, sessionId) {
+    const response = await fetchImpl(
+      `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/state`,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      },
+    );
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      const message = payload && typeof payload.message === "string"
+        ? payload.message
+        : `Session state fetch failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return payload;
+  }
+
   function buildRealtimeSocketUrl(appConfig, state) {
     const base = appConfig.wsUrl.replace(/\/+$/, "");
     return `${base}/session/${encodeURIComponent(state.sessionId)}?trace_id=${encodeURIComponent(state.traceId || "")}`;
+  }
+
+  function getStorage(rootWindow) {
+    try {
+      if (rootWindow && rootWindow.localStorage) {
+        return rootWindow.localStorage;
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  }
+
+  function readStoredSessionId(rootWindow, appConfig) {
+    const storage = getStorage(rootWindow);
+    if (!storage || typeof storage.getItem !== "function") {
+      return null;
+    }
+    return storage.getItem(appConfig.activeSessionStorageKey);
+  }
+
+  function writeStoredSessionId(rootWindow, appConfig, sessionId) {
+    const storage = getStorage(rootWindow);
+    if (!storage || typeof storage.setItem !== "function") {
+      return;
+    }
+    storage.setItem(appConfig.activeSessionStorageKey, sessionId);
+  }
+
+  function clearStoredSessionId(rootWindow, appConfig) {
+    const storage = getStorage(rootWindow);
+    if (!storage || typeof storage.removeItem !== "function") {
+      return;
+    }
+    storage.removeItem(appConfig.activeSessionStorageKey);
+  }
+
+  function appendTimelineEntry(state, entry) {
+    state.timelineEntries = state.timelineEntries.concat([entry]);
+  }
+
+  function rebuildTimelineFromMessages(messages) {
+    const timelineEntries = [];
+    let currentStage = "engage";
+    let lastAcceptedText = "";
+    let lastAcceptedAt = null;
+    let lastAcceptedMessageId = null;
+    let lastReplyText = "";
+    let lastReplyAt = null;
+    let lastReplyMessageId = null;
+    let lastReplyRiskLevel = "pending";
+    let lastReplyEmotion = "pending";
+    let lastReplyNextAction = "pending";
+    let lastStageTransition = "idle → idle";
+
+    messages.forEach(function (message) {
+      const metadata = message && typeof message.metadata === "object" && message.metadata
+        ? message.metadata
+        : {};
+      if (message.role === "user") {
+        lastAcceptedText = message.content_text;
+        lastAcceptedAt = message.submitted_at;
+        lastAcceptedMessageId = message.message_id;
+        timelineEntries.push({
+          entryId: `timeline-${message.message_id}`,
+          kind: "user",
+          label: "User",
+          text: message.content_text,
+          timestamp: message.submitted_at,
+        });
+        return;
+      }
+
+      if (message.role === "assistant") {
+        const nextStage = typeof metadata.stage === "string" && dialogueStages.has(metadata.stage)
+          ? metadata.stage
+          : currentStage;
+        lastReplyText = message.content_text;
+        lastReplyAt = message.submitted_at;
+        lastReplyMessageId = message.message_id;
+        lastReplyRiskLevel = typeof metadata.risk_level === "string" ? metadata.risk_level : "pending";
+        lastReplyEmotion = typeof metadata.emotion === "string" ? metadata.emotion : "pending";
+        lastReplyNextAction = typeof metadata.next_action === "string" ? metadata.next_action : "pending";
+        lastStageTransition = `${currentStage} → ${nextStage}`;
+        timelineEntries.push({
+          entryId: `timeline-${message.message_id}`,
+          kind: "assistant",
+          label: "Assistant",
+          text: message.content_text,
+          timestamp: message.submitted_at,
+        });
+        timelineEntries.push({
+          entryId: `timeline-stage-${message.message_id}`,
+          kind: "system",
+          label: "Stage",
+          text: `${currentStage} → ${nextStage}`,
+          timestamp: message.submitted_at,
+        });
+        currentStage = nextStage;
+        return;
+      }
+
+      timelineEntries.push({
+        entryId: `timeline-${message.message_id || Math.random().toString(16).slice(2, 8)}`,
+        kind: "system",
+        label: "System",
+        text: message.content_text || "system event",
+        timestamp: message.submitted_at || null,
+      });
+    });
+
+    return {
+      timelineEntries,
+      currentStage,
+      lastAcceptedText,
+      lastAcceptedAt,
+      lastAcceptedMessageId,
+      lastReplyText,
+      lastReplyAt,
+      lastReplyMessageId,
+      lastReplyRiskLevel,
+      lastReplyEmotion,
+      lastReplyNextAction,
+      lastStageTransition,
+    };
+  }
+
+  function hydrateStateFromSessionState(state, payload) {
+    const session = payload && payload.session ? payload.session : null;
+    const messages = payload && Array.isArray(payload.messages) ? payload.messages : [];
+    const reconstructed = rebuildTimelineFromMessages(messages);
+
+    if (!session) {
+      return;
+    }
+
+    state.sessionId = session.session_id;
+    state.traceId = session.trace_id;
+    state.status = session.status || "active";
+    state.stage = reconstructed.currentStage || session.stage || "engage";
+    state.updatedAt = session.updated_at || session.started_at || null;
+    state.lastAcceptedText = reconstructed.lastAcceptedText;
+    state.lastAcceptedAt = reconstructed.lastAcceptedAt;
+    state.lastAcceptedMessageId = reconstructed.lastAcceptedMessageId;
+    state.lastReplyText = reconstructed.lastReplyText;
+    state.lastReplyAt = reconstructed.lastReplyAt;
+    state.lastReplyMessageId = reconstructed.lastReplyMessageId;
+    state.lastReplyRiskLevel = reconstructed.lastReplyRiskLevel;
+    state.lastReplyEmotion = reconstructed.lastReplyEmotion;
+    state.lastReplyNextAction = reconstructed.lastReplyNextAction;
+    state.lastStageTransition = reconstructed.lastStageTransition;
+    state.timelineEntries = reconstructed.timelineEntries;
+    state.dialogueReplyState = reconstructed.lastReplyMessageId ? "received" : "idle";
   }
 
   function initializeConsole(rootDocument, rootWindow, fetchImpl) {
@@ -439,6 +690,13 @@
         state.lastAcceptedMessageId = payload.message_id || envelope.message_id || null;
         state.lastAcceptedAt = payload.submitted_at || envelope.emitted_at;
         state.lastAcceptedText = payload.content_text || state.lastAcceptedText;
+        appendTimelineEntry(state, {
+          entryId: `timeline-${state.lastAcceptedMessageId || envelope.event_id}`,
+          kind: "user",
+          label: "User",
+          text: state.lastAcceptedText || "user message",
+          timestamp: state.lastAcceptedAt,
+        });
         state.textSubmitState = "sent";
         state.textSubmitMessage = `发送成功: ${state.lastAcceptedMessageId || "message.accepted"}`;
         state.pendingMessageId = null;
@@ -458,14 +716,29 @@
         }
 
         state.status = "active";
-        state.updatedAt = envelope.emitted_at;
+        const replyTimestamp = payload.submitted_at || envelope.emitted_at;
+        state.updatedAt = replyTimestamp;
         state.lastReplyMessageId = payload.message_id;
-        state.lastReplyAt = envelope.emitted_at;
+        state.lastReplyAt = replyTimestamp;
         state.lastReplyText = payload.reply;
         state.lastReplyEmotion = payload.emotion;
         state.lastReplyRiskLevel = payload.risk_level;
         state.lastReplyNextAction = payload.next_action;
         state.lastStageTransition = `${state.stage} → ${payload.stage}`;
+        appendTimelineEntry(state, {
+          entryId: `timeline-${payload.message_id}`,
+          kind: "assistant",
+          label: "Assistant",
+          text: payload.reply,
+          timestamp: replyTimestamp,
+        });
+        appendTimelineEntry(state, {
+          entryId: `timeline-stage-${payload.message_id}`,
+          kind: "system",
+          label: "Stage",
+          text: state.lastStageTransition,
+          timestamp: replyTimestamp,
+        });
         state.stage = payload.stage;
         state.dialogueReplyState = "received";
         pushConnectionLog(state, `dialogue reply received: ${payload.message_id}`);
@@ -558,6 +831,40 @@
       });
     }
 
+    async function restoreSessionFromStorage() {
+      const storedSessionId = readStoredSessionId(rootWindow, appConfig);
+      if (!storedSessionId) {
+        return false;
+      }
+
+      state.requestState = "restoring";
+      state.historyRestoreState = "restoring";
+      state.error = null;
+      state.connectionStatus = "idle";
+      state.lastHeartbeatAt = null;
+      state.connectionLog = ["realtime idle"];
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        const payload = await requestSessionState(resolvedFetch, appConfig, storedSessionId);
+        hydrateStateFromSessionState(state, payload);
+        state.requestState = "ready";
+        state.historyRestoreState = "restored";
+        pushConnectionLog(state, `session restored: ${storedSessionId}`);
+        renderSessionState(rootDocument, elements, state, appConfig);
+        connectRealtime();
+        return true;
+      } catch (error) {
+        clearStoredSessionId(rootWindow, appConfig);
+        state.requestState = "idle";
+        state.historyRestoreState = "error";
+        state.error = error instanceof Error ? error.message : String(error);
+        pushConnectionLog(state, "session restore failed");
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return false;
+      }
+    }
+
     async function startSession() {
       teardownRealtime(true);
       state.sessionId = null;
@@ -566,10 +873,12 @@
       state.stage = "idle";
       state.updatedAt = null;
       state.requestState = "loading";
+      state.historyRestoreState = "idle";
       state.error = null;
       state.connectionStatus = "idle";
       state.lastHeartbeatAt = null;
       state.connectionLog = ["realtime idle"];
+      state.timelineEntries = [];
       state.textSubmitState = "idle";
       state.textSubmitMessage = null;
       state.pendingMessageId = null;
@@ -594,6 +903,7 @@
         state.stage = payload.stage || "engage";
         state.updatedAt = payload.updated_at || payload.started_at || null;
         state.requestState = "ready";
+        writeStoredSessionId(rootWindow, appConfig, state.sessionId);
         pushConnectionLog(state, `session created: ${state.sessionId}`);
         renderSessionState(rootDocument, elements, state, appConfig);
         connectRealtime();
@@ -704,12 +1014,14 @@
     });
 
     renderSessionState(rootDocument, elements, state, appConfig);
+    restoreSessionFromStorage();
     rootWindow.__virtualHumanConsoleController = {
       getState: function () {
         return { ...state };
       },
       startSession,
       submitText,
+      restoreSessionFromStorage,
       forceRealtimeDropForTest,
       shutdownForTest,
     };

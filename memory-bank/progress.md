@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - step 13 recoverable chat timeline
+
+### Scope
+
+Completed implementation_plan step 13 by adding gateway session state retrieval, frontend chat timeline rendering, stage transition entries, and browser-side history restore after refresh.
+
+### Outputs
+
+- apps/api-gateway/main.py now exposes GET /api/session/{session_id}/state with ordered message history
+- apps/web/app.js rebuilds timeline entries from realtime events and restored message history
+- scripts/web_timeline_harness.js and scripts/verify_web_timeline.py validate three-turn ordering and refresh recovery
+- README.md, apps/web/README.md, and apps/api-gateway/README.md document the timeline restore flow
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_api_gateway_session_create.py tests/test_orchestrator_mock_reply.py tests/test_web_shell.py tests/test_web_session_start.py tests/test_web_realtime_connection.py tests/test_web_text_submit.py tests/test_web_mock_reply.py tests/test_web_timeline.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_gateway_session_create.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py
+
+### Next
+
+- Proceed to implementation_plan step 14: export the current text session as JSON with session metadata, messages, stage changes, and base events.
+
 ## 2026-03-08 - Step 12 Mock Orchestrator Reply Loop
 
 ### Scope

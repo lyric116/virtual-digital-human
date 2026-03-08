@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, and 12:
+This frontend shell now covers steps 7, 9, 10, 11, 12, and 13:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -13,6 +13,9 @@ This frontend shell now covers steps 7, 9, 10, 11, and 12:
   send success without introducing assistant replies yet
 - step 12: after text submission, the page consumes `dialogue.reply`, updates the
   latest reply placeholders, and rejects invalid reply payloads
+- step 13: the page renders a recoverable chat timeline, appends user and assistant
+  turns in order, records stage transitions, and restores history after refresh from
+  the gateway state endpoint
 
 ## Files
 
@@ -22,7 +25,8 @@ This frontend shell now covers steps 7, 9, 10, 11, and 12:
   - responsive panel styling
 - `app.js`
   - panel readiness check, session bootstrap flow, realtime connection, text submit
-    ack handling, and mock dialogue reply handling
+    ack handling, mock dialogue reply handling, chat timeline rendering, and session
+    history restore
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -47,8 +51,10 @@ Then open:
 - `.env.example` exposes `WEB_PUBLIC_API_BASE_URL`, `WEB_PUBLIC_WS_URL`, and `GATEWAY_CORS_ORIGINS` for local browser preview
 - only `Start Session` is live in this step; pause, reset, and export remain disabled
 - `Send Text` is live only after session bootstrap and a connected realtime channel
-- the latest assistant reply shown in transcript, avatar, and fusion cards is still a
-  single-turn placeholder, not full history rendering yet
+- the latest assistant reply shown in transcript, avatar, and fusion cards is derived
+  from the same live events that feed the timeline
+- the current active `sessionId` is stored in browser storage and used to restore
+  history through `GET /api/session/{session_id}/state`
 
 ## Verification
 
@@ -56,3 +62,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`

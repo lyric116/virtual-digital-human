@@ -58,6 +58,7 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="avatar-latest-reply-text"' in content
     assert 'id="fusion-risk-value"' in content
     assert 'id="timeline-assistant-text"' in content
+    assert 'id="chat-timeline-list"' in content
     assert 'id="session-id-value"' in content
     assert 'id="session-status-value"' in content
     assert 'id="connection-status-value"' in content
