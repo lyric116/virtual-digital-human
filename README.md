@@ -90,6 +90,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/asr-service main:app --host 0.0.0.0 --port 8020`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_service.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_postprocess.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_baseline_eval.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`
@@ -109,6 +110,10 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/manage_transcript_review.py complete-review --record-id <record_id> --reviewer <reviewer> --decision approved --final-text "..."`
 - Verify transcript review state transitions:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_transcript_review_flow.py`
+- Generate an ASR baseline report from locked human-reviewed samples:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/eval_asr_baseline.py --hypothesis-source draft`
+- Verify the ASR baseline evaluator with deterministic fixtures and current workflow gating:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_baseline_eval.py`
 - Import external ASR draft results from a JSONL file:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py import-results --results <results.jsonl>`
 - Generate a manual review checklist:
@@ -139,6 +144,15 @@ For DashScope ASR with the current service, use:
 `qwen3-asr-flash` now runs against DashScope's native multimodal generation endpoint.
 The service keeps the older OpenAI-compatible route only as a fallback path when native
 calls fail.
+
+Formal ASR evaluation is gated:
+
+- only `workflow_status=verified`
+- only `locked_for_eval=true`
+- only `text_status=human_verified`
+
+If those rows do not exist yet, `scripts/eval_asr_baseline.py` will generate a blocked
+report instead of fabricating WER/SER from machine drafts.
 
 ## Docker
 

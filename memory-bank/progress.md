@@ -21,6 +21,33 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Step 22 ASR Baseline Evaluation Gate
+
+### Scope
+
+Completed implementation plan step 22 by adding a read-only ASR baseline evaluator that computes WER and SER only from human-verified, evaluation-locked transcript rows, plus a deterministic verifier that proves complete reporting on temporary fixtures and blocked reporting on the current real workflow.
+
+### Outputs
+
+- scripts/eval_asr_baseline.py now filters transcript workflow rows with workflow_status=verified, locked_for_eval=true, and text_status=human_verified, then writes Markdown and JSON baseline artifacts.
+- scripts/verify_asr_baseline_eval.py now proves two cases end to end: a temporary complete WER/SER report from locked fixture rows and a blocked report from the current real enterprise workflow.
+- tests/test_eval_asr_baseline.py now locks the evaluator's gating rules, token error metrics, and blocked-report behavior.
+- data/derived/eval/asr_baseline_report.md and data/derived/eval/asr_baseline_details.json now record the current real repository state as blocked because no formal evaluation subset has been locked yet.
+- README.md, docs/03-asr.md, docs/08-data-ops-eval.md, and services/asr-service/README.md now document the step 22 evaluator and its strict provenance gate.
+
+### Checks
+
+- Ran UV_CACHE_DIR=.uv-cache uv run python -m py_compile scripts/eval_asr_baseline.py scripts/verify_asr_baseline_eval.py tests/test_eval_asr_baseline.py.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest tests/test_eval_asr_baseline.py tests/test_asr_service.py tests/test_asr_postprocess.py tests/test_environment_inventory.py and confirmed 16 tests passed.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_baseline_eval.py and confirmed a complete fixture report plus a blocked real-workflow report.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/eval_asr_baseline.py --hypothesis-source draft and wrote the current blocked baseline report under data/derived/eval/.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest and confirmed 90 tests passed.
+
+### Next
+
+- Proceed to implementation plan step 22A by freezing a small manually reviewed subset with locked_for_eval=true so the blocked report can turn into the first formal WER/SER baseline.
+- Keep eval_asr_baseline.py read-only; do not let evaluation tooling modify transcript workflow state.
+
 ## 2026-03-08 - Step 21 ASR Postprocess And Native DashScope Route
 
 ### Scope

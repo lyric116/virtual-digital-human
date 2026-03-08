@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - Formal ASR Evaluation Is Now Gated By Locked Human References
+
+- scripts/eval_asr_baseline.py is now the only approved ASR WER/SER entrypoint in the repository; it is read-only and will only score rows that are simultaneously verified, locked_for_eval=true, and text_status=human_verified.
+- data/derived/eval/asr_baseline_report.md and asr_baseline_details.json now represent repository-level evaluation readiness: they may legitimately be blocked when no locked subset exists, and that blocked state is preferable to silently scoring machine drafts as gold references.
+- Step 22 and step 22A are now intentionally separated: evaluation tooling can ship before a formal reference subset exists, but the first real baseline metric run cannot happen until transcript review explicitly locks approved samples for evaluation.
+
 ## 2026-03-08 - Qwen3 ASR Now Uses DashScope Native Transport
 
 - services/asr-service now treats https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation as the canonical qwen3-asr-flash endpoint; old compatible-mode routing is retained only as a fallback and should no longer be the default in docs or env templates.

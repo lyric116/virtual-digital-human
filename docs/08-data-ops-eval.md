@@ -102,6 +102,19 @@
 - `eval_multimodal.py`
 - `replay_session.py`
 
+当前仓库中步骤 22 已落地的 ASR 基线脚本为：
+
+- `scripts/eval_asr_baseline.py`
+- `scripts/verify_asr_baseline_eval.py`
+
+其中 `eval_asr_baseline.py` 的约束是：
+
+- 只读取 `data/derived/transcripts/val_transcripts_template.jsonl`
+- 只纳入 `workflow_status=verified`
+- 只纳入 `locked_for_eval=true`
+- 只纳入 `text_status=human_verified`
+- 没有满足门槛的样本时输出 `blocked` 报告，不允许回退到机器初稿自评
+
 评测脚本需要能直接输出 CSV 或 Markdown 表格，用于方案书和 PPT。
 
 ## 8. 可解释性输出

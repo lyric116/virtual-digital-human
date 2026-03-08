@@ -171,3 +171,5 @@ flowchart LR
 - 当前提供方仍不暴露 token 级置信度，因此服务响应保留 `confidence_mean=null` 和 `confidence_available=false`
 - 步骤 21 已在 `services/asr-service/main.py` 内加入确定性后处理：长静音切分、基础标点恢复、`services/asr-service/hotwords.json` 热词归一
 - 步骤 21 的验证脚本为 `scripts/verify_asr_postprocess.py`，可直接对比增强前后的同一段音频文本
+- 步骤 22 的评测脚本为 `scripts/eval_asr_baseline.py`，只读取 `verified + locked_for_eval + human_verified` 的记录
+- 当前如果真实工作流中尚无锁定样本，评测脚本会输出 `blocked` 报告，而不是使用机器初稿伪造正式 WER/SER

@@ -72,6 +72,7 @@ From repository root:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_service.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_postprocess.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_draft_batch.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/eval_asr_baseline.py --hypothesis-source draft`
 
 The live verifier uploads three enterprise validation samples, checks transcript
 availability, confirms duration and audio metadata fields, and prints original-vs-derived
@@ -80,3 +81,7 @@ audio format differences.
 The batch verifier starts the same service locally, writes a small temporary ASR review
 batch through `scripts/write_asr_drafts.py transcribe-service`, and confirms the selected
 rows move from `pending_asr` to `draft_ready` without altering untouched rows.
+
+The ASR baseline evaluator is read-only: it never writes transcript workflow state and
+will only score rows that are already `verified`, `locked_for_eval=true`, and
+`text_status=human_verified`.

@@ -1,0 +1,25 @@
+{
+  "generated_at": "2026-03-08T14:01:49.244127+00:00",
+  "status": "blocked",
+  "transcripts": "data/derived/transcripts/val_transcripts_template.jsonl",
+  "report": "data/derived/eval/asr_baseline_report.md",
+  "details_json": "data/derived/eval/asr_baseline_details.json",
+  "hypothesis_source": "draft",
+  "gating": {
+    "total_rows": 1126,
+    "eligible_records": 0,
+    "not_verified": 1126,
+    "not_locked_for_eval": 0,
+    "not_human_verified": 0,
+    "missing_final_text": 0
+  },
+  "metrics": {
+    "sample_count": 0,
+    "reference_token_total": 0,
+    "edit_distance_total": 0,
+    "wer": null,
+    "ser": null
+  },
+  "failure_examples": [],
+  "samples": []
+}
