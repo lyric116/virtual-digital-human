@@ -21,6 +21,32 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Step 20 Partial Transcript Preview Loop
+
+### Scope
+
+Completed implementation plan step 20 by adding preview-time audio ASR requests, transcript.partial realtime events, and frontend partial transcript rendering during recording while keeping the finalized audio message contract from step 19 unchanged.
+
+### Outputs
+
+- apps/api-gateway/main.py now exposes POST /api/session/{session_id}/audio/preview, calls the standalone ASR service for best-effort preview text, and emits transcript.partial immediately over the session websocket without persisting a new message row.
+- apps/web/app.js and apps/web/index.html now request preview snapshots during recording, render partial transcript text in the transcript panel and timeline summary, ignore stale preview events with recording_id plus preview_seq, and still switch to the final accepted transcript after stop.
+- scripts/web_audio_final_transcript_harness.js now exercises chunk upload, transcript.partial, audio/finalize, and assistant reply in one recording simulation; scripts/verify_web_audio_partial_transcript.py validates the live partial-before-final behavior.
+- tests/test_api_gateway_audio_preview.py and tests/test_web_audio_partial_transcript.py now lock the preview contract and frontend partial rendering path; README.md, apps/api-gateway/README.md, apps/web/README.md, and docs/shared_contracts.md now document the preview boundary.
+
+### Checks
+
+- Ran node --check apps/web/app.js scripts/web_audio_final_transcript_harness.js scripts/web_audio_chunk_upload_harness.js.
+- Ran UV_CACHE_DIR=.uv-cache uv run python -m py_compile apps/api-gateway/main.py scripts/verify_web_audio_partial_transcript.py tests/test_api_gateway_audio_preview.py tests/test_web_audio_partial_transcript.py.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest and confirmed 82 tests passed.
+- Ran live verification with scripts/verify_web_text_submit.py, scripts/verify_web_mock_reply.py, and scripts/verify_audio_chunk_upload.py after the realtime event changes and confirmed the older text and chunk paths still worked.
+- Ran live verification with scripts/verify_web_audio_partial_transcript.py and confirmed partial transcript text appeared during recording, then final transcript plus assistant reply arrived after stop through qwen3-asr-flash.
+
+### Next
+
+- Proceed to implementation plan step 21 by improving ASR readability with silence handling, punctuation, and hotword normalization without changing the frontend contract again.
+- Keep transcript.partial as a preview-only realtime event and continue using the accepted audio user message as the sole persisted final transcript artifact.
+
 ## 2026-03-08 - Step 19 Audio Final Transcript Loop
 
 ### Scope

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, and 19:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, and 20:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -20,6 +20,9 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, and 19:
 - step 19: accept one finalized recording, call the standalone ASR service, persist an
   `audio_final` asset plus an `audio` user message, and reuse the existing realtime
   `message.accepted -> dialogue.reply` pipeline
+- step 20: accept preview snapshots of the in-progress recording, call the standalone ASR
+  service for a best-effort partial transcript, and emit `transcript.partial` immediately
+  over the session realtime channel without persisting a new message row
 
 ## Files
 
@@ -34,6 +37,7 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, and 19:
 - `GET /api/session/{session_id}/export`
 - `POST /api/session/{session_id}/text`
 - `POST /api/session/{session_id}/audio/chunk`
+- `POST /api/session/{session_id}/audio/preview`
 - `POST /api/session/{session_id}/audio/finalize`
 - `GET /ws/session/{session_id}` as a WebSocket upgrade endpoint
 
@@ -70,3 +74,6 @@ From repository root:
   `MEDIA_STORAGE_ROOT`, sends the binary to `services/asr-service`, writes the final
   transcript as a user message with `source_kind='audio'`, and then triggers the same
   mock dialogue flow used by the text path.
+- `POST /api/session/{session_id}/audio/preview` accepts a current recording snapshot,
+  sends it to `services/asr-service`, and emits `transcript.partial` without changing the
+  persisted final-transcript contract introduced in step 19.

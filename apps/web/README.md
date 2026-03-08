@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, and 19:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, and 20:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -27,6 +27,9 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, and 1
 - step 19: after recording stops, the page now submits one finalized audio blob, waits
   for the 最终转写 result, shows the transcript in the chat flow, and consumes the same
   mock assistant reply path used by text input
+- step 20: while recording is still running, the page now sends periodic preview blobs,
+  waits for `transcript.partial`, and shows partial transcript text before the final
+  accepted transcript arrives after stop
 
 ## Files
 
@@ -38,7 +41,7 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, and 1
   - panel readiness check, session bootstrap flow, realtime connection, text submit
     ack handling, mock dialogue reply handling, chat timeline rendering, and session
     history restore plus session export, microphone recording, audio chunk upload, and
-    finalized audio submission back into the text dialogue loop
+    finalized audio submission plus partial transcript preview back into the text dialogue loop
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -68,6 +71,9 @@ Then open:
 - when `window.__APP_CONFIG__.enableAudioFinalize !== false`, stopping a recording also
   submits one complete audio blob to `/api/session/{session_id}/audio/finalize` and
   waits for the final transcript realtime acknowledgement
+- when `window.__APP_CONFIG__.enableAudioPreview !== false`, recording also submits
+  growing preview snapshots to `/api/session/{session_id}/audio/preview` so the page can
+  display partial transcript text before stop
 - the latest assistant reply shown in transcript, avatar, and fusion cards is derived
   from the same live events that feed the timeline
 - the current active `sessionId` is stored in browser storage and used to restore
@@ -89,3 +95,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_partial_transcript.py`

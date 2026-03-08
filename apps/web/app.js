@@ -22,6 +22,8 @@
       heartbeatIntervalMs: config.heartbeatIntervalMs || 5000,
       reconnectDelayMs: config.reconnectDelayMs || 1000,
       enableAudioFinalize: config.enableAudioFinalize !== false,
+      enableAudioPreview: config.enableAudioPreview !== false,
+      audioPreviewChunkThreshold: config.audioPreviewChunkThreshold || 2,
     };
   }
 
@@ -50,6 +52,10 @@
       lastUploadedChunkId: null,
       lastUploadedAt: null,
       nextAudioChunkSeq: 1,
+      partialTranscriptState: "idle",
+      partialTranscriptText: "",
+      partialTranscriptUpdatedAt: null,
+      lastPartialPreviewSeq: 0,
       draftText: "我这两天总是睡不好，脑子停不下来。",
       timelineEntries: [],
       historyRestoreState: "idle",
@@ -109,6 +115,7 @@
       textSubmitStatus: findRequiredElement(rootDocument, "text-submit-status"),
       textLastMessageIdValue: findRequiredElement(rootDocument, "text-last-message-id-value"),
       textLastMessageTimeValue: findRequiredElement(rootDocument, "text-last-message-time-value"),
+      transcriptUserPartialText: findOptionalElement(rootDocument, "transcript-user-partial-text"),
       transcriptUserFinalText: findRequiredElement(rootDocument, "transcript-user-final-text"),
       transcriptAssistantReplyText: findRequiredElement(rootDocument, "transcript-assistant-reply-text"),
       avatarLatestReplyText: findRequiredElement(rootDocument, "avatar-latest-reply-text"),
@@ -295,6 +302,19 @@
     return state.audioUploadMessage || "当前没有音频分片上传。";
   }
 
+  function getPartialTranscriptMessage(state) {
+    if (state.partialTranscriptState === "streaming" && state.partialTranscriptText) {
+      return state.partialTranscriptText;
+    }
+    if (state.partialTranscriptState === "error") {
+      return state.partialTranscriptText || "partial transcript 获取失败。";
+    }
+    if (state.recordingState === "recording" || state.audioUploadState === "processing_final") {
+      return "等待语音局部转写...";
+    }
+    return "等待 partial transcript...";
+  }
+
   function getTextSubmitButtonLabel(state) {
     if (state.textSubmitState === "sending") {
       return "Sending...";
@@ -426,6 +446,9 @@
     if (elements.audioUploadDetailValue) {
       elements.audioUploadDetailValue.textContent = getAudioUploadStatusMessage(state);
     }
+    if (elements.transcriptUserPartialText) {
+      elements.transcriptUserPartialText.textContent = getPartialTranscriptMessage(state);
+    }
     if (elements.micRequestButton) {
       elements.micRequestButton.disabled = (
         state.micPermissionState === "requesting"
@@ -476,7 +499,11 @@
     elements.avatarLatestReplyText.textContent = state.lastReplyText || "等待 mock reply...";
     elements.fusionRiskValue.textContent = state.lastReplyRiskLevel;
     elements.fusionStageValue.textContent = `stage: ${state.stage} / next: ${state.lastReplyNextAction}`;
-    elements.timelineUserText.textContent = state.lastAcceptedText || "等待用户消息...";
+    elements.timelineUserText.textContent = (
+      state.lastAcceptedText
+        || state.partialTranscriptText
+        || "等待用户消息..."
+    );
     elements.timelineAssistantText.textContent = state.lastReplyText || "等待系统回复...";
     elements.timelineStageText.textContent = state.lastStageTransition;
     renderTimeline(elements, state);
@@ -491,6 +518,7 @@
     rootDocument.body.dataset.micPermissionState = state.micPermissionState;
     rootDocument.body.dataset.recordingState = state.recordingState;
     rootDocument.body.dataset.audioUploadState = state.audioUploadState;
+    rootDocument.body.dataset.partialTranscriptState = state.partialTranscriptState;
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -526,6 +554,25 @@
       return null;
     }
 
+    return payload;
+  }
+
+  function validateTranscriptPartialPayload(payload) {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    if (payload.transcript_kind !== "partial") {
+      return null;
+    }
+    if (typeof payload.text !== "string" || payload.text.trim() === "") {
+      return null;
+    }
+    if (typeof payload.preview_seq !== "number" || payload.preview_seq < 1) {
+      return null;
+    }
+    if (typeof payload.recording_id !== "string" || payload.recording_id.trim() === "") {
+      return null;
+    }
     return payload;
   }
 
@@ -663,6 +710,42 @@
       const message = responsePayload && typeof responsePayload.message === "string"
         ? responsePayload.message
         : `Audio finalize failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return responsePayload;
+  }
+
+  async function requestAudioPreview(fetchImpl, appConfig, state, payload) {
+    const query = new URLSearchParams();
+    query.set("preview_seq", String(payload.previewSeq));
+    query.set("recording_id", payload.recordingId);
+    if (typeof payload.durationMs === "number") {
+      query.set("duration_ms", String(payload.durationMs));
+    }
+
+    const response = await fetchImpl(
+      `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(state.sessionId)}/audio/preview?${query.toString()}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": payload.mimeType || "application/octet-stream",
+        },
+        body: payload.blob,
+      },
+    );
+
+    let responsePayload = null;
+    try {
+      responsePayload = await response.json();
+    } catch (error) {
+      responsePayload = null;
+    }
+
+    if (!response.ok) {
+      const message = responsePayload && typeof responsePayload.message === "string"
+        ? responsePayload.message
+        : `Audio preview failed with status ${response.status}`;
       throw new Error(message);
     }
 
@@ -981,6 +1064,10 @@
       stopRequested: false,
       recordedAudioParts: [],
       finalizingAudio: false,
+      previewInFlight: false,
+      lastPreviewChunkCount: 0,
+      nextPreviewSeq: 1,
+      currentRecordingId: null,
     };
 
     function clearHeartbeatTimer() {
@@ -1004,12 +1091,28 @@
       }
     }
 
+    function buildRecordedAudioBlob() {
+      const BlobCtor = getBlobCtor();
+      if (!BlobCtor || !runtime.recordedAudioParts.length) {
+        return null;
+      }
+      return new BlobCtor(runtime.recordedAudioParts, {
+        type: state.recordingMimeType === "pending"
+          ? "application/octet-stream"
+          : state.recordingMimeType,
+      });
+    }
+
     function teardownMicrophone() {
       clearRecordingTimer();
       runtime.stopRequested = true;
       runtime.pendingAudioUploads = 0;
       runtime.recordedAudioParts = [];
       runtime.finalizingAudio = false;
+      runtime.previewInFlight = false;
+      runtime.lastPreviewChunkCount = 0;
+      runtime.nextPreviewSeq = 1;
+      runtime.currentRecordingId = null;
       if (runtime.mediaRecorder && runtime.mediaRecorder.state === "recording") {
         try {
           runtime.mediaRecorder.stop();
@@ -1103,6 +1206,31 @@
         return;
       }
 
+      if (envelope.event_type === "transcript.partial") {
+        const payload = validateTranscriptPartialPayload(envelope.payload || null);
+        if (!payload) {
+          pushConnectionLog(state, "partial transcript rejected: invalid payload");
+          renderSessionState(rootDocument, elements, state, appConfig);
+          return;
+        }
+        if (runtime.currentRecordingId && payload.recording_id !== runtime.currentRecordingId) {
+          return;
+        }
+        if (state.lastAcceptedSourceKind === "audio" && state.audioUploadState === "completed") {
+          return;
+        }
+        if (payload.preview_seq < state.lastPartialPreviewSeq) {
+          return;
+        }
+        state.partialTranscriptState = "streaming";
+        state.partialTranscriptText = payload.text;
+        state.partialTranscriptUpdatedAt = payload.generated_at || envelope.emitted_at;
+        state.lastPartialPreviewSeq = payload.preview_seq;
+        pushConnectionLog(state, `partial transcript updated: ${payload.preview_seq}`);
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
       if (envelope.event_type === "message.accepted") {
         const payload = envelope.payload || {};
         const acceptedSourceKind = typeof payload.source_kind === "string"
@@ -1124,8 +1252,13 @@
         });
         state.pendingMessageId = null;
         if (acceptedSourceKind === "audio") {
+          runtime.currentRecordingId = null;
           state.audioUploadState = "completed";
           state.audioUploadMessage = `语音转写完成: ${state.lastAcceptedMessageId || "message.accepted"}`;
+          state.partialTranscriptState = "idle";
+          state.partialTranscriptText = "";
+          state.partialTranscriptUpdatedAt = null;
+          state.lastPartialPreviewSeq = 0;
           pushConnectionLog(state, `audio message accepted: ${state.lastAcceptedMessageId || "unknown"}`);
         } else {
           state.textSubmitState = "sent";
@@ -1339,8 +1472,16 @@
       state.lastUploadedChunkId = null;
       state.lastUploadedAt = null;
       state.nextAudioChunkSeq = 1;
+      state.partialTranscriptState = "idle";
+      state.partialTranscriptText = "";
+      state.partialTranscriptUpdatedAt = null;
+      state.lastPartialPreviewSeq = 0;
       runtime.recordedAudioParts = [];
       runtime.finalizingAudio = false;
+      runtime.previewInFlight = false;
+      runtime.lastPreviewChunkCount = 0;
+      runtime.nextPreviewSeq = 1;
+      runtime.currentRecordingId = null;
       renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
@@ -1564,6 +1705,60 @@
       }
     }
 
+    async function maybeSendAudioPreview() {
+      if (!appConfig.enableAudioPreview) {
+        return;
+      }
+      if (!state.sessionId || state.recordingState !== "recording") {
+        return;
+      }
+      if (runtime.finalizingAudio || runtime.previewInFlight) {
+        return;
+      }
+      if (runtime.recordedAudioParts.length < appConfig.audioPreviewChunkThreshold) {
+        return;
+      }
+      if (runtime.recordedAudioParts.length === runtime.lastPreviewChunkCount) {
+        return;
+      }
+
+      const previewBlob = buildRecordedAudioBlob();
+      if (!previewBlob) {
+        return;
+      }
+
+      const previewSeq = runtime.nextPreviewSeq;
+      runtime.nextPreviewSeq += 1;
+      runtime.previewInFlight = true;
+      state.partialTranscriptState = "pending";
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        await requestAudioPreview(resolvedFetch, appConfig, state, {
+          blob: previewBlob,
+          durationMs: Math.max(0, Math.round(state.recordingDurationMs)),
+          mimeType: previewBlob.type || state.recordingMimeType || "application/octet-stream",
+          previewSeq,
+          recordingId: runtime.currentRecordingId,
+        });
+        runtime.lastPreviewChunkCount = runtime.recordedAudioParts.length;
+      } catch (error) {
+        state.partialTranscriptState = "error";
+        state.partialTranscriptText = error instanceof Error ? error.message : String(error);
+        state.partialTranscriptUpdatedAt = new Date().toISOString();
+        pushConnectionLog(state, "audio preview failed");
+        renderSessionState(rootDocument, elements, state, appConfig);
+      } finally {
+        runtime.previewInFlight = false;
+        if (
+          state.recordingState === "recording"
+          && runtime.recordedAudioParts.length > runtime.lastPreviewChunkCount
+        ) {
+          void maybeSendAudioPreview();
+        }
+      }
+    }
+
     async function finalizeRecordedAudio() {
       if (!appConfig.enableAudioFinalize || runtime.finalizingAudio) {
         return;
@@ -1573,8 +1768,8 @@
         return;
       }
 
-      const BlobCtor = getBlobCtor();
-      if (!BlobCtor) {
+      const finalBlob = buildRecordedAudioBlob();
+      if (!finalBlob) {
         state.audioUploadState = "error";
         state.audioUploadMessage = "当前环境不支持 Blob，无法提交完整录音。";
         renderSessionState(rootDocument, elements, state, appConfig);
@@ -1597,11 +1792,6 @@
 
       try {
         await waitForPendingAudioUploads();
-        const finalBlob = new BlobCtor(runtime.recordedAudioParts, {
-          type: state.recordingMimeType === "pending"
-            ? "application/octet-stream"
-            : state.recordingMimeType,
-        });
         const payload = await requestAudioFinalize(resolvedFetch, appConfig, state, {
           blob: finalBlob,
           durationMs: Math.max(0, Math.round(state.recordingDurationMs)),
@@ -1690,6 +1880,10 @@
       runtime.pendingAudioUploads = 0;
       runtime.recordedAudioParts = [];
       runtime.finalizingAudio = false;
+      runtime.previewInFlight = false;
+      runtime.lastPreviewChunkCount = 0;
+      runtime.nextPreviewSeq = 1;
+      runtime.currentRecordingId = `rec_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
       state.recordingState = "recording";
       state.recordingDurationMs = 0;
       state.recordingChunkCount = 0;
@@ -1703,6 +1897,10 @@
       state.lastUploadedChunkId = null;
       state.lastUploadedAt = null;
       state.nextAudioChunkSeq = 1;
+      state.partialTranscriptState = "idle";
+      state.partialTranscriptText = "";
+      state.partialTranscriptUpdatedAt = null;
+      state.lastPartialPreviewSeq = 0;
 
       const recorder = new MediaRecorderCtor(runtime.micStream);
       runtime.mediaRecorder = recorder;
@@ -1723,6 +1921,7 @@
             isFinal,
             mimeType: event.data.type || recorder.mimeType || "application/octet-stream",
           });
+          void maybeSendAudioPreview();
           renderSessionState(rootDocument, elements, state, appConfig);
         }
       });

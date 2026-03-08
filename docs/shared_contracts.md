@@ -110,6 +110,28 @@ response is persisted into `media_indexes`.
 | `storage_path` | string | Yes | Local path or object key for the stored chunk. |
 | `media_id` | string | Yes | Stable media index id returned by the gateway. |
 
+## Audio Preview And Partial Transcript
+
+This contract is used by `POST /api/session/{id}/audio/preview`. The raw request body
+contains the current accumulated recording snapshot. The gateway sends the snapshot to
+the standalone ASR service and emits `transcript.partial` over WebSocket without
+persisting a new row in `messages`.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `session_id` | string | Yes | Target session id. |
+| `trace_id` | string | Yes | Session trace id reused by the partial transcript event. |
+| `transcript_kind` | string | Yes | Always `partial` for preview requests. |
+| `preview_seq` | integer | Yes | Monotonic preview sequence within one recording. |
+| `recording_id` | string | Yes | Browser-side recording id used to ignore stale partial events. |
+| `text` | string | Yes | Best-effort partial transcript text. |
+| `language` | string | No | Language tag when the provider exposes it. |
+| `confidence` | number | No | Mean confidence if available from the ASR provider. |
+| `confidence_available` | boolean | Yes | Whether `confidence` is real. |
+| `duration_ms` | integer | No | Duration of the preview snapshot. |
+| `asr_engine` | string | No | Provider or model identifier, for example `qwen3-asr-flash`. |
+| `generated_at` | string | Yes | Time when the ASR service produced the preview text. |
+
 ## Audio Finalize And Accepted Audio Message
 
 This contract is used by `POST /api/session/{id}/audio/finalize`. The raw request body
@@ -134,8 +156,8 @@ reuses the existing `message.accepted -> dialogue.reply` realtime path.
 ## Transcript Result
 
 This payload is used for offline ASR backfill and later live transcript events. In step
-19, the live audio path still emits only the accepted final user message and does not
-emit a separate `transcript.partial` or `transcript.final` event yet.
+20, the live audio path emits `transcript.partial` during recording but still uses only
+the accepted final user message, not a separate `transcript.final` event, after stop.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |

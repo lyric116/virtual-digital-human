@@ -363,6 +363,7 @@ function executeApp() {
       reconnectDelayMs: 150,
       activeSessionStorageKey: "virtual-human-active-session-id",
       enableAudioFinalize: false,
+      enableAudioPreview: false,
     },
     setTimeout,
     clearTimeout,

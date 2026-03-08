@@ -116,6 +116,7 @@ class FakeDocument {
       ["text-submit-status", "建立会话并连接实时通道后可发送文本。", ""],
       ["text-last-message-id-value", "not sent", ""],
       ["text-last-message-time-value", "not accepted", ""],
+      ["transcript-user-partial-text", "等待 partial transcript...", ""],
       ["transcript-user-final-text", "等待用户提交文本...", ""],
       ["transcript-assistant-reply-text", "等待 mock orchestrator reply...", ""],
       ["avatar-latest-reply-text", "等待 mock reply...", ""],
@@ -219,6 +220,7 @@ function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null,
 function createMockRuntime() {
   let currentSocket = null;
   const uploadCalls = [];
+  const previewCalls = [];
   const finalizeCalls = [];
   const sessionPayload = {
     session_id: "sess_mock_audio_001",
@@ -342,6 +344,59 @@ function createMockRuntime() {
       };
     }
 
+    if (url.includes(`/api/session/${sessionPayload.session_id}/audio/preview`)) {
+      const parsed = new URL(url);
+      const previewSeq = Number(parsed.searchParams.get("preview_seq") || "0");
+      const recordingId = parsed.searchParams.get("recording_id") || "rec_missing";
+      previewCalls.push({
+        previewSeq,
+        recordingId,
+        bodySize: typeof options.body.size === "number" ? options.body.size : null,
+        contentType: options.headers ? options.headers["Content-Type"] : null,
+      });
+
+      const partialPayload = {
+        session_id: sessionPayload.session_id,
+        trace_id: sessionPayload.trace_id,
+        transcript_kind: "partial",
+        preview_seq: previewSeq,
+        recording_id: recordingId,
+        text: "Bonjour, je me sens ...",
+        language: "fr",
+        confidence: null,
+        confidence_available: false,
+        duration_ms: 500,
+        asr_engine: "qwen3-asr-flash",
+        generated_at: "2026-03-08T16:20:03Z",
+      };
+
+      setTimeout(() => {
+        if (!currentSocket || currentSocket.readyState !== MockWebSocket.OPEN) {
+          return;
+        }
+        currentSocket.emit("message", {
+          data: JSON.stringify(
+            buildEnvelope(
+              sessionPayload.session_id,
+              sessionPayload.trace_id,
+              "transcript.partial",
+              partialPayload,
+              null,
+              "asr_service",
+            ),
+          ),
+        });
+      }, 0);
+
+      return {
+        ok: true,
+        status: 202,
+        async json() {
+          return partialPayload;
+        },
+      };
+    }
+
     if (url.includes(`/api/session/${sessionPayload.session_id}/audio/finalize`)) {
       finalizeCalls.push({
         bodySize: typeof options.body.size === "number" ? options.body.size : null,
@@ -427,6 +482,7 @@ function createMockRuntime() {
     fetchImpl: mockFetch,
     WebSocketImpl: MockWebSocket,
     uploadCalls,
+    previewCalls,
     finalizeCalls,
   };
 }
@@ -499,10 +555,12 @@ function collectSnapshot(document, window) {
     micPermissionState: document.body.dataset.micPermissionState || null,
     recordingState: document.body.dataset.recordingState || null,
     audioUploadState: document.body.dataset.audioUploadState || null,
+    partialTranscriptState: document.body.dataset.partialTranscriptState || null,
     audioUploadDetail: document.getElementById("audio-upload-detail-value").textContent,
     uploadedChunkCount: controllerState.uploadedChunkCount,
     lastMessageId: document.getElementById("text-last-message-id-value").textContent,
     lastMessageTime: document.getElementById("text-last-message-time-value").textContent,
+    partialTranscriptText: document.getElementById("transcript-user-partial-text")?.textContent || "",
     userFinalText: document.getElementById("transcript-user-final-text").textContent,
     assistantReplyText: document.getElementById("transcript-assistant-reply-text").textContent,
     timelineUserText: document.getElementById("timeline-user-text").textContent,
@@ -635,6 +693,14 @@ async function main() {
     5000,
     "recording did not produce multiple audio chunks before stop",
   );
+  await waitFor(
+    () => {
+      const text = runtime.document.getElementById("transcript-user-partial-text");
+      return text && text.textContent && !text.textContent.startsWith("等待");
+    },
+    10000,
+    "partial transcript did not appear during recording",
+  );
 
   const duringRecording = collectSnapshot(runtime.document, runtime.window);
   await runtime.micStopButton.click();
@@ -666,6 +732,7 @@ async function main() {
       afterStop,
       afterReply,
       uploadCalls: runtimeConfig.uploadCalls,
+      previewCalls: runtimeConfig.previewCalls,
       finalizeCalls: runtimeConfig.finalizeCalls,
     }, null, 2)}\n`,
   );

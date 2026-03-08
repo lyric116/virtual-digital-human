@@ -201,6 +201,21 @@ class AudioFinalAcceptedResponse(BaseModel):
     submitted_at: datetime
 
 
+class TranscriptPartialAcceptedResponse(BaseModel):
+    session_id: str
+    trace_id: str
+    transcript_kind: Literal["partial"]
+    preview_seq: int = Field(ge=1)
+    recording_id: str
+    text: str
+    language: str | None = None
+    confidence: float | None = None
+    confidence_available: bool = False
+    duration_ms: int | None = Field(default=None, ge=0)
+    asr_engine: str | None = None
+    generated_at: datetime
+
+
 class MessageHistoryResponse(BaseModel):
     message_id: str
     session_id: str
@@ -374,6 +389,21 @@ class ConnectionRegistry:
             del self._connections[session_id]
 
     async def enqueue_event(self, session_id: str, envelope: dict[str, Any]) -> None:
+        connections = list(self._connections.get(session_id, []))
+        if connections:
+            stale: list[WebSocket] = []
+            delivered = False
+            for websocket in connections:
+                try:
+                    await websocket.send_json(envelope)
+                    delivered = True
+                except Exception:
+                    stale.append(websocket)
+            for websocket in stale:
+                await self.remove(session_id, websocket)
+            if delivered and not stale:
+                return
+
         queue = self._pending_events.setdefault(session_id, [])
         queue.append(envelope)
 
@@ -1604,6 +1634,94 @@ def create_audio_message_record(
     return result
 
 
+def create_audio_preview_record(
+    repository: SessionRepository,
+    settings: GatewaySettings,
+    session_id: str,
+    *,
+    content: bytes,
+    duration_ms: int | None,
+    mime_type: str,
+    preview_seq: int,
+    recording_id: str,
+) -> dict[str, Any] | JSONResponse:
+    if not content:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_payload(
+                error_code="audio_preview_empty",
+                message="Audio preview body must not be empty",
+                session_id=session_id,
+            ),
+        )
+
+    session = repository.get_session_summary(session_id)
+    if session is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=error_payload(
+                error_code="session_not_found",
+                message="Session not found",
+                session_id=session_id,
+            ),
+        )
+
+    try:
+        transcription = request_asr_transcription(
+            settings,
+            body=content,
+            mime_type=mime_type,
+        )
+    except RuntimeError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content=error_payload(
+                error_code="audio_preview_failed",
+                message=str(exc),
+                session_id=session_id,
+                retryable=True,
+            ),
+        )
+
+    transcript_text = transcription.transcript_text.strip()
+    if not transcript_text:
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content=TranscriptPartialAcceptedResponse(
+                session_id=session["session_id"],
+                trace_id=session["trace_id"],
+                transcript_kind="partial",
+                preview_seq=preview_seq,
+                recording_id=recording_id,
+                text="",
+                language=transcription.transcript_language,
+                confidence=transcription.confidence_mean,
+                confidence_available=transcription.confidence_available,
+                duration_ms=duration_ms if duration_ms is not None else transcription.duration_ms,
+                asr_engine=transcription.model,
+                generated_at=transcription.generated_at,
+            ).model_dump(mode="json"),
+        )
+
+    return {
+        "session": session,
+        "transcript": TranscriptPartialAcceptedResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            transcript_kind="partial",
+            preview_seq=preview_seq,
+            recording_id=recording_id,
+            text=transcript_text,
+            language=transcription.transcript_language,
+            confidence=transcription.confidence_mean,
+            confidence_available=transcription.confidence_available,
+            duration_ms=duration_ms if duration_ms is not None else transcription.duration_ms,
+            asr_engine=transcription.model,
+            generated_at=transcription.generated_at,
+        ).model_dump(mode="json"),
+    }
+
+
 async def dispatch_message_pipeline(
     request: Request,
     session_id: str,
@@ -1743,6 +1861,45 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             metadata={"source": "web-shell"},
         )
         return result
+
+    @app.post(
+        "/api/session/{session_id}/audio/preview",
+        response_model=TranscriptPartialAcceptedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def preview_audio(
+        session_id: str,
+        request: Request,
+        preview_seq: int,
+        recording_id: str,
+        duration_ms: int | None = None,
+    ) -> Any:
+        repository = request.app.state.session_repository
+        settings: GatewaySettings = request.app.state.settings
+        body = await request.body()
+        mime_type = request.headers.get("content-type", "application/octet-stream")
+        result = create_audio_preview_record(
+            repository,
+            settings,
+            session_id,
+            content=body,
+            duration_ms=duration_ms,
+            mime_type=mime_type,
+            preview_seq=preview_seq,
+            recording_id=recording_id,
+        )
+        if isinstance(result, JSONResponse):
+            return result
+
+        partial_event = build_event_envelope(
+            session=result["session"],
+            event_type="transcript.partial",
+            payload=result["transcript"],
+            source_service="asr_service",
+        )
+        partial_event = jsonable_encoder(partial_event)
+        await request.app.state.connection_registry.enqueue_event(session_id, partial_event)
+        return result["transcript"]
 
     @app.post(
         "/api/session/{session_id}/audio/finalize",

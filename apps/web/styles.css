@@ -330,6 +330,10 @@ body::before {
   background: #eef6f3;
 }
 
+.line.partial {
+  background: #edf0e5;
+}
+
 .line.final,
 .timeline-item.user {
   background: #fff7ef;

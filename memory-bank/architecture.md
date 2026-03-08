@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - Partial Transcript Is Now A Preview-Only Realtime Layer
+
+- POST /api/session/{session_id}/audio/preview is now the only live path allowed to produce transcript.partial; it is intentionally non-persistent, while POST /api/session/{session_id}/audio/finalize remains the only path that can create a user message and advance the dialogue turn.
+- ConnectionRegistry now tries to push business events to active websocket clients immediately instead of waiting for the next heartbeat flush, which is required for usable partial transcript latency and now affects all realtime event types.
+- The frontend treats preview and final transcript as two separate layers: partial transcript text is tied to one recording_id and preview_seq for staleness control, while the persisted final audio message still replaces the partial view and drives the assistant reply pipeline.
+
 ## 2026-03-08 - Audio Finalize Reuses The Existing Turn Pipeline
 
 - POST /api/session/{session_id}/audio/finalize is now the only live boundary between browser recording and ASR: chunk uploads remain temporary media ingestion, while only the finalized recording is allowed to create a user message and trigger dialogue orchestration.
