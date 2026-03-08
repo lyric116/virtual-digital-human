@@ -2,9 +2,10 @@
 
 ## Purpose
 
-This service implements implementation plan step 18: a standalone offline ASR baseline
-that accepts one complete audio file, returns one final transcript result, and does not
-emit partial transcript events yet.
+This service implements implementation plan steps 18 and 21: a standalone offline ASR
+baseline that accepts one complete audio file, returns one final transcript result, and
+now applies silence handling, punctuation restoration, and hotword cleanup inside the
+service before returning the final text.
 
 ## Endpoints
 
@@ -37,9 +38,19 @@ The service returns:
 - `audio.channels`
 - `audio.byte_size`
 
-For `qwen3-asr-flash`, the current compatible response path does not expose token-level
-confidence, so `confidence_mean` stays `null` and `confidence_available=false` in this
-baseline.
+For `qwen3-asr-flash`, the service now uses DashScope's native multimodal generation
+endpoint as the primary transport and keeps the older OpenAI-compatible route only as a
+fallback. Neither path exposes token-level confidence here, so `confidence_mean` stays
+`null` and `confidence_available=false` in this baseline.
+
+The current service-level postprocess pass does three deterministic things without
+changing the HTTP contract:
+
+- silence handling: detect long silent spans in wav input and use them as clause breaks
+- punctuation restoration: add commas or sentence endings when the provider returns plain
+  text without punctuation
+- hotword cleanup: normalize configured domain phrases from
+  `services/asr-service/hotwords.json`
 
 ## Local Run
 
@@ -50,10 +61,16 @@ From repository root:
   - `ASR_API_KEY`
   - `ASR_BASE_URL`
   - `ASR_MODEL`
+  - `ASR_POSTPROCESS_ENABLED`
+  - `ASR_SILENCE_WINDOW_MS`
+  - `ASR_SILENCE_MIN_DURATION_MS`
+  - `ASR_SILENCE_THRESHOLD_RATIO`
+  - `ASR_HOTWORD_MAP_PATH`
 
 ## Verification
 
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_service.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_postprocess.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_draft_batch.py`
 
 The live verifier uploads three enterprise validation samples, checks transcript

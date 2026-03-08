@@ -21,6 +21,32 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - Step 21 ASR Postprocess And Native DashScope Route
+
+### Scope
+
+Completed implementation plan step 21 by adding deterministic ASR postprocessing inside services/asr-service and switching qwen3-asr-flash to DashScope's native multimodal endpoint as the primary runtime transport, with the older compatible route retained only as a fallback.
+
+### Outputs
+
+- services/asr-service/main.py now performs silence-based segmentation, punctuation restoration, and hotword normalization before returning final transcript_text.
+- services/asr-service/hotwords.json defines the current deterministic domain rewrite map used by the ASR service.
+- tests/test_asr_postprocess.py and scripts/verify_asr_postprocess.py now prove before-versus-after transcript enhancement on the same wav sample.
+- README.md, docs/environment.md, docs/03-asr.md, .env.example, and services/asr-service/README.md now document the native DashScope route and the new ASR postprocess controls.
+
+### Checks
+
+- Ran UV_CACHE_DIR=.uv-cache uv run python -m py_compile services/asr-service/main.py tests/test_asr_service.py tests/test_asr_postprocess.py scripts/verify_asr_postprocess.py.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest tests/test_asr_service.py tests/test_asr_postprocess.py tests/test_environment_inventory.py and confirmed 13 tests passed.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_postprocess.py and confirmed the enhanced transcript added hotword cleanup, pause-aware segmentation, and final punctuation.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_service.py and confirmed three enterprise samples transcribed successfully through the standalone service after switching to the native DashScope route.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest and confirmed 87 tests passed.
+
+### Next
+
+- Proceed to implementation plan step 22 by freezing a small human-verified ASR evaluation subset and generating the first reproducible baseline report.
+- Keep qwen3-asr-flash transport changes inside services/asr-service so later dialogue and gateway work continue to depend only on the stable ASR HTTP contract.
+
 ## 2026-03-08 - Step 20 Partial Transcript Preview Loop
 
 ### Scope

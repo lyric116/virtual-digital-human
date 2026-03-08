@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - Qwen3 ASR Now Uses DashScope Native Transport
+
+- services/asr-service now treats https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation as the canonical qwen3-asr-flash endpoint; old compatible-mode routing is retained only as a fallback and should no longer be the default in docs or env templates.
+- The ASR postprocess layer is now part of the service boundary, not a downstream cleanup step: silence detection, punctuation restoration, and hotword normalization must happen before transcript_text leaves services/asr-service so gateway, review, and dialogue modules all consume the same normalized text.
+- services/asr-service/hotwords.json is now a stable repository asset and the approved place for deterministic ASR term normalization; new domain phrase rewrites should be added there instead of scattering replacements through gateway or frontend code.
+
 ## 2026-03-08 - Partial Transcript Is Now A Preview-Only Realtime Layer
 
 - POST /api/session/{session_id}/audio/preview is now the only live path allowed to produce transcript.partial; it is intentionally non-persistent, while POST /api/session/{session_id}/audio/finalize remains the only path that can create a user message and advance the dialogue turn.

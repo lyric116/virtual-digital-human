@@ -166,4 +166,8 @@ flowchart LR
 - 当前 live 校验脚本为 `scripts/verify_asr_service.py`
 - 当前批量写回入口为 `scripts/write_asr_drafts.py transcribe-service`
 - 当前人工复核入口为 `scripts/manage_transcript_review.py`
-- 当前 `qwen3-asr-flash` 兼容路径可稳定返回文本，但不暴露 token 级置信度，因此服务响应保留 `confidence_mean=null` 和 `confidence_available=false`
+- 当前 `qwen3-asr-flash` 主路径已切到 DashScope 原生同步接口，接口地址为 `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`
+- 服务内部保留 DashScope OpenAI-compatible 路径作为回退，不再把兼容路径当作主配置
+- 当前提供方仍不暴露 token 级置信度，因此服务响应保留 `confidence_mean=null` 和 `confidence_available=false`
+- 步骤 21 已在 `services/asr-service/main.py` 内加入确定性后处理：长静音切分、基础标点恢复、`services/asr-service/hotwords.json` 热词归一
+- 步骤 21 的验证脚本为 `scripts/verify_asr_postprocess.py`，可直接对比增强前后的同一段音频文本

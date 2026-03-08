@@ -4,6 +4,7 @@ import importlib.util
 import io
 from pathlib import Path
 import sys
+import tempfile
 import wave
 
 
@@ -55,9 +56,8 @@ def make_wave_bytes(sample_rate_hz: int = 16000, channels: int = 1, duration_fra
     return buffer.getvalue()
 
 
-def test_create_transcription_record_returns_contract_shape():
-    module = load_asr_module()
-    settings = module.ASRSettings(
+def build_settings(module):
+    return module.ASRSettings(
         service_host="127.0.0.1",
         service_port=8020,
         provider="dashscope",
@@ -66,7 +66,17 @@ def test_create_transcription_record_returns_contract_shape():
         model="qwen3-asr-flash",
         language_hint="auto",
         timeout_seconds=60,
+        postprocess_enabled=True,
+        silence_window_ms=200,
+        silence_min_duration_ms=350,
+        silence_threshold_ratio=0.015,
+        hotword_map_path=str(ROOT / "services" / "asr-service" / "hotwords.json"),
     )
+
+
+def test_create_transcription_record_returns_contract_shape():
+    module = load_asr_module()
+    settings = build_settings(module)
     engine = FakeASREngine()
 
     result = module.create_transcription_record(
@@ -82,7 +92,7 @@ def test_create_transcription_record_returns_contract_shape():
     assert result["record_id"] == "noxi/sample/1"
     assert result["provider"] == "dashscope"
     assert result["model"] == "qwen3-asr-flash"
-    assert result["transcript_text"] == "bonjour test"
+    assert result["transcript_text"] == "bonjour test."
     assert result["duration_ms"] == 500
     assert result["confidence_mean"] == 0.91
     assert result["confidence_available"] is True
@@ -92,16 +102,7 @@ def test_create_transcription_record_returns_contract_shape():
 
 def test_create_transcription_record_rejects_empty_body():
     module = load_asr_module()
-    settings = module.ASRSettings(
-        service_host="127.0.0.1",
-        service_port=8020,
-        provider="dashscope",
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        api_key="test-key",
-        model="qwen3-asr-flash",
-        language_hint="auto",
-        timeout_seconds=60,
-    )
+    settings = build_settings(module)
     engine = FakeASREngine()
 
     response = module.create_transcription_record(
@@ -147,3 +148,71 @@ def test_asr_settings_only_use_canonical_asr_environment(monkeypatch):
     assert settings.api_key == "canonical-key"
     assert settings.base_url == "https://canonical.example/v1"
     assert settings.model == "canonical-model"
+
+
+def test_extract_dashscope_message_reads_text_and_language():
+    module = load_asr_module()
+
+    transcript_text, transcript_language = module.extract_dashscope_message(
+        {
+            "output": {
+                "choices": [
+                    {
+                        "message": {
+                            "annotations": [{"type": "audio_info", "language": "fr"}],
+                            "content": [{"text": "Bonjour tout le monde."}],
+                        }
+                    }
+                ]
+            }
+        }
+    )
+
+    assert transcript_text == "Bonjour tout le monde."
+    assert transcript_language == "fr"
+
+
+def test_dashscope_native_transport_is_used_for_qwen3(monkeypatch):
+    module = load_asr_module()
+    settings = build_settings(module)
+    engine = module.OpenAICompatibleASREngine(settings)
+    captured: dict[str, str] = {}
+
+    class FakeHTTPResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return (
+                b'{"output":{"choices":[{"message":{"annotations":[{"language":"fr"}],'
+                b'"content":[{"text":"Bonjour depuis DashScope."}]}}]}}'
+            )
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["url"] = request.full_url
+            captured["authorization"] = request.get_header("Authorization")
+            captured["content_type"] = request.get_header("Content-type")
+            captured["timeout"] = str(timeout)
+            return FakeHTTPResponse()
+
+    monkeypatch.setattr(module.urllib.request, "build_opener", lambda *args: FakeOpener())
+
+    with tempfile.TemporaryDirectory(prefix="vdh_asr_native_") as temp_dir:
+        audio_path = Path(temp_dir) / "sample.wav"
+        audio_path.write_bytes(make_wave_bytes())
+        audio_metadata = module.inspect_audio_file(audio_path, "sample.wav", "audio/wav")
+        result = engine.transcribe_file(
+            audio_path,
+            record_id="noxi/sample/native",
+            audio_metadata=audio_metadata,
+        )
+
+    assert result.transcript_text == "Bonjour depuis DashScope."
+    assert result.transcript_language == "fr"
+    assert captured["url"] == module.DEFAULT_DASHSCOPE_QWEN3_NATIVE_URL
+    assert captured["authorization"] == "Bearer test-key"
+    assert captured["content_type"] == "application/json"

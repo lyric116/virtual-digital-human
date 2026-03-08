@@ -26,6 +26,8 @@ Current repository state:
   into the same mock reply loop used by text input
 - browser-recorded audio can now also emit partial transcript previews during recording
   through the same ASR service before the final accepted transcript arrives after stop
+- `services/asr-service` now applies silence handling, punctuation restoration, and
+  hotword cleanup before returning the final transcript text
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -87,6 +89,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_partial_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/asr-service main:app --host 0.0.0.0 --port 8020`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_service.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_postprocess.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`
@@ -96,8 +99,6 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py select-batch --batch-id review_batch_001 --limit 8 --balanced-by-group --per-group 2`
 - Batch-write drafts through the standalone ASR service:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py transcribe-service --batch data/derived/transcripts/batches/review_batch_001.jsonl`
-- Run DashScope `qwen3-asr-flash` on a batch:
-  - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py transcribe-openai --batch data/derived/transcripts/batches/review_batch_001.jsonl --model qwen3-asr-flash`
 - Verify standalone ASR batch write-back:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_draft_batch.py`
 - Export the active transcript review queue:
@@ -129,15 +130,15 @@ The initial PostgreSQL schema reference is:
 - `docs/database_schema.md`
 - `infra/docker/postgres/init/001_base_schema.sql`
 
-For DashScope ASR with the current script, use:
+For DashScope ASR with the current service, use:
 
 - `ASR_API_KEY`
-- `ASR_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`
+- `ASR_BASE_URL=https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`
 - `ASR_MODEL=qwen3-asr-flash`
 
-Do not point the current ASR script at
-`https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription`; that is a
-different API path than the OpenAI-compatible route used here.
+`qwen3-asr-flash` now runs against DashScope's native multimodal generation endpoint.
+The service keeps the older OpenAI-compatible route only as a fallback path when native
+calls fail.
 
 ## Docker
 

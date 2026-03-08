@@ -106,12 +106,17 @@ code or deployment files.
 | `ASR_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for the standalone ASR service. |
 | `ASR_SERVICE_PORT` | Yes | `8020` | HTTP port for the standalone ASR service. |
 | `ASR_PROVIDER` | Yes | `dashscope` | Logical provider name for ASR. |
-| `ASR_BASE_URL` | Yes | `https://dashscope.aliyuncs.com/compatible-mode/v1` | Canonical ASR endpoint used by service wrappers. |
+| `ASR_BASE_URL` | Yes | `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation` | Canonical ASR endpoint used by the standalone service for `qwen3-asr-flash`. |
 | `ASR_API_KEY` | Yes | empty | Canonical ASR credential used by future service code. |
 | `ASR_MODEL` | Yes | `qwen3-asr-flash` | Primary ASR model identifier. |
 | `ASR_LANGUAGE_HINT` | No | `auto` | Optional language hint for external ASR. |
 | `ASR_TIMEOUT_SECONDS` | Yes | `60` | ASR request timeout. |
 | `ASR_MODEL_PATH` | No | empty | Local model path when switching from API to self-hosted ASR. |
+| `ASR_POSTPROCESS_ENABLED` | Yes | `true` | Toggle silence-based segmentation, punctuation restoration, and hotword cleanup inside the ASR service. |
+| `ASR_SILENCE_WINDOW_MS` | Yes | `200` | Window size used when scanning wav amplitude for silence spans. |
+| `ASR_SILENCE_MIN_DURATION_MS` | Yes | `350` | Minimum pause length treated as a segmentation boundary. |
+| `ASR_SILENCE_THRESHOLD_RATIO` | Yes | `0.015` | Silence threshold as a ratio of the wav sample amplitude ceiling. |
+| `ASR_HOTWORD_MAP_PATH` | Yes | `services/asr-service/hotwords.json` | JSON mapping file for domain hotword normalization after raw ASR. |
 
 ## TTS
 
@@ -140,9 +145,17 @@ code or deployment files.
 ## Current Baseline
 
 - ASR has been validated with `qwen3-asr-flash`.
-- The working route is DashScope OpenAI-compatible mode:
-  `https://dashscope.aliyuncs.com/compatible-mode/v1`.
+- The working primary route is DashScope native multimodal generation:
+  `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`.
+- The ASR service keeps DashScope OpenAI-compatible mode as a transport fallback when
+  native calls fail.
 - The required variables for current ASR tooling are:
   - `ASR_API_KEY`
   - `ASR_BASE_URL`
   - `ASR_MODEL`
+- The ASR service now also owns a deterministic postprocess layer controlled by:
+  - `ASR_POSTPROCESS_ENABLED`
+  - `ASR_SILENCE_WINDOW_MS`
+  - `ASR_SILENCE_MIN_DURATION_MS`
+  - `ASR_SILENCE_THRESHOLD_RATIO`
+  - `ASR_HOTWORD_MAP_PATH`
