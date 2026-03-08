@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - step 17 audio chunk upload and temporary media indexing
+
+### Scope
+
+Completed implementation_plan step 17 by streaming browser recording chunks to the gateway, storing raw chunk files under the local media root, and persisting temporary audio_chunk rows in media_indexes without invoking ASR.
+
+### Outputs
+
+- apps/web/app.js and apps/web/index.html now upload recorded audio chunks through POST /api/session/{session_id}/audio/chunk, surface upload state in the capture panel, and stop uploading after recording ends
+- apps/api-gateway/main.py now accepts raw audio chunk uploads, stores them under MEDIA_STORAGE_ROOT, and returns AudioChunkAcceptedResponse data backed by media_indexes rows
+- scripts/web_audio_chunk_upload_harness.js, scripts/verify_audio_chunk_upload.py, tests/test_web_audio_chunk_upload.py, and tests/test_api_gateway_audio_chunk.py now cover browser chunk flow, gateway storage, file existence, and metadata correctness
+- scripts/verify_gateway_session_create.py, scripts/verify_web_session_start.py, and scripts/verify_web_realtime_connection.py now use dynamic localhost ports so the live regression suite remains stable when fixed ports are occupied
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_gateway_session_create.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py
+
+### Next
+
+- Proceed to implementation_plan step 18: add an offline ASR service baseline that accepts a complete audio file and returns one final transcript result.
+
 ## 2026-03-08 - step 16 microphone permission and local recording controls
 
 ### Scope

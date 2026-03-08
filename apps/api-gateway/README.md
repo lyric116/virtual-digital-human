@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, and 15:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, and 17:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -15,6 +15,8 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, and 15:
   system events as a single JSON response
 - step 15: keep one stable `trace_id` across session rows, message rows, realtime
   envelopes, system events, and exported session artifacts
+- step 17: accept fixed-window audio chunk uploads, store the binary locally, and
+  persist temporary `audio_chunk` rows in `media_indexes`
 
 ## Files
 
@@ -28,6 +30,7 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, and 15:
 - `GET /api/session/{session_id}/state`
 - `GET /api/session/{session_id}/export`
 - `POST /api/session/{session_id}/text`
+- `POST /api/session/{session_id}/audio/chunk`
 - `GET /ws/session/{session_id}` as a WebSocket upgrade endpoint
 
 ## Local Run
@@ -57,3 +60,5 @@ From repository root:
 - The text-first trace contract is now explicit: the session row, every message row,
   every persisted business event, the websocket envelopes, and the export payload all
   carry the same session `trace_id`.
+- `POST /api/session/{session_id}/audio/chunk` does not invoke ASR yet; it only stores
+  the raw chunk under `MEDIA_STORAGE_ROOT` and records an `audio_chunk` index row.

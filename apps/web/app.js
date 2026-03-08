@@ -43,6 +43,12 @@
       recordingChunkCount: 0,
       recordingMimeType: "pending",
       recordingStartedAt: null,
+      audioUploadState: "idle",
+      audioUploadMessage: "当前没有音频分片上传。",
+      uploadedChunkCount: 0,
+      lastUploadedChunkId: null,
+      lastUploadedAt: null,
+      nextAudioChunkSeq: 1,
       draftText: "我这两天总是睡不好，脑子停不下来。",
       timelineEntries: [],
       historyRestoreState: "idle",
@@ -96,6 +102,8 @@
       micPermissionStatus: findOptionalElement(rootDocument, "mic-permission-status"),
       micRecordingStateValue: findOptionalElement(rootDocument, "mic-recording-state-value"),
       micRecordingDetailValue: findOptionalElement(rootDocument, "mic-recording-detail-value"),
+      audioUploadStateValue: findOptionalElement(rootDocument, "audio-upload-state-value"),
+      audioUploadDetailValue: findOptionalElement(rootDocument, "audio-upload-detail-value"),
       textSubmitStatus: findRequiredElement(rootDocument, "text-submit-status"),
       textLastMessageIdValue: findRequiredElement(rootDocument, "text-last-message-id-value"),
       textLastMessageTimeValue: findRequiredElement(rootDocument, "text-last-message-time-value"),
@@ -263,6 +271,22 @@
     return "尚未开始录音。";
   }
 
+  function getAudioUploadStatusMessage(state) {
+    if (state.audioUploadState === "uploading") {
+      return state.audioUploadMessage || "音频分片上传中。";
+    }
+    if (state.audioUploadState === "completed") {
+      return state.audioUploadMessage || "音频分片已全部落盘。";
+    }
+    if (state.audioUploadState === "local_only") {
+      return state.audioUploadMessage || "当前只做本地录音，没有上传到网关。";
+    }
+    if (state.audioUploadState === "error") {
+      return state.audioUploadMessage || "音频分片上传失败。";
+    }
+    return state.audioUploadMessage || "当前没有音频分片上传。";
+  }
+
   function getTextSubmitButtonLabel(state) {
     if (state.textSubmitState === "sending") {
       return "Sending...";
@@ -388,6 +412,12 @@
     if (elements.micRecordingDetailValue) {
       elements.micRecordingDetailValue.textContent = getRecordingDetailMessage(state);
     }
+    if (elements.audioUploadStateValue) {
+      elements.audioUploadStateValue.textContent = state.audioUploadState;
+    }
+    if (elements.audioUploadDetailValue) {
+      elements.audioUploadDetailValue.textContent = getAudioUploadStatusMessage(state);
+    }
     if (elements.micRequestButton) {
       elements.micRequestButton.disabled = (
         state.micPermissionState === "requesting"
@@ -452,6 +482,7 @@
     rootDocument.body.dataset.exportState = state.exportState;
     rootDocument.body.dataset.micPermissionState = state.micPermissionState;
     rootDocument.body.dataset.recordingState = state.recordingState;
+    rootDocument.body.dataset.audioUploadState = state.audioUploadState;
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -555,6 +586,45 @@
     }
 
     return payload;
+  }
+
+  async function requestAudioChunkUpload(fetchImpl, appConfig, state, payload) {
+    const query = new URLSearchParams();
+    query.set("chunk_seq", String(payload.chunkSeq));
+    if (typeof payload.chunkStartedAtMs === "number") {
+      query.set("chunk_started_at_ms", String(payload.chunkStartedAtMs));
+    }
+    if (typeof payload.durationMs === "number") {
+      query.set("duration_ms", String(payload.durationMs));
+    }
+    query.set("is_final", payload.isFinal ? "true" : "false");
+
+    const response = await fetchImpl(
+      `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(state.sessionId)}/audio/chunk?${query.toString()}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": payload.mimeType || "application/octet-stream",
+        },
+        body: payload.blob,
+      },
+    );
+
+    let responsePayload = null;
+    try {
+      responsePayload = await response.json();
+    } catch (error) {
+      responsePayload = null;
+    }
+
+    if (!response.ok) {
+      const message = responsePayload && typeof responsePayload.message === "string"
+        ? responsePayload.message
+        : `Audio chunk upload failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return responsePayload;
   }
 
   async function requestSessionState(fetchImpl, appConfig, sessionId) {
@@ -861,6 +931,8 @@
       manualClose: false,
       micStream: null,
       mediaRecorder: null,
+      pendingAudioUploads: 0,
+      stopRequested: false,
     };
 
     function clearHeartbeatTimer() {
@@ -886,6 +958,8 @@
 
     function teardownMicrophone() {
       clearRecordingTimer();
+      runtime.stopRequested = true;
+      runtime.pendingAudioUploads = 0;
       if (runtime.mediaRecorder && runtime.mediaRecorder.state === "recording") {
         try {
           runtime.mediaRecorder.stop();
@@ -1198,6 +1272,12 @@
       state.exportMessage = "创建或恢复会话后可导出当前 JSON。";
       state.lastExportedAt = null;
       state.lastExportFileName = null;
+      state.audioUploadState = "idle";
+      state.audioUploadMessage = "当前没有音频分片上传。";
+      state.uploadedChunkCount = 0;
+      state.lastUploadedChunkId = null;
+      state.lastUploadedAt = null;
+      state.nextAudioChunkSeq = 1;
       renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
@@ -1369,6 +1449,70 @@
       return { ...state };
     }
 
+    function finalizeAudioUploadState() {
+      if (state.audioUploadState === "error") {
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
+      if (!state.sessionId) {
+        state.audioUploadState = "local_only";
+        state.audioUploadMessage = "未创建会话，当前只做本地录音，不上传到网关。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
+      if (state.recordingState === "recording" || runtime.pendingAudioUploads > 0) {
+        state.audioUploadState = "uploading";
+        state.audioUploadMessage = (
+          runtime.pendingAudioUploads > 0
+            ? `正在上传音频分片，已完成 ${state.uploadedChunkCount} 个，仍有 ${runtime.pendingAudioUploads} 个进行中。`
+            : `正在等待新的音频分片，已完成 ${state.uploadedChunkCount} 个。`
+        );
+      } else {
+        state.audioUploadState = "completed";
+        state.audioUploadMessage = `音频分片上传完成，共 ${state.uploadedChunkCount} 个。`;
+      }
+      renderSessionState(rootDocument, elements, state, appConfig);
+    }
+
+    async function uploadAudioChunk(blob, options) {
+      if (!state.sessionId) {
+        state.audioUploadState = "local_only";
+        state.audioUploadMessage = "未创建会话，当前只做本地录音，不上传到网关。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return null;
+      }
+
+      runtime.pendingAudioUploads += 1;
+      state.audioUploadState = "uploading";
+      state.audioUploadMessage = `正在上传第 ${options.chunkSeq} 个音频分片。`;
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        const payload = await requestAudioChunkUpload(resolvedFetch, appConfig, state, {
+          blob,
+          chunkSeq: options.chunkSeq,
+          chunkStartedAtMs: options.chunkStartedAtMs,
+          durationMs: options.durationMs,
+          isFinal: options.isFinal,
+          mimeType: options.mimeType,
+        });
+        state.uploadedChunkCount += 1;
+        state.lastUploadedChunkId = payload.media_id || null;
+        state.lastUploadedAt = payload.created_at || new Date().toISOString();
+        return payload;
+      } catch (error) {
+        state.audioUploadState = "error";
+        state.audioUploadMessage = error instanceof Error ? error.message : String(error);
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return null;
+      } finally {
+        runtime.pendingAudioUploads = Math.max(0, runtime.pendingAudioUploads - 1);
+        finalizeAudioUploadState();
+      }
+    }
+
     async function startRecording() {
       if (state.recordingState === "recording") {
         return { ...state };
@@ -1393,11 +1537,21 @@
       }
 
       clearRecordingTimer();
+      runtime.stopRequested = false;
+      runtime.pendingAudioUploads = 0;
       state.recordingState = "recording";
       state.recordingDurationMs = 0;
       state.recordingChunkCount = 0;
       state.recordingStartedAt = new Date().toISOString();
       state.recordingMimeType = "pending";
+      state.audioUploadState = state.sessionId ? "uploading" : "local_only";
+      state.audioUploadMessage = state.sessionId
+        ? "录音已开始，等待音频分片上传。"
+        : "未创建会话，当前只做本地录音，不上传到网关。";
+      state.uploadedChunkCount = 0;
+      state.lastUploadedChunkId = null;
+      state.lastUploadedAt = null;
+      state.nextAudioChunkSeq = 1;
 
       const recorder = new MediaRecorderCtor(runtime.micStream);
       runtime.mediaRecorder = recorder;
@@ -1407,6 +1561,16 @@
           if (event.data.type) {
             state.recordingMimeType = event.data.type;
           }
+          const currentChunkSeq = state.nextAudioChunkSeq;
+          state.nextAudioChunkSeq += 1;
+          const isFinal = runtime.stopRequested && recorder.state !== "recording";
+          void uploadAudioChunk(event.data, {
+            chunkSeq: currentChunkSeq,
+            chunkStartedAtMs: (currentChunkSeq - 1) * 250,
+            durationMs: 250,
+            isFinal,
+            mimeType: event.data.type || recorder.mimeType || "application/octet-stream",
+          });
           renderSessionState(rootDocument, elements, state, appConfig);
         }
       });
@@ -1414,7 +1578,7 @@
         clearRecordingTimer();
         state.recordingState = "stopped";
         runtime.mediaRecorder = null;
-        renderSessionState(rootDocument, elements, state, appConfig);
+        finalizeAudioUploadState();
       });
       recorder.addEventListener("error", function (event) {
         clearRecordingTimer();
@@ -1447,6 +1611,7 @@
         return { ...state };
       }
       try {
+        runtime.stopRequested = true;
         runtime.mediaRecorder.stop();
       } catch (error) {
         clearRecordingTimer();

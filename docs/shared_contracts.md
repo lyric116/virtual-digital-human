@@ -90,6 +90,26 @@ for text input inside the gateway.
 | `submitted_at` | string | Yes | Submission time. |
 | `client_seq` | integer | No | Monotonic client-side sequence number. |
 
+## Audio Chunk Upload
+
+This contract is used by `POST /api/session/{id}/audio/chunk`. The raw request body
+contains the audio bytes. Chunk metadata travels in query parameters and the accepted
+response is persisted into `media_indexes`.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `session_id` | string | Yes | Target session id. |
+| `trace_id` | string | Yes | Session trace id copied into the stored media row. |
+| `chunk_seq` | integer | Yes | Monotonic audio chunk sequence starting from `1`. |
+| `chunk_started_at_ms` | integer | No | Offset of this chunk within the current recording. |
+| `duration_ms` | integer | No | Fixed recording window length for this chunk. |
+| `is_final` | boolean | Yes | Whether this is the last chunk emitted after stop. |
+| `mime_type` | string | Yes | Browser media type such as `audio/webm`. |
+| `byte_size` | integer | Yes | Stored byte size for the chunk body. |
+| `storage_backend` | string | Yes | `local` in step 17, later `minio` when object storage is enabled. |
+| `storage_path` | string | Yes | Local path or object key for the stored chunk. |
+| `media_id` | string | Yes | Stable media index id returned by the gateway. |
+
 ## Transcript Result
 
 This payload is used for both offline ASR backfill and live transcript events.

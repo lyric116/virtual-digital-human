@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - audio upload is now a separate boundary before ASR
+
+- Step 17 introduces a clean media ingestion boundary: the browser emits fixed-window audio chunks, the gateway stores raw bytes plus media_indexes metadata, and ASR still remains completely out of band.
+- MEDIA_STORAGE_ROOT is now the canonical local landing zone for uploaded runtime media, and verify_audio_chunk_upload.py is the live gate that proves file creation plus chunk metadata persistence without depending on later transcript logic.
+- The live verifier set no longer assumes fixed localhost ports for the earliest gateway checks, which removes false negatives caused by preoccupied developer ports and keeps end-to-end verification reproducible.
+
 ## 2026-03-08 - local recording stays browser-only in step 16
 
 - Step 16 intentionally keeps captured audio inside the browser: permission, recording state, duration, and chunk counters are proven before any upload contract is introduced, which isolates browser capture failures from backend media ingestion work.

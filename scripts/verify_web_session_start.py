@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import time
@@ -44,11 +45,19 @@ def resolve_database_url(env: dict[str, str]) -> str:
     )
 
 
+def reserve_local_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 def main() -> None:
     env = {**parse_env_file(ROOT / ".env.example"), **parse_env_file(ROOT / ".env"), **os.environ}
     gateway_env = dict(env)
     gateway_env["PYTHONPATH"] = str(GATEWAY_MAIN.parent)
     gateway_env["GATEWAY_CORS_ORIGINS"] = "http://127.0.0.1:4173,http://localhost:4173"
+    gateway_port = reserve_local_port()
+    gateway_base_url = f"http://127.0.0.1:{gateway_port}"
 
     server = subprocess.Popen(
         [
@@ -61,7 +70,7 @@ def main() -> None:
             "--host",
             "127.0.0.1",
             "--port",
-            "8012",
+            str(gateway_port),
         ],
         cwd=ROOT,
         env=gateway_env,
@@ -73,7 +82,7 @@ def main() -> None:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         for _ in range(20):
             try:
-                with opener.open("http://127.0.0.1:8012/health", timeout=2) as response:
+                with opener.open(f"{gateway_base_url}/health", timeout=2) as response:
                     if response.status == 200:
                         break
             except Exception:
@@ -88,7 +97,7 @@ def main() -> None:
                 "--mode",
                 "live",
                 "--api-base-url",
-                "http://127.0.0.1:8012",
+                gateway_base_url,
             ],
             cwd=ROOT,
             capture_output=True,

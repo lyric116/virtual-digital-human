@@ -90,6 +90,11 @@ Key fields:
 - `duration_ms`
 - `byte_size`
 
+Current live use:
+
+- step 17 stores browser-uploaded audio chunks as `media_kind='audio_chunk'` with local
+  `storage_path` entries rooted under `MEDIA_STORAGE_ROOT`
+
 ## Relationships
 
 - `messages.session_id -> sessions.session_id`

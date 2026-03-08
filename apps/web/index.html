@@ -34,7 +34,8 @@
           </div>
           <p class="panel-summary">
             Text input is live, and microphone permission plus local recording controls
-            are now available. Audio still stays in the browser and is not uploaded yet.
+            are now available. When a session exists, audio chunks are now uploaded to
+            the gateway and stored as temporary media indexes.
           </p>
           <div class="panel-body stacked">
             <div class="media-preview">
@@ -66,6 +67,11 @@
               <span>Recording state</span>
               <strong id="mic-recording-state-value">idle</strong>
               <small id="mic-recording-detail-value">尚未开始录音。</small>
+            </div>
+            <div class="capture-meta">
+              <span>Upload state</span>
+              <strong id="audio-upload-state-value">idle</strong>
+              <small id="audio-upload-detail-value">当前没有音频分片上传。</small>
             </div>
             <p class="text-submit-status" id="text-submit-status" aria-live="polite">
               建立会话并连接实时通道后可发送文本。

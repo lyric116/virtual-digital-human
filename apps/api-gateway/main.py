@@ -24,6 +24,16 @@ ROOT = Path(__file__).resolve().parents[2]
 ALLOWED_INPUT_MODES = {"text", "audio", "video"}
 SCHEMA_VERSION = "v1alpha1"
 HEARTBEAT_INTERVAL_MS = 5000
+DEFAULT_MEDIA_STORAGE_ROOT = "data/derived/live_media"
+MIME_EXTENSION_MAP = {
+    "audio/webm": ".webm",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/wave": ".wav",
+    "audio/ogg": ".ogg",
+    "audio/mpeg": ".mp3",
+    "application/octet-stream": ".bin",
+}
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -62,6 +72,7 @@ class GatewaySettings:
     cors_origins: list[str]
     orchestrator_base_url: str
     orchestrator_timeout_seconds: float
+    media_storage_root: str
 
     @classmethod
     def from_env(cls) -> "GatewaySettings":
@@ -90,6 +101,7 @@ class GatewaySettings:
             orchestrator_timeout_seconds=float(
                 os.getenv("ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS", "60")
             ),
+            media_storage_root=os.getenv("MEDIA_STORAGE_ROOT", DEFAULT_MEDIA_STORAGE_ROOT),
         )
 
 
@@ -148,6 +160,22 @@ class TextMessageAcceptedResponse(BaseModel):
     content_text: str
     submitted_at: datetime
     client_seq: int | None = None
+
+
+class AudioChunkAcceptedResponse(BaseModel):
+    media_id: str
+    session_id: str
+    trace_id: str
+    media_kind: Literal["audio_chunk"]
+    storage_backend: Literal["local", "minio"]
+    storage_path: str
+    mime_type: str
+    duration_ms: int | None = Field(default=None, ge=0)
+    byte_size: int = Field(ge=0)
+    chunk_seq: int = Field(ge=1)
+    chunk_started_at_ms: int | None = Field(default=None, ge=0)
+    is_final: bool = False
+    created_at: datetime
 
 
 class MessageHistoryResponse(BaseModel):
@@ -251,6 +279,20 @@ class SessionRepository(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def create_audio_chunk_index(
+        self,
+        session_id: str,
+        *,
+        content: bytes,
+        chunk_seq: int,
+        chunk_started_at_ms: int | None,
+        duration_ms: int | None,
+        is_final: bool,
+        mime_type: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        ...
+
     def record_system_event(self, envelope: dict[str, Any]) -> None:
         ...
 
@@ -294,6 +336,31 @@ class PostgresSessionRepository:
     def __init__(self, settings: GatewaySettings):
         self.database_url = settings.database_url
         self.default_avatar_id = settings.default_avatar_id
+        self.media_storage_root = settings.media_storage_root
+
+    def _resolve_audio_chunk_path(
+        self,
+        session_id: str,
+        media_id: str,
+        chunk_seq: int,
+        mime_type: str,
+    ) -> tuple[Path, str]:
+        configured_root = Path(self.media_storage_root)
+        if configured_root.is_absolute():
+            storage_root = configured_root
+            storage_prefix = configured_root
+        else:
+            storage_root = ROOT / configured_root
+            storage_prefix = ROOT
+
+        extension = MIME_EXTENSION_MAP.get(mime_type, ".bin")
+        absolute_path = storage_root / "audio_chunks" / session_id / f"{chunk_seq:06d}_{media_id}{extension}"
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            storage_path = str(absolute_path.relative_to(storage_prefix))
+        except ValueError:
+            storage_path = str(absolute_path)
+        return absolute_path, storage_path
 
     def create_session(self, payload: SessionCreateRequest) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
@@ -759,6 +826,118 @@ class PostgresSessionRepository:
             "message": dict(message_row),
         }
 
+    def create_audio_chunk_index(
+        self,
+        session_id: str,
+        *,
+        content: bytes,
+        chunk_seq: int,
+        chunk_started_at_ms: int | None,
+        duration_ms: int | None,
+        is_final: bool,
+        mime_type: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        media_id = f"media_{uuid4().hex[:24]}"
+
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT session_id, trace_id
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                session_row = cur.fetchone()
+                if session_row is None:
+                    raise KeyError(session_id)
+
+                absolute_path, storage_path = self._resolve_audio_chunk_path(
+                    session_id=session_id,
+                    media_id=media_id,
+                    chunk_seq=chunk_seq,
+                    mime_type=mime_type,
+                )
+                absolute_path.write_bytes(content)
+
+                row_metadata = dict(metadata or {})
+                row_metadata.update(
+                    {
+                        "chunk_seq": chunk_seq,
+                        "chunk_started_at_ms": chunk_started_at_ms,
+                        "is_final": is_final,
+                    }
+                )
+
+                cur.execute(
+                    """
+                    INSERT INTO media_indexes (
+                        media_id,
+                        session_id,
+                        trace_id,
+                        message_id,
+                        media_kind,
+                        storage_backend,
+                        storage_path,
+                        mime_type,
+                        duration_ms,
+                        byte_size,
+                        metadata,
+                        created_at
+                    ) VALUES (
+                        %(media_id)s,
+                        %(session_id)s,
+                        %(trace_id)s,
+                        %(message_id)s,
+                        'audio_chunk',
+                        'local',
+                        %(storage_path)s,
+                        %(mime_type)s,
+                        %(duration_ms)s,
+                        %(byte_size)s,
+                        %(metadata)s,
+                        %(created_at)s
+                    )
+                    RETURNING
+                        media_id,
+                        session_id,
+                        trace_id,
+                        media_kind,
+                        storage_backend,
+                        storage_path,
+                        mime_type,
+                        duration_ms,
+                        byte_size,
+                        created_at
+                    """,
+                    {
+                        "media_id": media_id,
+                        "session_id": session_id,
+                        "trace_id": session_row["trace_id"],
+                        "message_id": None,
+                        "storage_path": storage_path,
+                        "mime_type": mime_type,
+                        "duration_ms": duration_ms,
+                        "byte_size": len(content),
+                        "metadata": Jsonb(row_metadata),
+                        "created_at": now,
+                    },
+                )
+                row = cur.fetchone()
+
+        if row is None:
+            raise RuntimeError("audio chunk insert returned no row")
+
+        return {
+            **dict(row),
+            "chunk_seq": chunk_seq,
+            "chunk_started_at_ms": chunk_started_at_ms,
+            "is_final": is_final,
+        }
+
     def record_system_event(self, envelope: dict[str, Any]) -> None:
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
@@ -918,6 +1097,59 @@ def create_text_message_record(
             content=error_payload(
                 error_code="text_message_submit_failed",
                 message="Failed to submit text message",
+                session_id=session_id,
+            ),
+        )
+
+
+def create_audio_chunk_record(
+    repository: SessionRepository,
+    session_id: str,
+    *,
+    content: bytes,
+    chunk_seq: int,
+    chunk_started_at_ms: int | None,
+    duration_ms: int | None,
+    is_final: bool,
+    mime_type: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any] | JSONResponse:
+    if not content:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_payload(
+                error_code="audio_chunk_empty",
+                message="Audio chunk body must not be empty",
+                session_id=session_id,
+            ),
+        )
+
+    try:
+        return repository.create_audio_chunk_index(
+            session_id,
+            content=content,
+            chunk_seq=chunk_seq,
+            chunk_started_at_ms=chunk_started_at_ms,
+            duration_ms=duration_ms,
+            is_final=is_final,
+            mime_type=mime_type,
+            metadata=metadata,
+        )
+    except KeyError:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=error_payload(
+                error_code="session_not_found",
+                message="Session not found",
+                session_id=session_id,
+            ),
+        )
+    except (OSError, psycopg.Error):
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error_payload(
+                error_code="audio_chunk_store_failed",
+                message="Failed to store audio chunk",
                 session_id=session_id,
             ),
         )
@@ -1097,6 +1329,34 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             repository.record_system_event(error_event)
             await request.app.state.connection_registry.enqueue_event(session_id, error_event)
         return result["message"]
+
+    @app.post(
+        "/api/session/{session_id}/audio/chunk",
+        response_model=AudioChunkAcceptedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def upload_audio_chunk(
+        session_id: str,
+        request: Request,
+        chunk_seq: int,
+        chunk_started_at_ms: int | None = None,
+        duration_ms: int | None = None,
+        is_final: bool = False,
+    ) -> Any:
+        repository = request.app.state.session_repository
+        body = await request.body()
+        result = create_audio_chunk_record(
+            repository,
+            session_id,
+            content=body,
+            chunk_seq=chunk_seq,
+            chunk_started_at_ms=chunk_started_at_ms,
+            duration_ms=duration_ms,
+            is_final=is_final,
+            mime_type=request.headers.get("content-type", "application/octet-stream"),
+            metadata={"source": "web-shell"},
+        )
+        return result
 
     @app.websocket("/ws/session/{session_id}")
     async def session_realtime(websocket: WebSocket, session_id: str) -> None:

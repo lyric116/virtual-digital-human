@@ -17,6 +17,8 @@ Current repository state:
   envelopes, and export payloads
 - the frontend capture panel now supports browser-side microphone permission and local
   recording controls without uploading audio
+- recorded browser audio chunks can now be uploaded to the gateway and indexed into
+  temporary `media_indexes` records before ASR is connected
 
 ## Repository Structure
 
@@ -70,6 +72,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

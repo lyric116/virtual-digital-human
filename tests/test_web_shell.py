@@ -58,6 +58,8 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="mic-permission-status"' in content
     assert 'id="mic-recording-state-value"' in content
     assert 'id="mic-recording-detail-value"' in content
+    assert 'id="audio-upload-state-value"' in content
+    assert 'id="audio-upload-detail-value"' in content
     assert 'id="text-submit-button"' in content
     assert 'id="transcript-user-final-text"' in content
     assert 'id="transcript-assistant-reply-text"' in content

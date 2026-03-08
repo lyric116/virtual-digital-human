@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, and 16:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, and 17:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -22,6 +22,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, and 16:
   trace values so one text turn can be correlated with realtime events and exported data
 - step 16: the capture panel now requests microphone permission, starts and stops local
   recording, and shows browser-side recording status without uploading audio
+- step 17: each recorded browser audio chunk is now uploaded to the gateway when a
+  session exists, and the UI shows 音频分片 upload progress plus the latest stored chunk id
 
 ## Files
 
@@ -32,7 +34,7 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, and 16:
 - `app.js`
   - panel readiness check, session bootstrap flow, realtime connection, text submit
     ack handling, mock dialogue reply handling, chat timeline rendering, and session
-    history restore plus session export
+    history restore plus session export, microphone recording, and audio chunk upload
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -57,7 +59,8 @@ Then open:
 - `.env.example` exposes `WEB_PUBLIC_API_BASE_URL`, `WEB_PUBLIC_WS_URL`, and `GATEWAY_CORS_ORIGINS` for local browser preview
 - only `Start Session` and `Export` are live in this step; pause and reset remain disabled
 - `Send Text` is live only after session bootstrap and a connected realtime channel
-- microphone controls stay local to the browser in this step and do not upload media
+- microphone controls can now upload temporary audio chunks to the gateway after a
+  session exists; without a session they stay in local-only mode
 - the latest assistant reply shown in transcript, avatar, and fusion cards is derived
   from the same live events that feed the timeline
 - the current active `sessionId` is stored in browser storage and used to restore
@@ -77,3 +80,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`

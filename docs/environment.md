@@ -22,6 +22,7 @@ code or deployment files.
 | `LOG_LEVEL` | Yes | `INFO` | Baseline logging verbosity. |
 | `TRACE_HEADER` | Yes | `X-Trace-Id` | Header name used to propagate trace ids. |
 | `SESSION_EXPORT_DIR` | No | `data/exports` | Default local export path before MinIO is enabled. |
+| `MEDIA_STORAGE_ROOT` | No | `data/derived/live_media` | Local storage root for uploaded media chunks before MinIO is enabled. |
 
 ## Web
 
