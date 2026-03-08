@@ -408,6 +408,12 @@ body::before {
   line-height: 1.5;
 }
 
+.export-status {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .text-submit-status,
 .text-submit-meta {
   margin: 0;

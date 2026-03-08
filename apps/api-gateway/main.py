@@ -167,6 +167,39 @@ class SessionStateResponse(BaseModel):
     messages: list[MessageHistoryResponse] = Field(default_factory=list)
 
 
+class SessionStageHistoryResponse(BaseModel):
+    stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    changed_at: datetime
+    message_id: str | None = None
+
+
+class SystemEventHistoryResponse(BaseModel):
+    event_id: str
+    session_id: str
+    trace_id: str
+    message_id: str | None = None
+    event_type: str
+    schema_version: str
+    source_service: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    emitted_at: datetime
+
+
+class SessionExportResponse(BaseModel):
+    session_id: str
+    trace_id: str
+    status: str
+    stage: str
+    input_modes: list[str]
+    avatar_id: str | None = None
+    started_at: datetime
+    updated_at: datetime
+    exported_at: datetime
+    messages: list[MessageHistoryResponse] = Field(default_factory=list)
+    stage_history: list[SessionStageHistoryResponse] = Field(default_factory=list)
+    events: list[SystemEventHistoryResponse] = Field(default_factory=list)
+
+
 class DialogueReplyRequest(BaseModel):
     session_id: str
     trace_id: str
@@ -200,6 +233,9 @@ class SessionRepository(Protocol):
     def get_session_state(self, session_id: str) -> dict[str, Any] | None:
         ...
 
+    def get_session_export(self, session_id: str) -> dict[str, Any] | None:
+        ...
+
     def create_user_text_message(
         self,
         session_id: str,
@@ -212,6 +248,9 @@ class SessionRepository(Protocol):
         session_id: str,
         payload: DialogueReplyResponse,
     ) -> dict[str, Any]:
+        ...
+
+    def record_system_event(self, envelope: dict[str, Any]) -> None:
         ...
 
 
@@ -320,6 +359,51 @@ class PostgresSessionRepository:
                 )
                 row = cur.fetchone()
 
+                if row is not None:
+                    cur.execute(
+                        """
+                        INSERT INTO system_events (
+                            event_id,
+                            session_id,
+                            trace_id,
+                            message_id,
+                            event_type,
+                            schema_version,
+                            source_service,
+                            payload,
+                            emitted_at
+                        ) VALUES (
+                            %(event_id)s,
+                            %(session_id)s,
+                            %(trace_id)s,
+                            %(message_id)s,
+                            %(event_type)s,
+                            %(schema_version)s,
+                            %(source_service)s,
+                            %(payload)s,
+                            %(emitted_at)s
+                        )
+                        """,
+                        {
+                            "event_id": f"evt_{uuid4().hex[:24]}",
+                            "session_id": session_id,
+                            "trace_id": trace_id,
+                            "message_id": None,
+                            "event_type": "session.created",
+                            "schema_version": SCHEMA_VERSION,
+                            "source_service": "api_gateway",
+                            "payload": Jsonb(
+                                {
+                                    "status": "created",
+                                    "stage": "engage",
+                                    "input_modes": payload.input_modes,
+                                    "avatar_id": avatar_id,
+                                }
+                            ),
+                            "emitted_at": now,
+                        },
+                    )
+
         if row is None:
             raise RuntimeError("session insert returned no row")
         return row
@@ -384,6 +468,89 @@ class PostgresSessionRepository:
         return {
             "session": dict(session_row),
             "messages": [dict(row) for row in message_rows],
+        }
+
+    def get_session_export(self, session_id: str) -> dict[str, Any] | None:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        session_id,
+                        trace_id,
+                        status,
+                        stage,
+                        input_modes,
+                        avatar_id,
+                        started_at,
+                        updated_at
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                session_row = cur.fetchone()
+                if session_row is None:
+                    return None
+
+                cur.execute(
+                    """
+                    SELECT
+                        message_id,
+                        session_id,
+                        trace_id,
+                        role,
+                        status,
+                        source_kind,
+                        content_text,
+                        submitted_at,
+                        metadata
+                    FROM messages
+                    WHERE session_id = %s
+                    ORDER BY submitted_at ASC, created_at ASC, message_id ASC
+                    """,
+                    (session_id,),
+                )
+                message_rows = cur.fetchall()
+
+                cur.execute(
+                    """
+                    SELECT
+                        event_id,
+                        session_id,
+                        trace_id,
+                        message_id,
+                        event_type,
+                        schema_version,
+                        source_service,
+                        payload,
+                        emitted_at
+                    FROM system_events
+                    WHERE session_id = %s
+                    ORDER BY emitted_at ASC, created_at ASC, event_id ASC
+                    """,
+                    (session_id,),
+                )
+                event_rows = cur.fetchall()
+
+        messages = [dict(row) for row in message_rows]
+        events = [dict(row) for row in event_rows]
+        return {
+            "session_id": session_row["session_id"],
+            "trace_id": session_row["trace_id"],
+            "status": session_row["status"],
+            "stage": session_row["stage"],
+            "input_modes": session_row["input_modes"],
+            "avatar_id": session_row["avatar_id"],
+            "started_at": session_row["started_at"],
+            "updated_at": session_row["updated_at"],
+            "exported_at": datetime.now(timezone.utc),
+            "messages": messages,
+            "stage_history": build_stage_history(
+                started_at=session_row["started_at"],
+                messages=messages,
+            ),
+            "events": events,
         }
 
     def create_user_text_message(
@@ -590,6 +757,47 @@ class PostgresSessionRepository:
             "message": dict(message_row),
         }
 
+    def record_system_event(self, envelope: dict[str, Any]) -> None:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO system_events (
+                        event_id,
+                        session_id,
+                        trace_id,
+                        message_id,
+                        event_type,
+                        schema_version,
+                        source_service,
+                        payload,
+                        emitted_at
+                    ) VALUES (
+                        %(event_id)s,
+                        %(session_id)s,
+                        %(trace_id)s,
+                        %(message_id)s,
+                        %(event_type)s,
+                        %(schema_version)s,
+                        %(source_service)s,
+                        %(payload)s,
+                        %(emitted_at)s
+                    )
+                    ON CONFLICT (event_id) DO NOTHING
+                    """,
+                    {
+                        "event_id": envelope["event_id"],
+                        "session_id": envelope["session_id"],
+                        "trace_id": envelope["trace_id"],
+                        "message_id": envelope.get("message_id"),
+                        "event_type": envelope["event_type"],
+                        "schema_version": envelope["schema_version"],
+                        "source_service": envelope["source_service"],
+                        "payload": Jsonb(envelope.get("payload") or {}),
+                        "emitted_at": envelope["emitted_at"],
+                    },
+                )
+
 
 def error_payload(
     *,
@@ -628,6 +836,43 @@ def build_event_envelope(
         "emitted_at": datetime.now(timezone.utc).isoformat(),
         "payload": payload,
     }
+
+
+def build_stage_history(
+    *,
+    started_at: datetime,
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    history: list[dict[str, Any]] = [
+        {
+            "stage": "engage",
+            "changed_at": started_at,
+            "message_id": None,
+        }
+    ]
+    current_stage = "engage"
+
+    for message in messages:
+        if message.get("role") != "assistant":
+            continue
+        metadata = message.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        next_stage = metadata.get("stage")
+        if next_stage not in {"engage", "assess", "intervene", "reassess", "handoff"}:
+            continue
+        if next_stage == current_stage:
+            continue
+        history.append(
+            {
+                "stage": next_stage,
+                "changed_at": message.get("submitted_at") or started_at,
+                "message_id": message.get("message_id"),
+            }
+        )
+        current_stage = next_stage
+
+    return history
 
 
 def create_session_record(
@@ -685,6 +930,24 @@ def create_session_state_record(
                 error_code="session_not_found",
                 message="Session not found",
                 session_id=session_id,
+            ),
+        )
+    return result
+
+
+def create_session_export_record(
+    repository: SessionRepository,
+    session_id: str,
+) -> dict[str, Any] | JSONResponse:
+    result = repository.get_session_export(session_id)
+    if result is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=error_payload(
+                error_code="session_not_found",
+                message=f"session not found: {session_id}",
+                session_id=session_id,
+                retryable=False,
             ),
         )
     return result
@@ -763,6 +1026,13 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
     def get_session_state(session_id: str, request: Request) -> Any:
         return create_session_state_record(request.app.state.session_repository, session_id)
 
+    @app.get(
+        "/api/session/{session_id}/export",
+        response_model=SessionExportResponse,
+    )
+    def get_session_export(session_id: str, request: Request) -> Any:
+        return create_session_export_record(request.app.state.session_repository, session_id)
+
     @app.post(
         "/api/session/{session_id}/text",
         response_model=TextMessageAcceptedResponse,
@@ -786,6 +1056,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             message_id=result["message"]["message_id"],
         )
         accepted_event = jsonable_encoder(accepted_event)
+        repository.record_system_event(accepted_event)
         await request.app.state.connection_registry.enqueue_event(session_id, accepted_event)
 
         try:
@@ -802,6 +1073,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
                 source_service="orchestrator",
             )
             dialogue_event = jsonable_encoder(dialogue_event)
+            repository.record_system_event(dialogue_event)
             await request.app.state.connection_registry.enqueue_event(session_id, dialogue_event)
         except (KeyError, psycopg.Error, RuntimeError) as exc:
             error_event = build_event_envelope(
@@ -817,6 +1089,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
                 source_service="api_gateway",
             )
             error_event = jsonable_encoder(error_event)
+            repository.record_system_event(error_event)
             await request.app.state.connection_registry.enqueue_event(session_id, error_event)
         return result["message"]
 

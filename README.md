@@ -11,6 +11,8 @@ Current repository state:
 - the text loop now reaches a mock structured assistant reply through `apps/orchestrator`
 - the frontend now renders a recoverable chat timeline and restores session history from
   the gateway session state endpoint
+- the current text session can now be exported as JSON with messages, stage history, and
+  persisted system events
 
 ## Repository Structure
 
@@ -61,6 +63,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

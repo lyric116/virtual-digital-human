@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - session export depends on persisted business events
+
+- system_events is now part of the live text path, not just a future schema placeholder: the gateway persists session.created, message.accepted, dialogue.reply, and session.error so export can replay a session without scraping websocket logs.
+- The frontend export action is intentionally request-response, not realtime: app.js fetches GET /api/session/{session_id}/export, caches the payload for tests, and only uses browser download APIs as a delivery layer on top of the same JSON contract.
+
 ## 2026-03-08 - timeline restore uses persisted message timestamps
 
 - The gateway realtime dialogue.reply event must carry the assistant message submitted_at from PostgreSQL, and the frontend must prefer that value over envelope emitted_at; otherwise refresh rebuilds a different timeline than the live view.

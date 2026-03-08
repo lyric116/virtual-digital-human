@@ -186,9 +186,9 @@
             <h2>Session Control</h2>
           </div>
           <p class="panel-summary">
-            Session start is live. Pause, reset, and export remain disabled until message
-            handling is connected. This step adds session-level realtime connection and
-            heartbeat visibility only.
+            Session start and export are live. Pause and reset stay disabled until later
+            control steps, while Export downloads the current session JSON for replay and
+            traceability checks.
           </p>
           <div class="panel-body controls">
             <div class="session-overview">
@@ -212,8 +212,11 @@
               <button type="button" id="session-start-button">Start Session</button>
               <button type="button" id="session-pause-button" disabled>Pause</button>
               <button type="button" id="session-reset-button" disabled>Reset</button>
-              <button type="button" id="session-export-button" disabled>Export</button>
+              <button type="button" id="session-export-button">Export</button>
             </div>
+            <p class="export-status" id="session-export-status" aria-live="polite">
+              创建或恢复会话后可导出当前 JSON。
+            </p>
             <ul class="control-notes">
               <li>Trace id: <span id="session-trace-value">not assigned</span></li>
               <li>Last update: <span id="session-updated-at-value">not started</span></li>

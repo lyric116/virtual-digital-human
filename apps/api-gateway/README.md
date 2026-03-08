@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, and 13:
+This gateway currently covers steps 8, 10, 11, 12, 13, and 14:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -11,6 +11,8 @@ This gateway currently covers steps 8, 10, 11, 12, and 13:
   `dialogue.reply`
 - step 13: expose session state and ordered message history so the frontend can
   restore the chat timeline after refresh
+- step 14: export session metadata, message history, stage history, and persisted
+  system events as a single JSON response
 
 ## Files
 
@@ -22,6 +24,7 @@ This gateway currently covers steps 8, 10, 11, 12, and 13:
 - `GET /health`
 - `POST /api/session/create`
 - `GET /api/session/{session_id}/state`
+- `GET /api/session/{session_id}/export`
 - `POST /api/session/{session_id}/text`
 - `GET /ws/session/{session_id}` as a WebSocket upgrade endpoint
 
@@ -38,8 +41,14 @@ From repository root:
   `infra/docker/postgres/init/001_base_schema.sql`.
 - `GET /api/session/{session_id}/state` returns the current session metadata and the
   ordered message list used by the frontend to rebuild chat history.
+- `GET /api/session/{session_id}/export` reads the current session, ordered messages,
+  derived stage history, and persisted `system_events` rows to build the downloadable
+  export payload used by the web shell.
 - The gateway calls the orchestrator through `ORCHESTRATOR_BASE_URL`.
 - `GATEWAY_CORS_ORIGINS` controls which local frontend preview origins can call the API
   from the browser.
 - The realtime endpoint currently emits only `session.connection.ready`,
   `session.heartbeat`, `message.accepted`, `dialogue.reply`, and `session.error`.
+- `session.created`, `message.accepted`, `dialogue.reply`, and `session.error` are now
+  persisted into `system_events` so export and later tracing steps can replay a session
+  without reconstructing events from logs.

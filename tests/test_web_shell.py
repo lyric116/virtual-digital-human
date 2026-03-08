@@ -63,6 +63,8 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="session-status-value"' in content
     assert 'id="connection-status-value"' in content
     assert 'id="connection-log"' in content
+    assert 'id="session-export-button"' in content
+    assert 'id="session-export-status"' in content
     assert "Emotion Care Console" in content
     assert "Capture Panel" in content
     assert "Session Control" in content

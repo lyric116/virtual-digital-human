@@ -53,6 +53,10 @@
       lastReplyRiskLevel: "pending",
       lastReplyNextAction: "pending",
       lastStageTransition: "idle → idle",
+      exportState: "idle",
+      exportMessage: "创建或恢复会话后可导出当前 JSON。",
+      lastExportedAt: null,
+      lastExportFileName: null,
       nextClientSeq: 1,
     };
   }
@@ -63,6 +67,10 @@
       throw new Error(`Missing required element: ${elementId}`);
     }
     return element;
+  }
+
+  function findOptionalElement(rootDocument, elementId) {
+    return rootDocument.getElementById(elementId);
   }
 
   function getViewElements(rootDocument) {
@@ -90,6 +98,8 @@
       sessionApiBaseUrlValue: findRequiredElement(rootDocument, "session-api-base-url-value"),
       sessionWsUrlValue: findRequiredElement(rootDocument, "session-ws-url-value"),
       sessionFeedback: findRequiredElement(rootDocument, "session-feedback"),
+      exportButton: findOptionalElement(rootDocument, "session-export-button"),
+      exportStatus: findOptionalElement(rootDocument, "session-export-status"),
       connectionStatusValue: findRequiredElement(rootDocument, "connection-status-value"),
       connectionHeartbeatValue: findRequiredElement(rootDocument, "connection-heartbeat-value"),
       connectionLogValue: findRequiredElement(rootDocument, "connection-log"),
@@ -179,6 +189,29 @@
     return "Send Text";
   }
 
+  function getExportStatusMessage(state) {
+    if (!state.sessionId) {
+      return "创建或恢复会话后可导出当前 JSON。";
+    }
+    if (state.exportState === "loading") {
+      return "正在准备会话导出，请稍候。";
+    }
+    if (state.exportState === "error") {
+      return state.exportMessage || "会话导出失败。";
+    }
+    if (state.exportState === "exported") {
+      return state.exportMessage || "会话导出成功。";
+    }
+    return state.exportMessage || "点击 Export 下载当前会话 JSON。";
+  }
+
+  function getExportButtonLabel(state) {
+    if (state.exportState === "loading") {
+      return "Exporting...";
+    }
+    return "Export";
+  }
+
   function pushConnectionLog(state, message) {
     state.connectionLog = [message].concat(state.connectionLog).slice(0, 6);
   }
@@ -246,6 +279,18 @@
     elements.sessionFeedback.textContent = getFeedbackMessage(state);
     elements.startButton.textContent = getStartButtonLabel(state);
     elements.startButton.disabled = state.requestState === "loading" || state.requestState === "restoring";
+    if (elements.exportButton) {
+      elements.exportButton.textContent = getExportButtonLabel(state);
+      elements.exportButton.disabled = (
+        !state.sessionId
+        || state.requestState === "loading"
+        || state.requestState === "restoring"
+        || state.exportState === "loading"
+      );
+    }
+    if (elements.exportStatus) {
+      elements.exportStatus.textContent = getExportStatusMessage(state);
+    }
     elements.connectionStatusValue.textContent = state.connectionStatus;
     elements.connectionHeartbeatValue.textContent = formatTimestamp(state.lastHeartbeatAt);
     elements.connectionLogValue.textContent = state.connectionLog.join("\n");
@@ -280,6 +325,7 @@
     rootDocument.body.dataset.textSubmitState = state.textSubmitState;
     rootDocument.body.dataset.dialogueReplyState = state.dialogueReplyState;
     rootDocument.body.dataset.historyRestoreState = state.historyRestoreState;
+    rootDocument.body.dataset.exportState = state.exportState;
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -413,6 +459,34 @@
     return payload;
   }
 
+  async function requestSessionExport(fetchImpl, appConfig, sessionId) {
+    const response = await fetchImpl(
+      `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/export`,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      },
+    );
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      const message = payload && typeof payload.message === "string"
+        ? payload.message
+        : `Session export failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return payload;
+  }
+
   function buildRealtimeSocketUrl(appConfig, state) {
     const base = appConfig.wsUrl.replace(/\/+$/, "");
     return `${base}/session/${encodeURIComponent(state.sessionId)}?trace_id=${encodeURIComponent(state.traceId || "")}`;
@@ -455,6 +529,64 @@
 
   function appendTimelineEntry(state, entry) {
     state.timelineEntries = state.timelineEntries.concat([entry]);
+  }
+
+  function clearExportCache(rootWindow) {
+    if (!rootWindow || typeof rootWindow !== "object") {
+      return;
+    }
+    rootWindow.__virtualHumanLastExportPayload = null;
+    rootWindow.__virtualHumanLastExportFileName = null;
+  }
+
+  function storeExportCache(rootWindow, payload, fileName) {
+    if (!rootWindow || typeof rootWindow !== "object") {
+      return;
+    }
+    rootWindow.__virtualHumanLastExportPayload = payload;
+    rootWindow.__virtualHumanLastExportFileName = fileName;
+  }
+
+  function buildExportFileName(sessionId, exportedAt) {
+    const safeTimestamp = String(exportedAt || new Date().toISOString())
+      .replaceAll(":", "-")
+      .replaceAll(".", "-");
+    return `${sessionId || "session"}_${safeTimestamp}.json`;
+  }
+
+  function triggerExportDownload(rootDocument, rootWindow, payload, fileName) {
+    if (typeof Blob !== "function") {
+      return false;
+    }
+    if (!rootWindow || !rootWindow.URL || typeof rootWindow.URL.createObjectURL !== "function") {
+      return false;
+    }
+    if (!rootDocument || typeof rootDocument.createElement !== "function") {
+      return false;
+    }
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const objectUrl = rootWindow.URL.createObjectURL(blob);
+    try {
+      const anchor = rootDocument.createElement("a");
+      if (!anchor || typeof anchor.click !== "function") {
+        return false;
+      }
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      if (rootDocument.body && typeof rootDocument.body.appendChild === "function") {
+        rootDocument.body.appendChild(anchor);
+      }
+      anchor.click();
+      if (anchor.parentNode && typeof anchor.parentNode.removeChild === "function") {
+        anchor.parentNode.removeChild(anchor);
+      }
+      return true;
+    } finally {
+      if (typeof rootWindow.URL.revokeObjectURL === "function") {
+        rootWindow.URL.revokeObjectURL(objectUrl);
+      }
+    }
   }
 
   function rebuildTimelineFromMessages(messages) {
@@ -867,6 +999,7 @@
 
     async function startSession() {
       teardownRealtime(true);
+      clearExportCache(rootWindow);
       state.sessionId = null;
       state.traceId = null;
       state.status = "idle";
@@ -893,6 +1026,10 @@
       state.lastReplyRiskLevel = "pending";
       state.lastReplyNextAction = "pending";
       state.lastStageTransition = "idle → idle";
+      state.exportState = "idle";
+      state.exportMessage = "创建或恢复会话后可导出当前 JSON。";
+      state.lastExportedAt = null;
+      state.lastExportFileName = null;
       renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
@@ -913,6 +1050,37 @@
         renderSessionState(rootDocument, elements, state, appConfig);
       }
 
+      return { ...state };
+    }
+
+    async function exportSession() {
+      if (!state.sessionId) {
+        state.exportState = "error";
+        state.exportMessage = "请先创建或恢复会话。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      state.exportState = "loading";
+      state.exportMessage = null;
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        const payload = await requestSessionExport(resolvedFetch, appConfig, state.sessionId);
+        const fileName = buildExportFileName(state.sessionId, payload.exported_at);
+        storeExportCache(rootWindow, payload, fileName);
+        triggerExportDownload(rootDocument, rootWindow, payload, fileName);
+        state.exportState = "exported";
+        state.lastExportedAt = payload.exported_at || new Date().toISOString();
+        state.lastExportFileName = fileName;
+        state.exportMessage = `导出成功: ${fileName}`;
+        pushConnectionLog(state, `session exported: ${state.sessionId}`);
+      } catch (error) {
+        state.exportState = "error";
+        state.exportMessage = error instanceof Error ? error.message : String(error);
+      }
+
+      renderSessionState(rootDocument, elements, state, appConfig);
       return { ...state };
     }
 
@@ -1004,6 +1172,11 @@
     elements.textSubmitButton.addEventListener("click", function () {
       return submitText();
     });
+    if (elements.exportButton) {
+      elements.exportButton.addEventListener("click", function () {
+        return exportSession();
+      });
+    }
     elements.textInputField.addEventListener("input", function (event) {
       state.draftText = event.currentTarget.value;
       if (state.textSubmitState === "error") {
@@ -1021,6 +1194,7 @@
       },
       startSession,
       submitText,
+      exportSession,
       restoreSessionFromStorage,
       forceRealtimeDropForTest,
       shutdownForTest,

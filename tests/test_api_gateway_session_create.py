@@ -28,6 +28,7 @@ class FakeSessionRepository:
     def __init__(self) -> None:
         self.session_calls: list[dict] = []
         self.message_calls: list[dict] = []
+        self.event_calls: list[dict] = []
 
     def create_session(self, payload):
         dumped = payload.model_dump()
@@ -90,6 +91,84 @@ class FakeSessionRepository:
             ],
         }
 
+    def get_session_export(self, session_id: str):
+        return {
+            "session_id": session_id,
+            "trace_id": "trace_fake_001",
+            "status": "active",
+            "stage": "assess",
+            "input_modes": ["text", "audio"],
+            "avatar_id": "companion_female_01",
+            "started_at": "2026-03-07T14:00:00Z",
+            "updated_at": "2026-03-07T14:02:00Z",
+            "exported_at": "2026-03-07T14:03:00Z",
+            "messages": [
+                {
+                    "message_id": "msg_user_001",
+                    "session_id": session_id,
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "最近睡不好。",
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                    "metadata": {"client_seq": 1},
+                },
+                {
+                    "message_id": "msg_assistant_001",
+                    "session_id": session_id,
+                    "trace_id": "trace_fake_001",
+                    "role": "assistant",
+                    "status": "completed",
+                    "source_kind": "text",
+                    "content_text": "这种情况是晚上更明显吗？",
+                    "submitted_at": "2026-03-07T14:01:03Z",
+                    "metadata": {
+                        "stage": "assess",
+                        "risk_level": "medium",
+                        "emotion": "anxious",
+                        "next_action": "ask_followup",
+                    },
+                },
+            ],
+            "stage_history": [
+                {
+                    "stage": "engage",
+                    "changed_at": "2026-03-07T14:00:00Z",
+                    "message_id": None,
+                },
+                {
+                    "stage": "assess",
+                    "changed_at": "2026-03-07T14:01:03Z",
+                    "message_id": "msg_assistant_001",
+                },
+            ],
+            "events": [
+                {
+                    "event_id": "evt_session_created_001",
+                    "session_id": session_id,
+                    "trace_id": "trace_fake_001",
+                    "message_id": None,
+                    "event_type": "session.created",
+                    "schema_version": "v1alpha1",
+                    "source_service": "api_gateway",
+                    "payload": {"stage": "engage"},
+                    "emitted_at": "2026-03-07T14:00:00Z",
+                },
+                {
+                    "event_id": "evt_dialogue_reply_001",
+                    "session_id": session_id,
+                    "trace_id": "trace_fake_001",
+                    "message_id": "msg_assistant_001",
+                    "event_type": "dialogue.reply",
+                    "schema_version": "v1alpha1",
+                    "source_service": "orchestrator",
+                    "payload": {"stage": "assess"},
+                    "emitted_at": "2026-03-07T14:01:03Z",
+                },
+            ],
+        }
+
     def create_user_text_message(self, session_id: str, payload):
         dumped = payload.model_dump()
         self.message_calls.append({"session_id": session_id, **dumped})
@@ -113,6 +192,9 @@ class FakeSessionRepository:
                 "client_seq": dumped.get("client_seq"),
             },
         }
+
+    def record_system_event(self, envelope: dict):
+        self.event_calls.append(envelope)
 
 
 def test_create_session_endpoint_returns_contract_shape():
@@ -173,12 +255,14 @@ def test_gateway_app_and_readme_document_endpoints():
     assert "/health" in paths
     assert "/api/session/create" in paths
     assert "/api/session/{session_id}/state" in paths
+    assert "/api/session/{session_id}/export" in paths
     assert "/api/session/{session_id}/text" in paths
     assert "/ws/session/{session_id}" in paths
 
     content = GATEWAY_README.read_text(encoding="utf-8")
     assert "POST /api/session/create" in content
     assert "GET /api/session/{session_id}/state" in content
+    assert "GET /api/session/{session_id}/export" in content
     assert "POST /api/session/{session_id}/text" in content
     assert "uvicorn" in content
 
@@ -236,3 +320,20 @@ def test_session_state_record_returns_ordered_messages():
     assert len(body["messages"]) == 2
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][1]["role"] == "assistant"
+
+
+def test_session_export_record_returns_messages_stage_history_and_events():
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+
+    body = module.create_session_export_record(repository, "sess_fake_001")
+
+    assert isinstance(body, dict)
+    assert body["session_id"] == "sess_fake_001"
+    assert body["trace_id"] == "trace_fake_001"
+    assert body["stage"] == "assess"
+    assert len(body["messages"]) == 2
+    assert body["stage_history"][0]["stage"] == "engage"
+    assert body["stage_history"][1]["stage"] == "assess"
+    assert body["events"][0]["event_type"] == "session.created"
+    assert body["events"][1]["event_type"] == "dialogue.reply"

@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - step 14 session json export
+
+### Scope
+
+Completed implementation_plan step 14 by adding a gateway export endpoint, persisting core system events, wiring the frontend Export action, and validating downloadable session JSON end to end.
+
+### Outputs
+
+- apps/api-gateway/main.py now exposes GET /api/session/{session_id}/export and persists session.created, message.accepted, dialogue.reply, and session.error into system_events
+- apps/web/app.js now enables Export after session bootstrap, fetches the session export payload, caches it for test inspection, and downloads JSON when browser APIs are available
+- scripts/web_export_harness.js and scripts/verify_web_export.py validate export payload content, stage history, and database event persistence
+- README.md, apps/web/README.md, and apps/api-gateway/README.md now document the export flow and verification command
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_api_gateway_session_create.py tests/test_web_shell.py tests/test_web_export.py tests/test_web_mock_reply.py tests/test_web_timeline.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_gateway_session_create.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py
+
+### Next
+
+- Proceed to implementation_plan step 15: ensure every message and event in the text path has a stable trace identifier that can be correlated across database rows, realtime envelopes, and exported session payloads.
+
 ## 2026-03-08 - step 13 recoverable chat timeline
 
 ### Scope

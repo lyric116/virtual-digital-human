@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, and 13:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, and 14:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -16,6 +16,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, and 13:
 - step 13: the page renders a recoverable chat timeline, appends user and assistant
   turns in order, records stage transitions, and restores history after refresh from
   the gateway state endpoint
+- step 14: the Export control fetches the current session JSON, caches the payload for
+  test inspection, and downloads it in browser runtimes that support Blob URLs
 
 ## Files
 
@@ -26,7 +28,7 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, and 13:
 - `app.js`
   - panel readiness check, session bootstrap flow, realtime connection, text submit
     ack handling, mock dialogue reply handling, chat timeline rendering, and session
-    history restore
+    history restore plus session export
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -49,12 +51,14 @@ Then open:
 - `window.__APP_CONFIG__.apiBaseUrl` defaults to `http://127.0.0.1:8000`
 - `window.__APP_CONFIG__.wsUrl` defaults to `ws://127.0.0.1:8000/ws`
 - `.env.example` exposes `WEB_PUBLIC_API_BASE_URL`, `WEB_PUBLIC_WS_URL`, and `GATEWAY_CORS_ORIGINS` for local browser preview
-- only `Start Session` is live in this step; pause, reset, and export remain disabled
+- only `Start Session` and `Export` are live in this step; pause and reset remain disabled
 - `Send Text` is live only after session bootstrap and a connected realtime channel
 - the latest assistant reply shown in transcript, avatar, and fusion cards is derived
   from the same live events that feed the timeline
 - the current active `sessionId` is stored in browser storage and used to restore
   history through `GET /api/session/{session_id}/state`
+- `Export` calls `GET /api/session/{session_id}/export` and downloads the returned JSON
+  when browser download APIs are available
 
 ## Verification
 
@@ -63,3 +67,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
