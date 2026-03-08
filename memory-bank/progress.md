@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-08 - step 15 trace continuity across text flow
+
+### Scope
+
+Completed implementation_plan step 15 by surfacing trace identifiers in the web shell, extending export stage history with trace_id, and adding a live verifier that proves one text turn keeps the same trace across session rows, message rows, realtime envelopes, system events, and exported payloads.
+
+### Outputs
+
+- apps/web/app.js and apps/web/index.html now show the active session trace plus the latest user and reply trace values
+- apps/api-gateway/main.py now includes trace_id in exported stage_history entries so export artifacts remain trace-consistent with messages and events
+- scripts/web_trace_harness.js and tests/test_web_trace_lineage.py validate frontend trace surfacing in mock mode
+- scripts/verify_trace_lineage.py validates trace continuity across websocket events, PostgreSQL rows, and exported session JSON in live mode
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_api_gateway_session_create.py tests/test_web_shell.py tests/test_web_export.py tests/test_web_trace_lineage.py tests/test_web_mock_reply.py tests/test_web_timeline.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_gateway_session_create.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py && UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py
+
+### Next
+
+- Proceed to implementation_plan step 16: start browser-side microphone permission handling and recording controls without uploading audio yet.
+
 ## 2026-03-08 - step 14 session json export
 
 ### Scope

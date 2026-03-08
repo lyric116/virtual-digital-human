@@ -13,6 +13,8 @@ Current repository state:
   the gateway session state endpoint
 - the current text session can now be exported as JSON with messages, stage history, and
   persisted system events
+- the text path now has an explicit trace continuity check across database rows, realtime
+  envelopes, and export payloads
 
 ## Repository Structure
 
@@ -64,6 +66,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

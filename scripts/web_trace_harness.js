@@ -7,34 +7,6 @@ const vm = require("vm");
 const ROOT = path.resolve(__dirname, "..");
 const APP_JS = path.join(ROOT, "apps", "web", "app.js");
 
-function parseArgs(argv) {
-  const args = {
-    mode: "mock",
-    apiBaseUrl: "http://127.0.0.1:8000",
-    wsUrl: "ws://127.0.0.1:8000/ws",
-  };
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const current = argv[index];
-    if (current === "--mode") {
-      args.mode = argv[index + 1];
-      index += 1;
-      continue;
-    }
-    if (current === "--api-base-url") {
-      args.apiBaseUrl = argv[index + 1];
-      index += 1;
-      continue;
-    }
-    if (current === "--ws-url") {
-      args.wsUrl = argv[index + 1];
-      index += 1;
-    }
-  }
-
-  return args;
-}
-
 class FakeElement {
   constructor({ id = null, panelId = null, textContent = "", value = "" } = {}) {
     this.id = id;
@@ -45,7 +17,6 @@ class FakeElement {
     this.dataset = {};
     this.listeners = new Map();
     this.innerHTML = "";
-    this.parentNode = null;
   }
 
   addEventListener(eventName, handler) {
@@ -71,28 +42,10 @@ class FakeElement {
   }
 }
 
-class FakeBody {
-  constructor() {
-    this.dataset = {};
-  }
-
-  appendChild(element) {
-    element.parentNode = this;
-    return element;
-  }
-
-  removeChild(element) {
-    if (element) {
-      element.parentNode = null;
-    }
-    return element;
-  }
-}
-
 class FakeDocument {
   constructor() {
     this.readyState = "complete";
-    this.body = new FakeBody();
+    this.body = { dataset: {} };
     this.listeners = new Map();
     this.panelMap = new Map();
     this.idMap = new Map();
@@ -103,8 +56,6 @@ class FakeDocument {
 
     const elements = [
       ["session-start-button", "Start Session", ""],
-      ["session-export-button", "Export", ""],
-      ["session-export-status", "创建或恢复会话后可导出当前 JSON。", ""],
       ["text-input-field", "", "我这两天总是睡不好，脑子停不下来。"],
       ["text-submit-button", "Send Text", ""],
       ["text-submit-status", "建立会话并连接实时通道后可发送文本。", ""],
@@ -123,6 +74,8 @@ class FakeDocument {
       ["session-status-value", "idle", ""],
       ["session-stage-value", "idle", ""],
       ["session-trace-value", "not assigned", ""],
+      ["last-user-trace-value", "not observed", ""],
+      ["last-reply-trace-value", "not observed", ""],
       ["session-updated-at-value", "not started", ""],
       ["session-api-base-url-value", "http://127.0.0.1:8000", ""],
       ["session-ws-url-value", "ws://127.0.0.1:8000/ws", ""],
@@ -147,15 +100,6 @@ class FakeDocument {
       return this.panelMap.get(panelMatch[1]) || null;
     }
     return null;
-  }
-
-  createElement(tagName) {
-    const element = new FakeElement({ id: `${tagName}_${Math.random().toString(16).slice(2, 8)}` });
-    element.tagName = tagName.toUpperCase();
-    element.click = function () {
-      return true;
-    };
-    return element;
   }
 
   addEventListener(eventName, handler) {
@@ -197,64 +141,11 @@ function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null,
   };
 }
 
-function buildStageHistory(session, messages) {
-  const history = [
-    {
-      stage: "engage",
-      trace_id: session.trace_id,
-      changed_at: session.started_at,
-      message_id: null,
-    },
-  ];
-  let currentStage = "engage";
-
-  messages.forEach((message) => {
-    if (message.role !== "assistant") {
-      return;
-    }
-    const metadata = message.metadata || {};
-    if (typeof metadata.stage !== "string" || metadata.stage === currentStage) {
-      return;
-    }
-    history.push({
-      stage: metadata.stage,
-      trace_id: session.trace_id,
-      changed_at: message.submitted_at,
-      message_id: message.message_id,
-    });
-    currentStage = metadata.stage;
-  });
-
-  return history;
-}
-
 function createMockRuntime() {
   const store = {
     session: null,
-    messages: [],
-    events: [],
-    turnIndex: 0,
     currentSocket: null,
   };
-
-  const mockTurns = [
-    {
-      reply: "谢谢你愿意说出来。最近这种睡不稳和停不下来的感觉，是这几天一直这样，还是晚上更明显？",
-      emotion: "anxious",
-      risk_level: "medium",
-      stage: "assess",
-      next_action: "ask_followup",
-      knowledge_refs: ["sleep_hygiene_basic"],
-    },
-    {
-      reply: "我们先不急着一下子解决全部问题。你现在可以先试一次慢呼吸：吸气四拍，停两拍，呼气六拍，做两轮看看身体有没有一点放松。",
-      emotion: "anxious",
-      risk_level: "medium",
-      stage: "intervene",
-      next_action: "breathing",
-      knowledge_refs: ["breathing_426"],
-    },
-  ];
 
   class MockWebSocket {
     constructor(url) {
@@ -326,35 +217,15 @@ function createMockRuntime() {
   async function mockFetch(url, options = {}) {
     if (url.endsWith("/api/session/create")) {
       store.session = {
-        session_id: "sess_mock_export_001",
-        trace_id: "trace_mock_export_001",
+        session_id: "sess_mock_trace_001",
+        trace_id: "trace_mock_trace_001",
         status: "created",
         stage: "engage",
         input_modes: ["text", "audio"],
         avatar_id: "companion_female_01",
-        started_at: "2026-03-08T11:10:00Z",
-        updated_at: "2026-03-08T11:10:00Z",
+        started_at: "2026-03-08T11:20:00Z",
+        updated_at: "2026-03-08T11:20:00Z",
       };
-      store.messages = [];
-      store.turnIndex = 0;
-      store.events = [
-        {
-          event_id: "evt_session_created_mock",
-          session_id: store.session.session_id,
-          trace_id: store.session.trace_id,
-          message_id: null,
-          event_type: "session.created",
-          schema_version: "v1alpha1",
-          source_service: "api_gateway",
-          payload: {
-            status: "created",
-            stage: "engage",
-            input_modes: store.session.input_modes,
-            avatar_id: store.session.avatar_id,
-          },
-          emitted_at: store.session.started_at,
-        },
-      ];
       return {
         ok: true,
         status: 201,
@@ -366,86 +237,38 @@ function createMockRuntime() {
 
     if (store.session && url.includes(`/api/session/${store.session.session_id}/text`)) {
       const submitted = JSON.parse(options.body || "{}");
-      const turn = mockTurns[Math.min(store.turnIndex, mockTurns.length - 1)];
-      const userSubmittedAt = new Date(Date.UTC(2026, 2, 8, 11, 10, 2 + store.turnIndex * 8)).toISOString();
-      const replySubmittedAt = new Date(Date.UTC(2026, 2, 8, 11, 10, 4 + store.turnIndex * 8)).toISOString();
       const userMessage = {
-        message_id: `msg_mock_user_${String(store.turnIndex + 1).padStart(3, "0")}`,
+        message_id: "msg_trace_user_001",
         session_id: store.session.session_id,
         trace_id: store.session.trace_id,
         role: "user",
         status: "accepted",
         source_kind: "text",
         content_text: submitted.content_text,
-        submitted_at: userSubmittedAt,
+        submitted_at: "2026-03-08T11:20:02Z",
         client_seq: submitted.client_seq,
       };
       const assistantReply = {
         session_id: store.session.session_id,
         trace_id: store.session.trace_id,
-        message_id: `msg_mock_assistant_${String(store.turnIndex + 1).padStart(3, "0")}`,
-        submitted_at: replySubmittedAt,
-        reply: turn.reply,
-        emotion: turn.emotion,
-        risk_level: turn.risk_level,
-        stage: turn.stage,
-        next_action: turn.next_action,
-        knowledge_refs: turn.knowledge_refs,
+        message_id: "msg_trace_assistant_001",
+        submitted_at: "2026-03-08T11:20:04Z",
+        reply: "谢谢你愿意说出来。最近这种睡不稳和停不下来的感觉，是这几天一直这样，还是晚上更明显？",
+        emotion: "anxious",
+        risk_level: "medium",
+        stage: "assess",
+        next_action: "ask_followup",
+        knowledge_refs: ["sleep_hygiene_basic"],
         avatar_style: "warm_support",
         safety_flags: [],
       };
 
-      const assistantMessage = {
-        message_id: assistantReply.message_id,
-        session_id: store.session.session_id,
-        trace_id: store.session.trace_id,
-        role: "assistant",
-        status: "completed",
-        source_kind: "text",
-        content_text: assistantReply.reply,
-        submitted_at: replySubmittedAt,
-        metadata: {
-          stage: assistantReply.stage,
-          emotion: assistantReply.emotion,
-          risk_level: assistantReply.risk_level,
-          next_action: assistantReply.next_action,
-          knowledge_refs: assistantReply.knowledge_refs,
-          avatar_style: assistantReply.avatar_style,
-          safety_flags: assistantReply.safety_flags,
-        },
-      };
-
-      store.messages.push({ ...userMessage, metadata: { client_seq: submitted.client_seq } });
-      store.messages.push(assistantMessage);
-      store.events.push({
-        event_id: `evt_message_accepted_${String(store.turnIndex + 1).padStart(3, "0")}`,
-        session_id: store.session.session_id,
-        trace_id: store.session.trace_id,
-        message_id: userMessage.message_id,
-        event_type: "message.accepted",
-        schema_version: "v1alpha1",
-        source_service: "api_gateway",
-        payload: { ...userMessage },
-        emitted_at: userSubmittedAt,
-      });
-      store.events.push({
-        event_id: `evt_dialogue_reply_${String(store.turnIndex + 1).padStart(3, "0")}`,
-        session_id: store.session.session_id,
-        trace_id: store.session.trace_id,
-        message_id: assistantReply.message_id,
-        event_type: "dialogue.reply",
-        schema_version: "v1alpha1",
-        source_service: "orchestrator",
-        payload: { ...assistantReply },
-        emitted_at: replySubmittedAt,
-      });
       store.session = {
         ...store.session,
         status: "active",
         stage: assistantReply.stage,
-        updated_at: replySubmittedAt,
+        updated_at: assistantReply.submitted_at,
       };
-      store.turnIndex += 1;
 
       setTimeout(() => {
         if (!store.currentSocket || store.currentSocket.readyState !== MockWebSocket.OPEN) {
@@ -485,29 +308,6 @@ function createMockRuntime() {
       };
     }
 
-    if (store.session && url.endsWith(`/api/session/${store.session.session_id}/export`)) {
-      return {
-        ok: true,
-        status: 200,
-        async json() {
-          return {
-            session_id: store.session.session_id,
-            trace_id: store.session.trace_id,
-            status: store.session.status,
-            stage: store.session.stage,
-            input_modes: store.session.input_modes,
-            avatar_id: store.session.avatar_id,
-            started_at: store.session.started_at,
-            updated_at: store.session.updated_at,
-            exported_at: "2026-03-08T11:10:30Z",
-            messages: store.messages,
-            stage_history: buildStageHistory(store.session, store.messages),
-            events: store.events,
-          };
-        },
-      };
-    }
-
     return {
       ok: false,
       status: 404,
@@ -523,45 +323,16 @@ function createMockRuntime() {
   };
 }
 
-function collectSnapshot(runtime) {
-  const { document, window } = runtime;
-  const exportPayload = window.__virtualHumanLastExportPayload;
-  return {
-    sessionId: document.getElementById("session-id-value").textContent,
-    status: document.getElementById("session-status-value").textContent,
-    stage: document.getElementById("session-stage-value").textContent,
-    connectionStatus: document.getElementById("connection-status-value").textContent,
-    exportState: document.body.dataset.exportState || null,
-    exportStatus: document.getElementById("session-export-status").textContent,
-    exportFileName: window.__virtualHumanLastExportFileName || null,
-    exportedMessageCount: exportPayload && Array.isArray(exportPayload.messages)
-      ? exportPayload.messages.length
-      : 0,
-    exportedEventCount: exportPayload && Array.isArray(exportPayload.events)
-      ? exportPayload.events.length
-      : 0,
-    exportedStageCount: exportPayload && Array.isArray(exportPayload.stage_history)
-      ? exportPayload.stage_history.length
-      : 0,
-  };
-}
-
-function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl, localStorage }) {
+function executeApp({ fetchImpl, WebSocketImpl, localStorage }) {
   const document = new FakeDocument();
   const window = {
     document,
     fetch: fetchImpl,
     WebSocket: WebSocketImpl,
     localStorage,
-    URL: {
-      createObjectURL() {
-        return "blob:mock-export";
-      },
-      revokeObjectURL() {},
-    },
     __APP_CONFIG__: {
-      apiBaseUrl,
-      wsUrl,
+      apiBaseUrl: "http://127.0.0.1:8000",
+      wsUrl: "ws://127.0.0.1:8000/ws",
       defaultAvatarId: "companion_female_01",
       heartbeatIntervalMs: 200,
       reconnectDelayMs: 150,
@@ -583,7 +354,6 @@ function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl, localStorage 
     Date,
     URL,
     URLSearchParams,
-    Blob,
     setTimeout,
     clearTimeout,
     setInterval,
@@ -598,9 +368,21 @@ function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl, localStorage 
     document,
     window,
     startButton: document.getElementById("session-start-button"),
-    exportButton: document.getElementById("session-export-button"),
     textInputField: document.getElementById("text-input-field"),
     textSubmitButton: document.getElementById("text-submit-button"),
+  };
+}
+
+function collectSnapshot(runtime) {
+  const { document } = runtime;
+  return {
+    sessionId: document.getElementById("session-id-value").textContent,
+    sessionTrace: document.getElementById("session-trace-value").textContent,
+    lastUserTrace: document.getElementById("last-user-trace-value").textContent,
+    lastReplyTrace: document.getElementById("last-reply-trace-value").textContent,
+    connectionStatus: document.getElementById("connection-status-value").textContent,
+    textSubmitState: document.body.dataset.textSubmitState || null,
+    dialogueReplyState: document.body.dataset.dialogueReplyState || null,
   };
 }
 
@@ -615,28 +397,12 @@ async function waitFor(condition, timeoutMs, message) {
   throw new Error(message);
 }
 
-async function submitTurn(runtime, text, expectedReplyState = "received") {
-  runtime.textInputField.dispatchInput(text);
-  await runtime.textSubmitButton.click();
-  await waitFor(
-    () => runtime.document.body.dataset.dialogueReplyState === expectedReplyState,
-    5000,
-    "dialogue reply did not reach expected state",
-  );
-}
-
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
   const sharedStorage = new SharedStorage();
-  const runtimeConfig = args.mode === "live"
-    ? { fetchImpl: fetch, WebSocketImpl: WebSocket }
-    : createMockRuntime();
-
+  const runtimeConfig = createMockRuntime();
   const runtime = executeApp({
     fetchImpl: runtimeConfig.fetchImpl,
     WebSocketImpl: runtimeConfig.WebSocketImpl,
-    apiBaseUrl: args.apiBaseUrl,
-    wsUrl: args.wsUrl,
     localStorage: sharedStorage,
   });
 
@@ -645,32 +411,19 @@ async function main() {
   await waitFor(
     () => runtime.document.getElementById("connection-status-value").textContent === "connected",
     5000,
-    "realtime connection did not become ready before export test",
+    "realtime connection did not become ready",
   );
-  const afterConnect = collectSnapshot(runtime);
-
-  await submitTurn(runtime, "我这两天晚上总是睡不稳。", "received");
-  await submitTurn(runtime, "我愿意先试试你说的慢呼吸。", "received");
-
-  await runtime.exportButton.click();
+  runtime.textInputField.dispatchInput("我这两天晚上总是睡不稳。");
+  await runtime.textSubmitButton.click();
   await waitFor(
-    () => runtime.document.body.dataset.exportState === "exported",
+    () => runtime.document.body.dataset.dialogueReplyState === "received",
     5000,
-    "export state did not reach exported",
+    "dialogue reply did not arrive",
   );
-  await waitFor(
-    () => Boolean(runtime.window.__virtualHumanLastExportPayload),
-    5000,
-    "export payload was not cached for inspection",
-  );
-
-  const afterExport = collectSnapshot(runtime);
-  const exportedPayload = runtime.window.__virtualHumanLastExportPayload;
+  const afterReply = collectSnapshot(runtime);
   runtime.window.__virtualHumanConsoleController.shutdownForTest();
 
-  process.stdout.write(
-    `${JSON.stringify({ beforeCreate, afterConnect, afterExport, exportedPayload }, null, 2)}\n`,
-  );
+  process.stdout.write(`${JSON.stringify({ beforeCreate, afterReply }, null, 2)}\n`);
 }
 
 main().catch((error) => {

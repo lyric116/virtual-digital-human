@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-08 - trace continuity is now an explicit runtime contract
+
+- The text path no longer treats trace_id as an implicit session field only: the active session, latest user turn, latest assistant turn, persisted business events, and exported stage history all surface the same trace so one interaction can be correlated without reconstructing context from timestamps alone.
+- verify_trace_lineage.py is now the runtime gate for trace safety; if a future change alters websocket flushing, export shaping, or database writes, this script should fail before the branch is considered stable.
+
 ## 2026-03-08 - session export depends on persisted business events
 
 - system_events is now part of the live text path, not just a future schema placeholder: the gateway persists session.created, message.accepted, dialogue.reply, and session.error so export can replay a session without scraping websocket logs.

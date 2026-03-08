@@ -169,6 +169,7 @@ class SessionStateResponse(BaseModel):
 
 class SessionStageHistoryResponse(BaseModel):
     stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    trace_id: str
     changed_at: datetime
     message_id: str | None = None
 
@@ -547,6 +548,7 @@ class PostgresSessionRepository:
             "exported_at": datetime.now(timezone.utc),
             "messages": messages,
             "stage_history": build_stage_history(
+                session_trace_id=session_row["trace_id"],
                 started_at=session_row["started_at"],
                 messages=messages,
             ),
@@ -840,12 +842,14 @@ def build_event_envelope(
 
 def build_stage_history(
     *,
+    session_trace_id: str,
     started_at: datetime,
     messages: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     history: list[dict[str, Any]] = [
         {
             "stage": "engage",
+            "trace_id": session_trace_id,
             "changed_at": started_at,
             "message_id": None,
         }
@@ -866,6 +870,7 @@ def build_stage_history(
         history.append(
             {
                 "stage": next_stage,
+                "trace_id": session_trace_id,
                 "changed_at": message.get("submitted_at") or started_at,
                 "message_id": message.get("message_id"),
             }

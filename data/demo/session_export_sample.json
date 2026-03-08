@@ -21,14 +21,17 @@
   "stage_history": [
     {
       "stage": "engage",
+      "trace_id": "trace_demo_export_001",
       "changed_at": "2026-03-07T14:18:00Z"
     },
     {
       "stage": "assess",
+      "trace_id": "trace_demo_export_001",
       "changed_at": "2026-03-07T14:18:05Z"
     },
     {
       "stage": "reassess",
+      "trace_id": "trace_demo_export_001",
       "changed_at": "2026-03-07T14:19:10Z"
     }
   ],

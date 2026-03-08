@@ -48,6 +48,7 @@ def test_web_export_produces_session_payload_with_messages_stages_and_events():
     assert exported_payload["messages"][0]["role"] == "user"
     assert exported_payload["messages"][1]["role"] == "assistant"
     assert exported_payload["stage_history"][0]["stage"] == "engage"
+    assert exported_payload["stage_history"][0]["trace_id"] == exported_payload["trace_id"]
     assert exported_payload["stage_history"][1]["stage"] == "assess"
     assert exported_payload["stage_history"][2]["stage"] == "intervene"
     assert exported_payload["events"][0]["event_type"] == "session.created"

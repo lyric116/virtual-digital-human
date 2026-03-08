@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, and 14:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, and 15:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -13,6 +13,8 @@ This gateway currently covers steps 8, 10, 11, 12, 13, and 14:
   restore the chat timeline after refresh
 - step 14: export session metadata, message history, stage history, and persisted
   system events as a single JSON response
+- step 15: keep one stable `trace_id` across session rows, message rows, realtime
+  envelopes, system events, and exported session artifacts
 
 ## Files
 
@@ -52,3 +54,6 @@ From repository root:
 - `session.created`, `message.accepted`, `dialogue.reply`, and `session.error` are now
   persisted into `system_events` so export and later tracing steps can replay a session
   without reconstructing events from logs.
+- The text-first trace contract is now explicit: the session row, every message row,
+  every persisted business event, the websocket envelopes, and the export payload all
+  carry the same session `trace_id`.

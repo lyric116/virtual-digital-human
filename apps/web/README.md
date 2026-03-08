@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, and 14:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, and 15:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -18,6 +18,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, and 14:
   the gateway state endpoint
 - step 14: the Export control fetches the current session JSON, caches the payload for
   test inspection, and downloads it in browser runtimes that support Blob URLs
+- step 15: the page now surfaces the active session trace plus the latest user and reply
+  trace values so one text turn can be correlated with realtime events and exported data
 
 ## Files
 
@@ -59,6 +61,8 @@ Then open:
   history through `GET /api/session/{session_id}/state`
 - `Export` calls `GET /api/session/{session_id}/export` and downloads the returned JSON
   when browser download APIs are available
+- the control panel also shows the latest user and assistant `trace_id` values observed
+  from realtime events
 
 ## Verification
 
@@ -68,3 +72,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`

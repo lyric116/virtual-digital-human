@@ -43,10 +43,12 @@
       textSubmitMessage: null,
       pendingMessageId: null,
       lastAcceptedMessageId: null,
+      lastAcceptedTraceId: null,
       lastAcceptedAt: null,
       lastAcceptedText: "",
       dialogueReplyState: "idle",
       lastReplyMessageId: null,
+      lastReplyTraceId: null,
       lastReplyAt: null,
       lastReplyText: "",
       lastReplyEmotion: "pending",
@@ -94,6 +96,8 @@
       sessionStatusValue: findRequiredElement(rootDocument, "session-status-value"),
       sessionStageValue: findRequiredElement(rootDocument, "session-stage-value"),
       sessionTraceValue: findRequiredElement(rootDocument, "session-trace-value"),
+      lastUserTraceValue: findOptionalElement(rootDocument, "last-user-trace-value"),
+      lastReplyTraceValue: findOptionalElement(rootDocument, "last-reply-trace-value"),
       sessionUpdatedAtValue: findRequiredElement(rootDocument, "session-updated-at-value"),
       sessionApiBaseUrlValue: findRequiredElement(rootDocument, "session-api-base-url-value"),
       sessionWsUrlValue: findRequiredElement(rootDocument, "session-ws-url-value"),
@@ -273,6 +277,12 @@
     elements.sessionStatusValue.textContent = state.status;
     elements.sessionStageValue.textContent = state.stage;
     elements.sessionTraceValue.textContent = state.traceId || "not assigned";
+    if (elements.lastUserTraceValue) {
+      elements.lastUserTraceValue.textContent = state.lastAcceptedTraceId || "not observed";
+    }
+    if (elements.lastReplyTraceValue) {
+      elements.lastReplyTraceValue.textContent = state.lastReplyTraceId || "not observed";
+    }
     elements.sessionUpdatedAtValue.textContent = formatTimestamp(state.updatedAt);
     elements.sessionApiBaseUrlValue.textContent = appConfig.apiBaseUrl;
     elements.sessionWsUrlValue.textContent = appConfig.wsUrl;
@@ -595,9 +605,11 @@
     let lastAcceptedText = "";
     let lastAcceptedAt = null;
     let lastAcceptedMessageId = null;
+    let lastAcceptedTraceId = null;
     let lastReplyText = "";
     let lastReplyAt = null;
     let lastReplyMessageId = null;
+    let lastReplyTraceId = null;
     let lastReplyRiskLevel = "pending";
     let lastReplyEmotion = "pending";
     let lastReplyNextAction = "pending";
@@ -611,6 +623,7 @@
         lastAcceptedText = message.content_text;
         lastAcceptedAt = message.submitted_at;
         lastAcceptedMessageId = message.message_id;
+        lastAcceptedTraceId = typeof message.trace_id === "string" ? message.trace_id : null;
         timelineEntries.push({
           entryId: `timeline-${message.message_id}`,
           kind: "user",
@@ -628,6 +641,7 @@
         lastReplyText = message.content_text;
         lastReplyAt = message.submitted_at;
         lastReplyMessageId = message.message_id;
+        lastReplyTraceId = typeof message.trace_id === "string" ? message.trace_id : null;
         lastReplyRiskLevel = typeof metadata.risk_level === "string" ? metadata.risk_level : "pending";
         lastReplyEmotion = typeof metadata.emotion === "string" ? metadata.emotion : "pending";
         lastReplyNextAction = typeof metadata.next_action === "string" ? metadata.next_action : "pending";
@@ -665,9 +679,11 @@
       lastAcceptedText,
       lastAcceptedAt,
       lastAcceptedMessageId,
+      lastAcceptedTraceId,
       lastReplyText,
       lastReplyAt,
       lastReplyMessageId,
+      lastReplyTraceId,
       lastReplyRiskLevel,
       lastReplyEmotion,
       lastReplyNextAction,
@@ -692,9 +708,11 @@
     state.lastAcceptedText = reconstructed.lastAcceptedText;
     state.lastAcceptedAt = reconstructed.lastAcceptedAt;
     state.lastAcceptedMessageId = reconstructed.lastAcceptedMessageId;
+    state.lastAcceptedTraceId = reconstructed.lastAcceptedTraceId;
     state.lastReplyText = reconstructed.lastReplyText;
     state.lastReplyAt = reconstructed.lastReplyAt;
     state.lastReplyMessageId = reconstructed.lastReplyMessageId;
+    state.lastReplyTraceId = reconstructed.lastReplyTraceId;
     state.lastReplyRiskLevel = reconstructed.lastReplyRiskLevel;
     state.lastReplyEmotion = reconstructed.lastReplyEmotion;
     state.lastReplyNextAction = reconstructed.lastReplyNextAction;
@@ -820,6 +838,7 @@
         state.status = "active";
         state.updatedAt = payload.submitted_at || envelope.emitted_at;
         state.lastAcceptedMessageId = payload.message_id || envelope.message_id || null;
+        state.lastAcceptedTraceId = payload.trace_id || envelope.trace_id || state.traceId;
         state.lastAcceptedAt = payload.submitted_at || envelope.emitted_at;
         state.lastAcceptedText = payload.content_text || state.lastAcceptedText;
         appendTimelineEntry(state, {
@@ -851,6 +870,7 @@
         const replyTimestamp = payload.submitted_at || envelope.emitted_at;
         state.updatedAt = replyTimestamp;
         state.lastReplyMessageId = payload.message_id;
+        state.lastReplyTraceId = payload.trace_id || envelope.trace_id || state.traceId;
         state.lastReplyAt = replyTimestamp;
         state.lastReplyText = payload.reply;
         state.lastReplyEmotion = payload.emotion;
@@ -1016,10 +1036,12 @@
       state.textSubmitMessage = null;
       state.pendingMessageId = null;
       state.lastAcceptedMessageId = null;
+      state.lastAcceptedTraceId = null;
       state.lastAcceptedAt = null;
       state.lastAcceptedText = "";
       state.dialogueReplyState = "idle";
       state.lastReplyMessageId = null;
+      state.lastReplyTraceId = null;
       state.lastReplyAt = null;
       state.lastReplyText = "";
       state.lastReplyEmotion = "pending";
@@ -1109,6 +1131,7 @@
       state.textSubmitMessage = null;
       state.dialogueReplyState = "idle";
       state.lastReplyMessageId = null;
+      state.lastReplyTraceId = null;
       state.lastReplyAt = null;
       state.lastReplyText = "";
       state.lastReplyEmotion = "pending";

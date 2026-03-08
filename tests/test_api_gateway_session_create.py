@@ -134,11 +134,13 @@ class FakeSessionRepository:
             "stage_history": [
                 {
                     "stage": "engage",
+                    "trace_id": "trace_fake_001",
                     "changed_at": "2026-03-07T14:00:00Z",
                     "message_id": None,
                 },
                 {
                     "stage": "assess",
+                    "trace_id": "trace_fake_001",
                     "changed_at": "2026-03-07T14:01:03Z",
                     "message_id": "msg_assistant_001",
                 },
@@ -334,6 +336,7 @@ def test_session_export_record_returns_messages_stage_history_and_events():
     assert body["stage"] == "assess"
     assert len(body["messages"]) == 2
     assert body["stage_history"][0]["stage"] == "engage"
+    assert body["stage_history"][0]["trace_id"] == "trace_fake_001"
     assert body["stage_history"][1]["stage"] == "assess"
     assert body["events"][0]["event_type"] == "session.created"
     assert body["events"][1]["event_type"] == "dialogue.reply"
