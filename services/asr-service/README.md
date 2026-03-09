@@ -73,6 +73,8 @@ From repository root:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_postprocess.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_draft_batch.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/eval_asr_baseline.py --hypothesis-source draft`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/prepare_magicdata_eval.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_magicdata_asr_eval.py`
 
 The live verifier uploads three enterprise validation samples, checks transcript
 availability, confirms duration and audio metadata fields, and prints original-vs-derived
@@ -85,3 +87,11 @@ rows move from `pending_asr` to `draft_ready` without altering untouched rows.
 The ASR baseline evaluator is read-only: it never writes transcript workflow state and
 will only score rows that are already `verified`, `locked_for_eval=true`, and
 `text_status=human_verified`.
+
+The MAGICDATA import path is separate from the enterprise transcript workflow:
+
+- `scripts/prepare_magicdata_eval.py` builds a local full reference catalog plus a frozen
+  Chinese core subset under `data/derived/transcripts-local/`
+- `scripts/verify_magicdata_asr_eval.py` starts the same ASR service locally and evaluates
+  that frozen subset through `scripts/eval_asr_baseline.py`
+- both outputs stay local and should not be committed

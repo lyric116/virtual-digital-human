@@ -102,6 +102,29 @@ flowchart LR
 - `hotwords.txt`
 - `README.md`
 
+### 中文公开评测集补充
+
+当前仓库已补充一条不依赖企业法语数据的中文公开评测路径，优先用于中文普通话 ASR 基线：
+
+- 数据集：`MAGICDATA Mandarin Chinese Read Speech Corpus`
+- 本地原始包目录：`data/external/asr/magicdata-zh/raw/`
+- 本地解压目录：`data/external/asr/magicdata-zh/extracted/`
+- 官方参考文本：`dev/TRANS.txt`、`test/TRANS.txt`
+- 音频抽检结果：原始音频已是 `16kHz mono wav`
+
+落地策略：
+
+- 不把 MAGICDATA 混入企业 `val_transcripts_template.jsonl`
+- 单独生成本地全量参考清单 `data/derived/transcripts-local/magicdata_eval_all.jsonl`
+- 再从中冻结一个受控中文评测子集 `data/derived/transcripts-local/magicdata_eval_core.jsonl`
+- 正式中文 WER/SER 通过 `scripts/eval_asr_baseline.py --hypothesis-source service` 对该冻结子集计算
+
+这样做的原因：
+
+- 企业验证集当前主要用于多模态和离线回放，不适合作为中文正式 WER 金标准
+- MAGICDATA 自带官方参考文本，可以直接充当 `human_verified` 参考
+- 冻结子集后，后续热词、静音检测和后处理优化都能稳定横向对比
+
 ## 8. 时延优化
 
 - 开启流式识别，不等待整句结束。
@@ -173,3 +196,6 @@ flowchart LR
 - 步骤 21 的验证脚本为 `scripts/verify_asr_postprocess.py`，可直接对比增强前后的同一段音频文本
 - 步骤 22 的评测脚本为 `scripts/eval_asr_baseline.py`，只读取 `verified + locked_for_eval + human_verified` 的记录
 - 当前如果真实工作流中尚无锁定样本，评测脚本会输出 `blocked` 报告，而不是使用机器初稿伪造正式 WER/SER
+- 已新增 `scripts/prepare_magicdata_eval.py`，可把本地 `MAGICDATA dev+test` 生成中文全量参考清单与冻结子集
+- 已新增 `scripts/verify_magicdata_asr_eval.py`，可直接启动 `services/asr-service` 并对 MAGICDATA 中文冻结子集生成真实 WER/SER 报告
+- MAGICDATA 相关清单与评测报告默认输出到 `data/derived/transcripts-local/` 和 `data/derived/eval-local/`，保持本地使用，不进入版本库

@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - MAGICDATA Public Chinese ASR Eval Stays Outside The Enterprise Workflow
+
+- scripts/prepare_magicdata_eval.py now defines a second ASR evaluation lane: MAGICDATA official references are imported into data/derived/transcripts-local/, not into val_transcripts_template.jsonl, so public Chinese WER baselines and enterprise transcript review remain isolated.
+- The frozen MAGICDATA core subset is the only public-Chinese file allowed to carry locked_for_eval=true; the full imported catalog remains unlocked to prevent accidental high-cost API evaluation over the entire corpus.
+- Because MAGICDATA licensing is local-only in this repository context, raw archives, extracted audio, transcript catalogs, and report outputs under data/external/, data/derived/transcripts-local/, and data/derived/eval-local/ must stay gitignored while scripts, tests, and docs remain versioned.
+
 ## 2026-03-08 - Formal ASR Evaluation Is Now Gated By Locked Human References
 
 - scripts/eval_asr_baseline.py is now the only approved ASR WER/SER entrypoint in the repository; it is read-only and will only score rows that are simultaneously verified, locked_for_eval=true, and text_status=human_verified.

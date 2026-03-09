@@ -85,6 +85,21 @@ def test_evaluate_rows_computes_wer_and_ser_from_draft_text():
     assert sample_rows[1]["sentence_error"] is True
 
 
+def test_evaluate_rows_tokenizes_chinese_at_character_level():
+    module = load_module()
+    rows = [
+        eligible_row("magicdata/test/1", draft_text="高地地图", final_text="高德地图"),
+    ]
+
+    sample_rows, metrics = module.evaluate_rows(rows, hypothesis_source="draft", service_base_url=None)
+
+    assert sample_rows[0]["reference_tokens"] == 4
+    assert sample_rows[0]["hypothesis_tokens"] == 4
+    assert sample_rows[0]["edit_distance"] == 1
+    assert metrics["wer"] == 0.25
+    assert metrics["ser"] == 1.0
+
+
 def test_main_writes_blocked_report_when_no_locked_samples(tmp_path, monkeypatch):
     module = load_module()
     transcripts_path = tmp_path / "transcripts.jsonl"

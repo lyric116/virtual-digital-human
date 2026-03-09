@@ -5,6 +5,9 @@
 __pycache__/
 *.pyc
 
+data/external/
 data/val/
 data/derived/audio_16k_mono/
 data/derived/live_media/
+data/derived/transcripts-local/
+data/derived/eval-local/

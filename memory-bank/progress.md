@@ -21,6 +21,32 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - MAGICDATA Chinese ASR Evaluation Integration
+
+### Scope
+
+Added a local-only MAGICDATA Mandarin evaluation pipeline that extracts dev and test archives, builds a full official-reference catalog plus a frozen core subset, then runs real WER/SER evaluation through the existing standalone ASR service without touching the enterprise transcript workflow.
+
+### Outputs
+
+- scripts/prepare_magicdata_eval.py now extracts MAGICDATA archives when needed and generates data/derived/transcripts-local/magicdata_eval_all.jsonl plus data/derived/transcripts-local/magicdata_eval_core.jsonl.
+- scripts/verify_magicdata_asr_eval.py now starts services/asr-service locally, runs scripts/eval_asr_baseline.py against the frozen Chinese core subset, and writes local reports under data/derived/eval-local/.
+- README.md, services/asr-service/README.md, docs/03-asr.md, docs/08-data-ops-eval.md, docs/data_spec.md, and docs/implementation_plan.md now document the separate Chinese public-eval path and its local-only storage rules.
+- tests/test_prepare_magicdata_eval.py and tests/test_eval_asr_baseline.py now lock the MAGICDATA import shape and Chinese character-level WER behavior.
+
+### Checks
+
+- Ran UV_CACHE_DIR=.uv-cache uv run python -m py_compile scripts/prepare_magicdata_eval.py scripts/verify_magicdata_asr_eval.py tests/test_prepare_magicdata_eval.py tests/test_eval_asr_baseline.py.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest tests/test_prepare_magicdata_eval.py tests/test_eval_asr_baseline.py tests/test_asr_service.py and confirmed 11 tests passed.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/prepare_magicdata_eval.py and generated a local full reference catalog with 36072 rows plus a frozen 18-row core subset.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/verify_magicdata_asr_eval.py and confirmed qwen3-asr-flash produced WER=0.042017 and SER=0.111111 on the frozen Chinese subset.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest and confirmed 92 tests passed.
+
+### Next
+
+- Keep MAGICDATA artifacts local under data/derived/transcripts-local and data/derived/eval-local; do not commit dataset-derived content.
+- Use scripts/verify_magicdata_asr_eval.py as the reproducible Chinese ASR baseline gate before changing postprocess or provider settings.
+
 ## 2026-03-08 - Step 22 ASR Baseline Evaluation Gate
 
 ### Scope

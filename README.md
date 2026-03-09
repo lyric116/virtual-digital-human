@@ -31,6 +31,8 @@ Current repository state:
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
+- local-only MAGICDATA Chinese ASR import and evaluation tooling is now available under
+  `scripts/prepare_magicdata_eval.py` and `scripts/verify_magicdata_asr_eval.py`
 
 ## Repository Structure
 
@@ -114,6 +116,10 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/eval_asr_baseline.py --hypothesis-source draft`
 - Verify the ASR baseline evaluator with deterministic fixtures and current workflow gating:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_baseline_eval.py`
+- Import local MAGICDATA `dev+test` and build a frozen Chinese eval core subset:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/prepare_magicdata_eval.py`
+- Run a real Chinese ASR baseline on the local MAGICDATA core subset:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_magicdata_asr_eval.py`
 - Import external ASR draft results from a JSONL file:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py import-results --results <results.jsonl>`
 - Generate a manual review checklist:
@@ -153,6 +159,13 @@ Formal ASR evaluation is gated:
 
 If those rows do not exist yet, `scripts/eval_asr_baseline.py` will generate a blocked
 report instead of fabricating WER/SER from machine drafts.
+
+MAGICDATA integration is intentionally local-only:
+
+- raw archives and extracted audio stay under `data/external/`
+- generated transcript catalogs and reports stay under `data/derived/transcripts-local/`
+  and `data/derived/eval-local/`
+- do not commit those dataset-derived files
 
 ## Docker
 

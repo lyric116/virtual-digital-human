@@ -115,6 +115,23 @@
 - 只纳入 `text_status=human_verified`
 - 没有满足门槛的样本时输出 `blocked` 报告，不允许回退到机器初稿自评
 
+当前仓库还增加了一条面向中文普通话的公开评测路径：
+
+- `scripts/prepare_magicdata_eval.py`
+- `scripts/verify_magicdata_asr_eval.py`
+
+这条路径的作用是：
+
+- 从本地 `MAGICDATA dev+test` 提取官方参考文本
+- 生成一个全量参考目录和一个冻结中文评测子集
+- 用同一个 `scripts/eval_asr_baseline.py` 对外部 ASR 服务输出计算 WER/SER
+
+注意：
+
+- 该数据集派生文件默认写入 `data/derived/transcripts-local/` 与 `data/derived/eval-local/`
+- 企业验证集评测链和 MAGICDATA 中文评测链必须分开维护
+- 公开语料派生产物默认不进入版本库
+
 评测脚本需要能直接输出 CSV 或 Markdown 表格，用于方案书和 PPT。
 
 ## 8. 可解释性输出
@@ -172,3 +189,4 @@
 - 正式 ASR 指标只允许使用 `verified` 且 `locked_for_eval` 的样本，禁止把机器初稿直接当参考文本。
 - 所有导出的实验表都应能区分“实时采集样本”和“企业验证集离线样本”。
 - 当前已产出 `data/derived/qc_report.md`，总量和转录状态应以该文件实时统计为准，不再在方案文档中手工维护固定数字。
+- 对于公开中文评测集，应额外区分“本地生成的官方参考集”和“人工复核工作流参考集”，避免后续把公开语料误写成企业内部标注结果。
