@@ -112,6 +112,7 @@ def test_prepare_magicdata_eval_builds_full_and_core_outputs(tmp_path):
             extracted_root=extracted_root,
             full_rows=full_rows,
             core_rows=core_rows,
+            core_per_group=1,
         ),
     )
 
@@ -130,4 +131,6 @@ def test_prepare_magicdata_eval_builds_full_and_core_outputs(tmp_path):
     assert {row["speaker_gender"] for row in loaded_core} == {"female", "male"}
     assert summary["full_reference_records"] == 8
     assert summary["core_eval_records"] == 4
+    assert summary["selection_strategy"] == "round_robin_by_split_gender_then_speaker"
+    assert summary["core_per_group_target"] == 1
     assert summary["audio_format_examples"]["dev"]["sample_rate_hz"] == 16000

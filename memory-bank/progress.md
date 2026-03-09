@@ -21,6 +21,33 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - Expanded MAGICDATA Baseline And Added ASR Regression Gate
+
+### Scope
+
+Expanded the local MAGICDATA Chinese frozen evaluation subset from a small seed set to a broader 36-record core, then added a single ASR regression entrypoint that chains enterprise live checks, postprocess verification, baseline gating, and MAGICDATA threshold enforcement.
+
+### Outputs
+
+- scripts/prepare_magicdata_eval.py now defaults to a 36-record frozen core subset by selecting 12 records from each available split plus speaker_gender group and emits richer selection metadata in the summary.
+- scripts/verify_asr_regression.py now runs the stable ASR regression sequence and enforces configurable WER and SER thresholds on the local MAGICDATA baseline when the corpus is present.
+- README.md, services/asr-service/README.md, docs/03-asr.md, docs/08-data-ops-eval.md, docs/data_spec.md, and docs/implementation_plan.md now document the larger frozen subset and the new unified regression entrypoint.
+- tests/test_verify_asr_regression.py now locks threshold behavior, and tests/test_prepare_magicdata_eval.py now locks the expanded subset summary fields.
+
+### Checks
+
+- Ran UV_CACHE_DIR=.uv-cache uv run python -m py_compile scripts/prepare_magicdata_eval.py scripts/verify_magicdata_asr_eval.py scripts/verify_asr_regression.py tests/test_prepare_magicdata_eval.py tests/test_verify_asr_regression.py.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest tests/test_prepare_magicdata_eval.py tests/test_verify_asr_regression.py tests/test_eval_asr_baseline.py tests/test_asr_service.py and confirmed 13 tests passed.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/prepare_magicdata_eval.py and confirmed the local frozen subset expanded to 36 locked records.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/verify_magicdata_asr_eval.py and observed WER=0.021368 with SER=0.055556 on the expanded subset.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_regression.py and confirmed the combined ASR gate passed with MAGICDATA metrics under the configured thresholds.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest and confirmed 94 tests passed.
+
+### Next
+
+- Keep future ASR optimization changes gated by scripts/verify_asr_regression.py instead of ad hoc command sequences.
+- Treat the MAGICDATA threshold gate as tolerance-based because external ASR outputs can drift slightly between runs.
+
 ## 2026-03-09 - MAGICDATA Chinese ASR Evaluation Integration
 
 ### Scope

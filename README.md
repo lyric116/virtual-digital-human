@@ -120,6 +120,8 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/prepare_magicdata_eval.py`
 - Run a real Chinese ASR baseline on the local MAGICDATA core subset:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_magicdata_asr_eval.py`
+- Run the stable ASR regression suite, including MAGICDATA when available:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_regression.py`
 - Import external ASR draft results from a JSONL file:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py import-results --results <results.jsonl>`
 - Generate a manual review checklist:
@@ -166,6 +168,11 @@ MAGICDATA integration is intentionally local-only:
 - generated transcript catalogs and reports stay under `data/derived/transcripts-local/`
   and `data/derived/eval-local/`
 - do not commit those dataset-derived files
+
+The current default MAGICDATA frozen core subset is selected as:
+
+- `12` records from each available `split + speaker_gender` group
+- current local dataset result: `36` locked records total
 
 ## Docker
 

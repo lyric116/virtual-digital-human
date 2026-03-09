@@ -75,6 +75,7 @@ From repository root:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/eval_asr_baseline.py --hypothesis-source draft`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/prepare_magicdata_eval.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_magicdata_asr_eval.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_regression.py`
 
 The live verifier uploads three enterprise validation samples, checks transcript
 availability, confirms duration and audio metadata fields, and prints original-vs-derived
@@ -94,4 +95,6 @@ The MAGICDATA import path is separate from the enterprise transcript workflow:
   Chinese core subset under `data/derived/transcripts-local/`
 - `scripts/verify_magicdata_asr_eval.py` starts the same ASR service locally and evaluates
   that frozen subset through `scripts/eval_asr_baseline.py`
+- `scripts/verify_asr_regression.py` is the stable ASR regression gate and enforces
+  threshold checks on the MAGICDATA Chinese baseline when the local corpus is present
 - both outputs stay local and should not be committed

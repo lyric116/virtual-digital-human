@@ -118,6 +118,7 @@ flowchart LR
 - 单独生成本地全量参考清单 `data/derived/transcripts-local/magicdata_eval_all.jsonl`
 - 再从中冻结一个受控中文评测子集 `data/derived/transcripts-local/magicdata_eval_core.jsonl`
 - 正式中文 WER/SER 通过 `scripts/eval_asr_baseline.py --hypothesis-source service` 对该冻结子集计算
+- 当前默认冻结策略为：按每个可用 `split + gender` 组各取 `12` 条，当前本地数据下合计 `36` 条
 
 这样做的原因：
 
@@ -198,4 +199,5 @@ flowchart LR
 - 当前如果真实工作流中尚无锁定样本，评测脚本会输出 `blocked` 报告，而不是使用机器初稿伪造正式 WER/SER
 - 已新增 `scripts/prepare_magicdata_eval.py`，可把本地 `MAGICDATA dev+test` 生成中文全量参考清单与冻结子集
 - 已新增 `scripts/verify_magicdata_asr_eval.py`，可直接启动 `services/asr-service` 并对 MAGICDATA 中文冻结子集生成真实 WER/SER 报告
+- 已新增 `scripts/verify_asr_regression.py`，可把企业样本 live 校验、后处理校验、基线门禁校验和 MAGICDATA 中文基线统一串成一个 ASR 回归入口
 - MAGICDATA 相关清单与评测报告默认输出到 `data/derived/transcripts-local/` 和 `data/derived/eval-local/`，保持本地使用，不进入版本库

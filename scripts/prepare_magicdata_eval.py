@@ -19,6 +19,7 @@ DEFAULT_EXTRACTED_ROOT = ROOT / "data" / "external" / "asr" / "magicdata-zh" / "
 DEFAULT_FULL_OUTPUT = ROOT / "data" / "derived" / "transcripts-local" / "magicdata_eval_all.jsonl"
 DEFAULT_CORE_OUTPUT = ROOT / "data" / "derived" / "transcripts-local" / "magicdata_eval_core.jsonl"
 DEFAULT_SUMMARY_OUTPUT = ROOT / "data" / "derived" / "eval-local" / "magicdata_import_summary.json"
+DEFAULT_CORE_PER_GROUP = 12
 REQUIRED_ARCHIVES = ("dev_set.tar.gz", "test_set.tar.gz", "metadata.tar.gz")
 REQUIRED_EXTRACTED_FILES = ("dev/TRANS.txt", "test/TRANS.txt", "SPKINFO.txt")
 
@@ -274,11 +275,13 @@ def build_summary(
     extracted_root: Path,
     full_rows: list[dict],
     core_rows: list[dict],
+    core_per_group: int,
 ) -> dict:
     counts_by_split: dict[str, int] = defaultdict(int)
     counts_by_split_gender: dict[str, int] = defaultdict(int)
     counts_by_dialect: dict[str, int] = defaultdict(int)
     core_counts_by_split_gender: dict[str, int] = defaultdict(int)
+    core_counts_by_dialect: dict[str, int] = defaultdict(int)
 
     for row in full_rows:
         counts_by_split[row["split"]] += 1
@@ -286,6 +289,7 @@ def build_summary(
         counts_by_dialect[row["speaker_dialect"] or "unknown"] += 1
     for row in core_rows:
         core_counts_by_split_gender[f"{row['split']}::{row['speaker_gender']}"] += 1
+        core_counts_by_dialect[row["speaker_dialect"] or "unknown"] += 1
 
     dev_sample = next(row for row in full_rows if row["split"] == "dev")
     test_sample = next(row for row in full_rows if row["split"] == "test")
@@ -298,11 +302,17 @@ def build_summary(
         "license_scope": "local_only_noncommercial",
         "full_reference_records": len(full_rows),
         "core_eval_records": len(core_rows),
+        "selection_strategy": "round_robin_by_split_gender_then_speaker",
+        "core_per_group_target": core_per_group,
         "counts_by_split": dict(sorted(counts_by_split.items())),
         "counts_by_split_gender": dict(sorted(counts_by_split_gender.items())),
         "core_counts_by_split_gender": dict(sorted(core_counts_by_split_gender.items())),
         "top_dialects": sorted(
             ({"dialect": dialect, "count": count} for dialect, count in counts_by_dialect.items()),
+            key=lambda item: (-item["count"], item["dialect"]),
+        )[:10],
+        "core_top_dialects": sorted(
+            ({"dialect": dialect, "count": count} for dialect, count in core_counts_by_dialect.items()),
             key=lambda item: (-item["count"], item["dialect"]),
         )[:10],
         "audio_format_examples": {
@@ -324,7 +334,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--full-output", type=Path, default=DEFAULT_FULL_OUTPUT)
     parser.add_argument("--core-output", type=Path, default=DEFAULT_CORE_OUTPUT)
     parser.add_argument("--summary-output", type=Path, default=DEFAULT_SUMMARY_OUTPUT)
-    parser.add_argument("--core-per-group", type=int, default=6)
+    parser.add_argument("--core-per-group", type=int, default=DEFAULT_CORE_PER_GROUP)
     return parser
 
 
@@ -339,7 +349,12 @@ def main() -> None:
 
     write_jsonl(args.full_output, full_rows)
     write_jsonl(args.core_output, core_rows)
-    summary = build_summary(extracted_root=args.extracted_root, full_rows=full_rows, core_rows=core_rows)
+    summary = build_summary(
+        extracted_root=args.extracted_root,
+        full_rows=full_rows,
+        core_rows=core_rows,
+        core_per_group=args.core_per_group,
+    )
     summary["outputs"] = {
         "full_transcripts": display_path(args.full_output),
         "core_transcripts": display_path(args.core_output),

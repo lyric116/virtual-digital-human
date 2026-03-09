@@ -119,12 +119,14 @@
 
 - `scripts/prepare_magicdata_eval.py`
 - `scripts/verify_magicdata_asr_eval.py`
+- `scripts/verify_asr_regression.py`
 
 这条路径的作用是：
 
 - 从本地 `MAGICDATA dev+test` 提取官方参考文本
 - 生成一个全量参考目录和一个冻结中文评测子集
 - 用同一个 `scripts/eval_asr_baseline.py` 对外部 ASR 服务输出计算 WER/SER
+- 用 `scripts/verify_asr_regression.py` 把 enterprise live 校验和 MAGICDATA 中文阈值门禁串成一个稳定回归入口
 
 注意：
 

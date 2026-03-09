@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - External ASR Regression Must Use Thresholds, Not Exact Output Matching
+
+- The expanded MAGICDATA frozen core subset is now 36 records by default, selected as 12 records from each available split plus speaker_gender group, which gives a broader Chinese baseline without paying the cost of scoring the full public corpus.
+- scripts/verify_asr_regression.py is now the stable ASR regression entrypoint and should replace ad hoc manual sequencing whenever ASR postprocess, provider settings, or baseline scripts change.
+- Because qwen3-asr-flash is an external provider path, repeated runs on the same frozen subset can drift slightly in WER and SER; regression gates must therefore enforce thresholds rather than exact metric equality.
+
 ## 2026-03-09 - MAGICDATA Public Chinese ASR Eval Stays Outside The Enterprise Workflow
 
 - scripts/prepare_magicdata_eval.py now defines a second ASR evaluation lane: MAGICDATA official references are imported into data/derived/transcripts-local/, not into val_transcripts_template.jsonl, so public Chinese WER baselines and enterprise transcript review remain isolated.
