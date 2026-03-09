@@ -214,6 +214,25 @@ for export and reconnect observability.
 | `summary_version` | integer | No | Internal summary shape version. |
 | `generated_from_message_id` | string | No | Assistant message id that triggered the summary refresh. |
 
+## TTS Synthesize Response
+
+This payload is returned by the standalone TTS service after one assistant reply is
+converted into one playable speech asset.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `tts_id` | string | Yes | Stable speech asset id. |
+| `session_id` | string | No | Session id when synthesis is tied to one live dialogue turn. |
+| `trace_id` | string | No | Trace id for one playback generation request. |
+| `message_id` | string | No | Assistant message id that owns the speech asset. |
+| `voice_id` | string | Yes | Actual TTS voice identifier used by the provider. |
+| `subtitle` | string | Yes | Subtitle text paired with the audio asset. |
+| `audio_format` | string | Yes | Returned audio format such as `mp3` or `wav`. |
+| `audio_url` | string | Yes | URL that can be fetched directly for playback. |
+| `duration_ms` | integer | Yes | Expected playback duration. |
+| `byte_size` | integer | Yes | Stored audio byte size. |
+| `generated_at` | string | Yes | Asset generation time. |
+
 ## Avatar Command
 
 This payload is emitted after TTS and dialogue planning and consumed by avatar playback.

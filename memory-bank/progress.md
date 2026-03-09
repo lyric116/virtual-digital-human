@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - step 30 single-voice tts baseline
+
+### Scope
+
+Completed implementation plan step 30 by adding a standalone tts-service that synthesizes one assistant reply into one local playable speech asset through edge-tts, serves the generated audio back over HTTP, and verifies three real Chinese samples with increasing durations.
+
+### Outputs
+
+- services/tts-service/main.py
+- services/tts-service/README.md
+- scripts/verify_tts_service.py
+- tests/test_tts_service.py
+- docs/07-tts-avatar.md
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 130 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_tts_service.py
+
+### Next
+
+- Continue implementation plan with step 31 frontend audio playback and subtitle sync using the new TTS audio_url output
+
 ## 2026-03-09 - step 29 dialogue fallback recovery
 
 ### Scope

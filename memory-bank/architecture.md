@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - tts-service now owns speech asset generation
+
+- services/tts-service is now the single boundary that turns assistant text into a playable speech asset, stores it under TTS_STORAGE_ROOT, and returns audio_url plus duration metadata without involving avatar logic yet.
+- The current step-30 baseline uses edge-tts with one Chinese voice and actual mp3 output even if older config still mentions wav, so downstream playback should trust the returned audio_format field rather than assuming wav.
+- Voice aliases such as companion_female_01 are now provider-agnostic frontend/backend identifiers that are resolved inside tts-service to concrete engine voices, which keeps later multi-avatar work from hardcoding edge-tts voice ids in UI code.
+
 ## 2026-03-09 - dialogue-service now owns main-chain fallback
 
 - When the upstream LLM path times out, returns empty content, or produces invalid JSON/fields, services/dialogue-service/respond must return a contract-valid fallback reply instead of surfacing a transport error to gateway and frontend.

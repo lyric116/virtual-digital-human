@@ -131,14 +131,18 @@ code or deployment files.
 
 | Variable | Required | Default / Example | Purpose |
 | --- | --- | --- | --- |
+| `TTS_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for the standalone TTS service. |
+| `TTS_SERVICE_PORT` | Yes | `8040` | HTTP port for the standalone TTS service. |
+| `TTS_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8040` | Public base URL used when the TTS service returns `audio_url`. |
 | `TTS_PROVIDER` | Yes | `set-your-tts-provider` | Logical provider name for TTS. |
 | `TTS_BASE_URL` | No | empty | API endpoint for TTS if a remote provider is used. |
 | `TTS_API_KEY` | No | empty | API key for the TTS provider. |
 | `TTS_MODEL` | No | empty | TTS model identifier. |
 | `TTS_VOICE_A` | Yes | `companion_female_01` | Voice id for avatar A. |
 | `TTS_VOICE_B` | Yes | `coach_male_01` | Voice id for avatar B. |
-| `TTS_AUDIO_FORMAT` | Yes | `wav` | Output format consumed by avatar playback. |
+| `TTS_AUDIO_FORMAT` | Yes | `mp3` | Preferred output format consumed by avatar playback. The current step-30 `edge_tts` baseline always returns actual `mp3`. |
 | `TTS_MODEL_PATH` | No | empty | Local path for self-hosted TTS weights. |
+| `TTS_STORAGE_ROOT` | Yes | `data/derived/tts_audio` | Local directory used by the TTS service to store generated speech assets. |
 
 ## Avatar Driver
 
