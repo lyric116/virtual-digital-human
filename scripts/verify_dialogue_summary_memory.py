@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GATEWAY_MAIN = ROOT / "apps" / "api-gateway" / "main.py"
 ORCHESTRATOR_MAIN = ROOT / "apps" / "orchestrator" / "main.py"
 DIALOGUE_MAIN = ROOT / "services" / "dialogue-service" / "main.py"
+TURN_WAIT_TIMEOUT_SECONDS = 70
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -71,7 +72,7 @@ def get_json(url: str) -> dict:
 
 
 def wait_for_message_count(base_url: str, session_id: str, count: int) -> dict:
-    deadline = time.time() + 30
+    deadline = time.time() + TURN_WAIT_TIMEOUT_SECONDS
     while time.time() < deadline:
         payload = get_json(f"{base_url}/api/session/{session_id}/state")
         if len(payload.get("messages", [])) >= count:

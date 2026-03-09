@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - dialogue llm switched to gpt-5.4
+
+- The dialogue path is now explicitly separated from ASR model configuration: ASR stays on ASR_* and qwen3-asr-flash, while dialogue and summary generation must only use LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL with gpt-5.4 as the current baseline.
+- When the configured LLM endpoint is a shared local OpenAI-compatible proxy, live verifiers for reply generation, short-term memory, and dialogue summary must be run serially; parallel execution can create false negatives even when the single-chain path is healthy.
+
 ## 2026-03-09 - step 27 dialogue summary layer
 
 - The dialogue stack now has two bounded context layers: metadata.short_term_memory carries the last few raw turns, while sessions.metadata.dialogue_summary carries one persisted compressed summary every three user turns for longer-session continuity.

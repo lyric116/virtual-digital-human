@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - switch dialogue llm baseline to gpt-5.4
+
+### Scope
+
+Repointed the dialogue path away from the old qwen-plus baseline, updated the documented LLM defaults to gpt-5.4, and reran steps 24-27 regression with the user-provided OpenAI-compatible endpoint.
+
+### Outputs
+
+- .env.example and dialogue-related docs now describe gpt-5.4 through LLM_BASE_URL / LLM_API_KEY / LLM_MODEL instead of qwen-plus
+- scripts/verify_dialogue_short_term_memory.py and scripts/verify_dialogue_summary_memory.py now allow a longer turn wait window that matches real multi-turn LLM latency better
+- Step-24 to step-27 live verification is confirmed with gpt-5.4 when the verifiers are run serially rather than in parallel
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 107 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_llm_samples.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_schema_validation.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_short_term_memory.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_summary_memory.py
+
+### Next
+
+- Continue implementation plan with step 28 after keeping dialogue live verifiers serialized for the shared gpt-5.4 endpoint
+
 ## 2026-03-09 - step 27 dialogue summaries
 
 ### Scope
