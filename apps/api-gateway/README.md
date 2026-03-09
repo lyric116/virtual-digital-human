@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, and 20:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, and 25:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -23,6 +23,9 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, and 20:
 - step 20: accept preview snapshots of the in-progress recording, call the standalone ASR
   service for a best-effort partial transcript, and emit `transcript.partial` immediately
   over the session realtime channel without persisting a new message row
+- step 25: enforce the dialogue stage machine at persistence time so assistant replies
+  can only move through `engage -> assess -> intervene -> reassess -> handoff` without
+  invalid jumps
 
 ## Files
 
@@ -50,7 +53,7 @@ From repository root:
 ## Notes
 
 - `POST /api/session/{session_id}/text` now writes both the accepted user message and the
-  mock assistant reply into the `messages` table defined in
+  assistant reply into the `messages` table defined in
   `infra/docker/postgres/init/001_base_schema.sql`.
 - `GET /api/session/{session_id}/state` returns the current session metadata and the
   ordered message list used by the frontend to rebuild chat history.
@@ -77,3 +80,6 @@ From repository root:
 - `POST /api/session/{session_id}/audio/preview` accepts a current recording snapshot,
   sends it to `services/asr-service`, and emits `transcript.partial` without changing the
   persisted final-transcript contract introduced in step 19.
+- The gateway treats the LLM stage as a proposal, not ground truth. It records
+  `stage_before`, `model_stage`, and `stage_machine_reason` in assistant message metadata,
+  then emits the resolved stage in `dialogue.reply`.

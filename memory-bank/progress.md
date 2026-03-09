@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - step 25 dialogue stage machine
+
+### Scope
+
+Added a gateway-owned stage machine that treats the LLM stage as a proposal, resolves invalid jumps before persistence, and propagates the resolved stage through realtime events and assistant metadata.
+
+### Outputs
+
+- apps/api-gateway/main.py now resolves stage transitions before updating sessions and assistant message metadata
+- scripts/verify_dialogue_stage_machine.py simulates a fixed multi-turn sequence and checks the exact resolved order
+- README, docs/05-dialogue-state-llm.md, and apps/api-gateway/README.md now document gateway-enforced stage transitions
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 100 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_stage_machine.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py
+
+### Next
+
+- Implement step 26 short-term conversation memory without changing the current UI structure
+
 ## 2026-03-09 - step 24 real llm dialogue baseline
 
 ### Scope

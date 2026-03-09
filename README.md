@@ -12,7 +12,9 @@ Current repository state:
   `apps/orchestrator` forwards dialogue requests through that validated service
 - `services/dialogue-service` now calls a real LLM through standard `LLM_*`
   configuration while keeping the existing dialogue response contract stable
-- the text loop now reaches a mock structured assistant reply through `apps/orchestrator`
+- the text loop now reaches a real structured assistant reply through `apps/orchestrator`
+- the gateway now enforces a stage machine so assistant replies cannot skip or jump
+  backward across `engage -> assess -> intervene -> reassess -> handoff`
 - the frontend now renders a recoverable chat timeline and restores session history from
   the gateway session state endpoint
 - the current text session can now be exported as JSON with messages, stage history, and
@@ -89,6 +91,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_schema_validation.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_llm_samples.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_stage_machine.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`

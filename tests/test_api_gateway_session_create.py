@@ -224,6 +224,46 @@ def test_create_session_rejects_invalid_input_modes():
     raise AssertionError("expected SessionCreateRequest validation to fail for empty input_modes")
 
 
+def test_stage_machine_prevents_forward_skip_and_backward_jump():
+    module = load_gateway_module()
+
+    forward_stage, forward_reason = module.resolve_session_stage_transition(
+        current_stage="assess",
+        proposed_stage="reassess",
+        risk_level="medium",
+    )
+    backward_stage, backward_reason = module.resolve_session_stage_transition(
+        current_stage="intervene",
+        proposed_stage="engage",
+        risk_level="low",
+    )
+
+    assert forward_stage == "intervene"
+    assert forward_reason == "prevent_forward_skip"
+    assert backward_stage == "intervene"
+    assert backward_reason == "prevent_backward_jump"
+
+
+def test_stage_machine_allows_reassess_loopback_and_handoff():
+    module = load_gateway_module()
+
+    loop_stage, loop_reason = module.resolve_session_stage_transition(
+        current_stage="reassess",
+        proposed_stage="intervene",
+        risk_level="low",
+    )
+    handoff_stage, handoff_reason = module.resolve_session_stage_transition(
+        current_stage="engage",
+        proposed_stage="assess",
+        risk_level="high",
+    )
+
+    assert loop_stage == "intervene"
+    assert loop_reason == "reassess_loopback"
+    assert handoff_stage == "handoff"
+    assert handoff_reason == "handoff_requested"
+
+
 def test_text_message_accept_returns_contract_shape():
     module = load_gateway_module()
     repository = FakeSessionRepository()

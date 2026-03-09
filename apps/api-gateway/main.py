@@ -290,6 +290,9 @@ class DialogueReplyResponse(BaseModel):
     safety_flags: list[str] = Field(default_factory=list)
 
 
+SEQUENTIAL_DIALOGUE_STAGES = ["engage", "assess", "intervene", "reassess"]
+
+
 class ASRServiceTranscriptionResponse(BaseModel):
     request_id: str
     record_id: str | None = None
@@ -418,6 +421,45 @@ class ConnectionRegistry:
 
         if session_id in self._pending_events and not self._pending_events[session_id]:
             del self._pending_events[session_id]
+
+
+def resolve_session_stage_transition(
+    *,
+    current_stage: str,
+    proposed_stage: str,
+    risk_level: str,
+) -> tuple[str, str]:
+    if current_stage == "handoff":
+        return "handoff", "handoff_locked"
+
+    if proposed_stage == "handoff" or risk_level == "high":
+        return "handoff", "handoff_requested"
+
+    if current_stage == proposed_stage:
+        return current_stage, "stay_current_stage"
+
+    if current_stage == "reassess" and proposed_stage == "intervene":
+        return "intervene", "reassess_loopback"
+
+    if current_stage not in SEQUENTIAL_DIALOGUE_STAGES:
+        return "engage", "unknown_current_stage_reset"
+
+    if proposed_stage not in SEQUENTIAL_DIALOGUE_STAGES:
+        return current_stage, "invalid_proposed_stage"
+
+    current_index = SEQUENTIAL_DIALOGUE_STAGES.index(current_stage)
+    proposed_index = SEQUENTIAL_DIALOGUE_STAGES.index(proposed_stage)
+
+    if proposed_index < current_index:
+        return current_stage, "prevent_backward_jump"
+
+    if proposed_index == current_index + 1:
+        return proposed_stage, "accept_next_stage"
+
+    if proposed_index > current_index + 1:
+        return SEQUENTIAL_DIALOGUE_STAGES[current_index + 1], "prevent_forward_skip"
+
+    return current_stage, "preserve_current_stage"
 
 
 class PostgresSessionRepository:
@@ -876,7 +918,7 @@ class PostgresSessionRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT session_id, trace_id
+                    SELECT session_id, trace_id, stage
                     FROM sessions
                     WHERE session_id = %s
                     """,
@@ -885,6 +927,24 @@ class PostgresSessionRepository:
                 session_row = cur.fetchone()
                 if session_row is None:
                     raise KeyError(session_id)
+
+                resolved_stage, stage_machine_reason = resolve_session_stage_transition(
+                    current_stage=session_row["stage"],
+                    proposed_stage=payload.stage,
+                    risk_level=payload.risk_level,
+                )
+                assistant_metadata = {
+                    "emotion": payload.emotion,
+                    "risk_level": payload.risk_level,
+                    "stage": resolved_stage,
+                    "next_action": payload.next_action,
+                    "knowledge_refs": payload.knowledge_refs,
+                    "avatar_style": payload.avatar_style,
+                    "safety_flags": payload.safety_flags,
+                    "model_stage": payload.stage,
+                    "stage_before": session_row["stage"],
+                    "stage_machine_reason": stage_machine_reason,
+                }
 
                 cur.execute(
                     """
@@ -921,24 +981,15 @@ class PostgresSessionRepository:
                         status,
                         source_kind,
                         content_text,
-                        submitted_at
+                        submitted_at,
+                        metadata
                     """,
                     {
                         "message_id": payload.message_id,
                         "session_id": session_id,
                         "trace_id": payload.trace_id,
                         "content_text": payload.reply,
-                        "metadata": Jsonb(
-                            {
-                                "emotion": payload.emotion,
-                                "risk_level": payload.risk_level,
-                                "stage": payload.stage,
-                                "next_action": payload.next_action,
-                                "knowledge_refs": payload.knowledge_refs,
-                                "avatar_style": payload.avatar_style,
-                                "safety_flags": payload.safety_flags,
-                            }
-                        ),
+                        "metadata": Jsonb(assistant_metadata),
                         "submitted_at": now,
                         "created_at": now,
                         "updated_at": now,
@@ -955,7 +1006,7 @@ class PostgresSessionRepository:
                     """,
                     {
                         "session_id": session_id,
-                        "stage": payload.stage,
+                        "stage": resolved_stage,
                         "updated_at": now,
                     },
                 )
@@ -1743,12 +1794,17 @@ async def dispatch_message_pipeline(
     try:
         dialogue_reply = request_dialogue_reply(settings, result["session"], result["message"])
         assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
+        assistant_metadata = assistant_result["message"].get("metadata", {})
         dialogue_event = build_event_envelope(
             session=assistant_result["session"],
             event_type="dialogue.reply",
             payload={
                 **dialogue_reply.model_dump(mode="json"),
+                "stage": assistant_result["session"]["stage"],
                 "submitted_at": assistant_result["message"]["submitted_at"],
+                "stage_before": assistant_metadata.get("stage_before"),
+                "stage_requested": assistant_metadata.get("model_stage"),
+                "stage_machine_reason": assistant_metadata.get("stage_machine_reason"),
             },
             message_id=dialogue_reply.message_id,
             source_service="orchestrator",

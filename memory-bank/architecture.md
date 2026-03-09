@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - gateway owns final stage progression
+
+- After step 25, services/dialogue-service may propose any legal stage, but apps/api-gateway is the only component allowed to finalize session stage progression and persist stage-machine metadata such as stage_before, model_stage, and stage_machine_reason.
+- Stage history and exported dialogue events now reflect the resolved stage rather than the raw model proposal, which keeps frontend replay and offline analysis aligned with the enforced conversation flow.
+
 ## 2026-03-09 - dialogue service owns real llm contract boundary
 
 - The real LLM now only produces semantic dialogue fields inside services/dialogue-service, while session_id, trace_id, and message_id remain server-owned to prevent identifier drift across orchestrator, gateway, and exports.
