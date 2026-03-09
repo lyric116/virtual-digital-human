@@ -21,6 +21,30 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - step 28 high-risk precheck and immediate message ack
+
+### Scope
+
+Completed implementation plan step 28 by adding a gateway-owned high-risk rule precheck that short-circuits obvious self-harm or suicide expressions to a deterministic handoff reply before any orchestrator call, and tightened the normal text path so message.accepted is emitted before long LLM follow-up work.
+
+### Outputs
+
+- apps/api-gateway/main.py
+- scripts/verify_dialogue_high_risk_precheck.py
+- scripts/web_mock_reply_harness.js
+- scripts/verify_web_mock_reply.py
+- docs/05-dialogue-state-llm.md
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 125 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_high_risk_precheck.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py
+
+### Next
+
+- Continue implementation plan with step 29 timeout and invalid-format fallback on top of the new high-risk rule layer
+
 ## 2026-03-09 - add cross-chat handoff summary
 
 ### Scope

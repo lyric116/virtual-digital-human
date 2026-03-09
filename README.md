@@ -19,6 +19,9 @@ Current repository state:
   real LLM can recall user facts across multiple turns without adding long-term profiles
 - the gateway now persists a staged `dialogue_summary` into `sessions.metadata` every
   three user turns and reuses it on later dialogue requests so long sessions stay bounded
+- the gateway now applies a deterministic high-risk text precheck before any dialogue
+  service call and short-circuits obvious self-harm or suicide expressions directly to
+  `handoff`
 - the frontend now renders a recoverable chat timeline and restores session history from
   the gateway session state endpoint
 - the current text session can now be exported as JSON with messages, stage history, and
@@ -98,6 +101,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_stage_machine.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_short_term_memory.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_summary_memory.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_high_risk_precheck.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`

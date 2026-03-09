@@ -12,6 +12,9 @@ function parseArgs(argv) {
     mode: "mock",
     apiBaseUrl: "http://127.0.0.1:8000",
     wsUrl: "ws://127.0.0.1:8000/ws",
+    connectTimeoutMs: 5000,
+    sentTimeoutMs: 5000,
+    replyTimeoutMs: 5000,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -28,6 +31,21 @@ function parseArgs(argv) {
     }
     if (current === "--ws-url") {
       args.wsUrl = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (current === "--connect-timeout-ms") {
+      args.connectTimeoutMs = Number(argv[index + 1] || "5000");
+      index += 1;
+      continue;
+    }
+    if (current === "--sent-timeout-ms") {
+      args.sentTimeoutMs = Number(argv[index + 1] || "5000");
+      index += 1;
+      continue;
+    }
+    if (current === "--reply-timeout-ms") {
+      args.replyTimeoutMs = Number(argv[index + 1] || "5000");
       index += 1;
     }
   }
@@ -442,7 +460,7 @@ async function main() {
   await runtime.startButton.click();
   await waitFor(
     () => runtime.document.getElementById("connection-status-value").textContent === "connected",
-    5000,
+    args.connectTimeoutMs,
     "realtime connection did not reach connected state before text submit",
   );
 
@@ -452,14 +470,14 @@ async function main() {
 
   await waitFor(
     () => runtime.document.body.dataset.textSubmitState === "sent",
-    5000,
+    args.sentTimeoutMs,
     "text submit did not reach sent state",
   );
 
   const expectedReplyState = args.mode === "mock-invalid" ? "invalid" : "received";
   await waitFor(
     () => runtime.document.body.dataset.dialogueReplyState === expectedReplyState,
-    5000,
+    args.replyTimeoutMs,
     `dialogue reply did not reach ${expectedReplyState} state`,
   );
 

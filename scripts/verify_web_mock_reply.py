@@ -29,10 +29,17 @@ def parse_env_file(path: Path) -> dict[str, str]:
         return values
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" in line:
+            key, value = line.split("=", 1)
+        elif ":" in line:
+            key, value = line.split(":", 1)
+        else:
+            continue
+        values[key.strip()] = value.strip().strip("'").strip('"')
     return values
 
 
@@ -79,6 +86,15 @@ def wait_for_health(url: str, label: str) -> None:
         except Exception:
             time.sleep(0.5)
     raise RuntimeError(f"{label} health check did not become ready")
+
+
+def stop_process(process: subprocess.Popen[str]) -> None:
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
 
 
 def main() -> None:
@@ -180,6 +196,12 @@ def main() -> None:
                 gateway_base_url,
                 "--ws-url",
                 gateway_ws_url,
+                "--connect-timeout-ms",
+                "8000",
+                "--sent-timeout-ms",
+                "12000",
+                "--reply-timeout-ms",
+                "30000",
             ],
             cwd=ROOT,
             capture_output=True,
@@ -187,12 +209,9 @@ def main() -> None:
             check=False,
         )
     finally:
-        gateway.terminate()
-        gateway.wait(timeout=5)
-        orchestrator.terminate()
-        orchestrator.wait(timeout=5)
-        dialogue_service.terminate()
-        dialogue_service.wait(timeout=5)
+        stop_process(gateway)
+        stop_process(orchestrator)
+        stop_process(dialogue_service)
 
     if result.returncode != 0:
         raise RuntimeError(

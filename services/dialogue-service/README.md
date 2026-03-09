@@ -47,5 +47,8 @@ Required environment variables:
   plus any prior summary into one short Chinese summary string.
 - `POST /internal/dialogue/validate` is the strict schema gate used to reject malformed
   response payloads before they can leak into orchestrator or gateway code.
+- Obvious self-harm or suicide expressions are now intercepted earlier by the gateway
+  rule layer in step 28, so not every final `handoff` reply necessarily originates from
+  this service.
 - `scripts/verify_dialogue_llm_samples.py` runs five fixed text samples against the real
   provider and reports latency statistics plus high-risk routing behavior.

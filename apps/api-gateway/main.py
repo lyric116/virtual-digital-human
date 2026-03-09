@@ -337,6 +337,38 @@ DEFAULT_STAGE_NEXT_ACTION = {
 }
 SUMMARY_TRIGGER_TURN_INTERVAL = 3
 SUMMARY_CONTEXT_LIMIT = 8
+HIGH_RISK_RULE_PATTERNS: dict[str, tuple[str, ...]] = {
+    "suicide_intent": (
+        "自杀",
+        "轻生",
+        "想死",
+        "不想活",
+        "不想活了",
+        "活着没意义",
+        "结束生命",
+        "结束自己",
+        "去死",
+        "死了算了",
+        "kill myself",
+        "end my life",
+        "suicide",
+        "don't want to live",
+    ),
+    "self_harm_intent": (
+        "伤害自己",
+        "伤害我自己",
+        "割腕",
+        "跳楼",
+        "吞药",
+        "上吊",
+        "自残",
+        "hurt myself",
+        "self harm",
+        "self-harm",
+    ),
+}
+HIGH_RISK_RULE_KNOWLEDGE_REFS = ["handoff_emergency_support"]
+HIGH_RISK_RULE_SAFETY_FLAGS = ["high_risk_rule_precheck", "needs_immediate_handoff"]
 
 
 class ASRServiceTranscriptionResponse(BaseModel):
@@ -554,6 +586,60 @@ def extract_dialogue_summary(session: dict[str, Any] | None) -> dict[str, Any] |
     if not str(summary.get("summary_text", "")).strip():
         return None
     return summary
+
+
+def detect_high_risk_rule_match(content_text: str) -> dict[str, Any] | None:
+    normalized = content_text.strip().lower()
+    if not normalized:
+        return None
+
+    compact = "".join(normalized.split())
+    matched_labels: list[str] = []
+    matched_phrases: list[str] = []
+    for label, patterns in HIGH_RISK_RULE_PATTERNS.items():
+        for phrase in patterns:
+            candidate = phrase.strip().lower()
+            if not candidate:
+                continue
+            if candidate in normalized or candidate.replace(" ", "") in compact:
+                matched_labels.append(label)
+                matched_phrases.append(phrase)
+                break
+
+    if not matched_labels:
+        return None
+
+    return {
+        "risk_level": "high",
+        "matched_labels": matched_labels,
+        "matched_phrases": matched_phrases,
+    }
+
+
+def build_high_risk_rule_reply(
+    session: dict[str, Any],
+    message: dict[str, Any],
+    *,
+    rule_match: dict[str, Any],
+) -> DialogueReplyResponse:
+    rule_hit_flags = [f"rule_hit:{label}" for label in rule_match.get("matched_labels", [])]
+    return DialogueReplyResponse(
+        session_id=session["session_id"],
+        trace_id=session["trace_id"],
+        message_id=f"msg_assistant_{uuid4().hex[:24]}",
+        reply=(
+            "你刚才提到可能伤害自己或不想继续活下去，这属于需要立刻认真对待的高风险情况。"
+            "请现在马上联系身边可信任的人陪着你，并尽快联系辅导员、校医院、家人或当地急救/心理危机热线；"
+            "如果已经有立即行动的打算，请直接拨打急救电话。"
+        ),
+        emotion="distressed",
+        risk_level="high",
+        stage="handoff",
+        next_action="handoff",
+        knowledge_refs=HIGH_RISK_RULE_KNOWLEDGE_REFS,
+        avatar_style="calm_guarded",
+        safety_flags=[*HIGH_RISK_RULE_SAFETY_FLAGS, *rule_hit_flags],
+    )
 
 
 def should_refresh_dialogue_summary(
@@ -1189,6 +1275,11 @@ class PostgresSessionRepository:
                     "stage_machine_reason": stage_machine_reason,
                     "next_action_machine_reason": next_action_machine_reason,
                 }
+                if "high_risk_rule_precheck" in payload.safety_flags:
+                    assistant_metadata["risk_rule_precheck"] = True
+                    assistant_metadata["risk_rule_flags"] = [
+                        flag for flag in payload.safety_flags if flag.startswith("rule_hit:")
+                    ]
 
                 cur.execute(
                     """
@@ -2156,7 +2247,18 @@ def cleanup_media_asset(repository: SessionRepository, media_id: str) -> None:
         return
 
 
-def build_message_pipeline_events(
+def build_message_accepted_event(result: dict[str, Any]) -> dict[str, Any]:
+    return jsonable_encoder(
+        build_event_envelope(
+            session=result["session"],
+            event_type="message.accepted",
+            payload=result["message"],
+            message_id=result["message"]["message_id"],
+        )
+    )
+
+
+def build_message_followup_events(
     repository: SessionRepository,
     settings: GatewaySettings,
     session_id: str,
@@ -2171,30 +2273,31 @@ def build_message_pipeline_events(
         "updated_at": persisted_session.get("updated_at", result["session"]["updated_at"]),
         "metadata": persisted_session.get("metadata", {}),
     }
+    events: list[dict[str, Any]] = []
 
-    accepted_event = jsonable_encoder(
-        build_event_envelope(
-            session=result["session"],
-            event_type="message.accepted",
-            payload=result["message"],
-            message_id=result["message"]["message_id"],
-        )
-    )
-    repository.record_system_event(accepted_event)
-    events = [accepted_event]
+    rule_match = detect_high_risk_rule_match(result["message"].get("content_text", ""))
 
     try:
-        dialogue_reply = request_dialogue_reply(
-            settings,
-            request_session,
-            result["message"],
-            short_term_memory=repository.get_recent_dialogue_context(
-                session_id,
-                limit=6,
-                exclude_message_id=result["message"]["message_id"],
-            ),
-            dialogue_summary=extract_dialogue_summary(request_session),
-        )
+        reply_source_service = "orchestrator"
+        if rule_match is not None:
+            dialogue_reply = build_high_risk_rule_reply(
+                request_session,
+                result["message"],
+                rule_match=rule_match,
+            )
+            reply_source_service = "api_gateway"
+        else:
+            dialogue_reply = request_dialogue_reply(
+                settings,
+                request_session,
+                result["message"],
+                short_term_memory=repository.get_recent_dialogue_context(
+                    session_id,
+                    limit=6,
+                    exclude_message_id=result["message"]["message_id"],
+                ),
+                dialogue_summary=extract_dialogue_summary(request_session),
+            )
         assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
         assistant_metadata = assistant_result["message"].get("metadata", {})
         dialogue_event = jsonable_encoder(
@@ -2213,9 +2316,11 @@ def build_message_pipeline_events(
                     "next_action_machine_reason": assistant_metadata.get(
                         "next_action_machine_reason"
                     ),
+                    "rule_precheck_triggered": assistant_metadata.get("risk_rule_precheck", False),
+                    "rule_match_flags": assistant_metadata.get("risk_rule_flags", []),
                 },
                 message_id=dialogue_reply.message_id,
-                source_service="orchestrator",
+                source_service=reply_source_service,
             )
         )
         repository.record_system_event(dialogue_event)
@@ -2271,9 +2376,13 @@ async def dispatch_message_pipeline(
     app = request_or_app.app if hasattr(request_or_app, "app") else request_or_app
     repository = app.state.session_repository
     settings: GatewaySettings = app.state.settings
+
+    accepted_event = build_message_accepted_event(result)
     try:
+        await asyncio.to_thread(repository.record_system_event, accepted_event)
+        await app.state.connection_registry.enqueue_event(session_id, accepted_event)
         events = await asyncio.to_thread(
-            build_message_pipeline_events,
+            build_message_followup_events,
             repository,
             settings,
             session_id,

@@ -283,11 +283,17 @@ class FakeSessionRepository:
                 "metadata": {
                     "stage": payload.stage,
                     "next_action": payload.next_action,
+                    "risk_level": payload.risk_level,
+                    "safety_flags": payload.safety_flags,
                     "model_stage": payload.stage,
                     "model_next_action": payload.next_action,
                     "stage_before": "engage",
                     "stage_machine_reason": "accept_next_stage",
                     "next_action_machine_reason": "preserve_model_action",
+                    "risk_rule_precheck": "high_risk_rule_precheck" in payload.safety_flags,
+                    "risk_rule_flags": [
+                        flag for flag in payload.safety_flags if flag.startswith("rule_hit:")
+                    ],
                 },
             },
         }
@@ -382,6 +388,19 @@ def test_next_action_syncs_when_stage_is_rewritten():
     assert reason == "sync_to_resolved_stage"
     assert handoff_action == "handoff"
     assert handoff_reason == "sync_to_resolved_stage"
+
+
+def test_high_risk_rule_detects_obvious_self_harm_language():
+    module = load_gateway_module()
+
+    match = module.detect_high_risk_rule_match("我觉得活着没意义，甚至想伤害自己。")
+    no_match = module.detect_high_risk_rule_match("这周压力很大，但我想继续找办法调整。")
+
+    assert match is not None
+    assert match["risk_level"] == "high"
+    assert "suicide_intent" in match["matched_labels"]
+    assert "self_harm_intent" in match["matched_labels"]
+    assert no_match is None
 
 
 def test_text_message_accept_returns_contract_shape():
@@ -589,6 +608,150 @@ def test_dispatch_pipeline_excludes_current_message_from_memory_and_syncs_next_a
     assert dialogue_event["payload"]["stage"] == "intervene"
     assert dialogue_event["payload"]["next_action"] == "intervene"
     assert dialogue_event["payload"]["next_action_requested"] == "reassess"
+
+
+def test_dispatch_pipeline_short_circuits_on_high_risk_rule(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    connection_registry = module.ConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+    called = {"llm": False}
+
+    def forbidden_request_dialogue_reply(*args, **kwargs):
+        called["llm"] = True
+        raise AssertionError("high-risk precheck should bypass llm call")
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_dialogue_reply", forbidden_request_dialogue_reply)
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "engage",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_fake_001",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "我觉得活着没意义，甚至想伤害自己。",
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                },
+            },
+        )
+    )
+
+    assert called["llm"] is False
+    dialogue_event = repository.event_calls[-1]
+    assert dialogue_event["event_type"] == "dialogue.reply"
+    assert dialogue_event["source_service"] == "api_gateway"
+    assert dialogue_event["payload"]["stage"] == "handoff"
+    assert dialogue_event["payload"]["risk_level"] == "high"
+    assert dialogue_event["payload"]["rule_precheck_triggered"] is True
+    assert "high_risk_rule_precheck" in dialogue_event["payload"]["safety_flags"]
+    assert repository.memory_calls == []
+
+
+def test_dispatch_pipeline_enqueues_message_accepted_before_llm_reply(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+
+    class RecordingConnectionRegistry:
+        def __init__(self) -> None:
+            self.enqueued: list[str] = []
+
+        async def enqueue_event(self, session_id: str, envelope: dict) -> None:
+            self.enqueued.append(envelope["event_type"])
+
+    connection_registry = RecordingConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+    observed = {"before_llm": []}
+
+    def fake_request_dialogue_reply(
+        settings,
+        session,
+        message,
+        *,
+        short_term_memory=None,
+        dialogue_summary=None,
+    ):
+        observed["before_llm"] = list(connection_registry.enqueued)
+        return module.DialogueReplyResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            message_id="msg_assistant_early_ack",
+            reply="我们先慢慢说。",
+            emotion="supportive",
+            risk_level="low",
+            stage="assess",
+            next_action="ask_followup",
+            knowledge_refs=[],
+            avatar_style="warm_support",
+            safety_flags=[],
+        )
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "engage",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_fake_early_ack",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "最近总觉得脑子停不下来。",
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                },
+            },
+        )
+    )
+
+    assert observed["before_llm"] == ["message.accepted"]
+    assert connection_registry.enqueued == ["message.accepted", "dialogue.reply"]
 
 
 def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monkeypatch):

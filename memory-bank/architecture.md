@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - gateway now owns pre-llm high-risk short-circuit
+
+- Obvious self-harm or suicide language is now intercepted in apps/api-gateway before any orchestrator or dialogue-service call; the gateway itself generates a fixed handoff reply, forces risk_level=high and stage=handoff, and records high_risk_rule_precheck in safety_flags.
+- message.accepted is now emitted to realtime clients before the slower dialogue follow-up path runs, so frontend send confirmation is no longer blocked on real LLM latency.
+- scripts/web_mock_reply_harness.js now supports configurable connect, sent, and reply timeouts so live verifiers can tolerate real gpt-5.4 latency without weakening fast mock-mode tests.
+
 ## 2026-03-09 - handoff summary is now the first resume surface
 
 - memory-bank/handoff-summary.md is now the canonical first-read file when resuming work in a new chat; it summarizes goal, model policy, completed steps, current stable commit, and next planned step before a developer drills into progress.md or architecture.md.

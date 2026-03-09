@@ -59,6 +59,15 @@ stateDiagram-v2
 
 LLM 只负责“怎么说”，不独占“是否高风险”的判断权。
 
+当前仓库在步骤 28 已增加网关前置高风险规则层：
+
+- 规则位置：`apps/api-gateway`
+- 触发时机：用户消息入库后、调用 `orchestrator -> dialogue-service` 之前
+- 当前覆盖：显式自杀、自伤、结束生命、不想活等直接危险表达
+- 默认动作：直接返回固定安全回复，并强制 `risk_level=high`、`stage=handoff`、`next_action=handoff`
+- 留痕方式：`safety_flags` 增加 `high_risk_rule_precheck`，导出事件增加 `rule_precheck_triggered=true`
+- 当前验证：即使把 `ORCHESTRATOR_BASE_URL` 指向不可用地址，高风险样例也必须完成 `message.accepted -> dialogue.reply`
+
 ## 6. Prompt 结构
 
 建议拆成 5 段：
@@ -127,6 +136,7 @@ LLM 只负责“怎么说”，不独占“是否高风险”的判断权。
 - 明确禁止诊断式结论，如“你就是抑郁症”。
 - 明确禁止提供危险行为指导。
 - 在 `handoff` 阶段固定插入求助资源模板。
+- 对明显高风险表达，优先走规则层短路，不等待 LLM 再决定是否升级。
 
 ## 10. 工具调用建议
 

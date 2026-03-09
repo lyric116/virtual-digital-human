@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 26, and 27:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 26, 27, and 28:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -30,6 +30,8 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 2
   the dialogue service without adding any long-term profile layer
 - step 27: generate and persist a compact dialogue summary every three user turns so
   longer sessions stop relying only on raw recent turns
+- step 28: run a deterministic high-risk rule precheck before calling orchestrator so
+  obvious self-harm or suicide expressions short-circuit directly to `handoff`
 
 ## Files
 
@@ -96,3 +98,7 @@ From repository root:
 - Every third user turn, the gateway asks orchestrator for a compact summary, stores it in
   `sessions.metadata.dialogue_summary`, and records a `dialogue.summary.updated` event so
   exports and reconnects keep one stable summary snapshot.
+- Before any orchestrator call, the gateway now applies a deterministic high-risk text
+  rule layer. If an obvious self-harm or suicide expression is detected, the gateway
+  generates a fixed safety reply locally, forces `risk_level=high` and `stage=handoff`,
+  and marks the assistant message with `high_risk_rule_precheck`.
