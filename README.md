@@ -15,6 +15,8 @@ Current repository state:
 - the text loop now reaches a real structured assistant reply through `apps/orchestrator`
 - the gateway now enforces a stage machine so assistant replies cannot skip or jump
   backward across `engage -> assess -> intervene -> reassess -> handoff`
+- the gateway now injects short-term dialogue memory from recent message rows so the
+  real LLM can recall user facts across multiple turns without adding long-term profiles
 - the frontend now renders a recoverable chat timeline and restores session history from
   the gateway session state endpoint
 - the current text session can now be exported as JSON with messages, stage history, and
@@ -92,6 +94,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_schema_validation.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_llm_samples.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_stage_machine.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_short_term_memory.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`

@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - short-term memory is gateway-computed context
+
+- After step 26, short-term dialogue memory is computed from the persisted messages table inside apps/api-gateway and forwarded as metadata.short_term_memory; dialogue-service does not query storage directly.
+- The current memory layer is intentionally capped to the most recent few turns and is designed for factual continuity only; summary compression remains a separate later step.
+
 ## 2026-03-09 - gateway owns final stage progression
 
 - After step 25, services/dialogue-service may propose any legal stage, but apps/api-gateway is the only component allowed to finalize session stage progression and persist stage-machine metadata such as stage_before, model_stage, and stage_machine_reason.

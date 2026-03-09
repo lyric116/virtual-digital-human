@@ -145,7 +145,9 @@ def build_dialogue_system_prompt() -> str:
         "If current_stage=assess, prefer intervene. If current_stage=intervene, "
         "prefer reassess. If current_stage=engage and the user mentions sleep, "
         "anxiety, stress, or pressure, prefer assess. Use short knowledge_refs "
-        "only when clearly relevant. avatar_style should be warm_support, "
+        "only when clearly relevant. If metadata.short_term_memory contains recent "
+        "turns, use it to preserve continuity and answer factual recall questions "
+        "about the last few turns directly. avatar_style should be warm_support, "
         "calm_guarded, or rational_guide."
     )
 

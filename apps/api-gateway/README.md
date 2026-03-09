@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, and 25:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, and 26:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -26,6 +26,8 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, and 2
 - step 25: enforce the dialogue stage machine at persistence time so assistant replies
   can only move through `engage -> assess -> intervene -> reassess -> handoff` without
   invalid jumps
+- step 26: package the recent dialogue turns as short-term memory and forward them to
+  the dialogue service without adding any long-term profile layer
 
 ## Files
 
@@ -83,3 +85,6 @@ From repository root:
 - The gateway treats the LLM stage as a proposal, not ground truth. It records
   `stage_before`, `model_stage`, and `stage_machine_reason` in assistant message metadata,
   then emits the resolved stage in `dialogue.reply`.
+- Before each dialogue request, the gateway reads the latest few messages from PostgreSQL
+  and forwards them as `metadata.short_term_memory`, which is the only memory layer used
+  before step 27 adds summaries.

@@ -321,6 +321,14 @@ class SessionRepository(Protocol):
     def get_session_export(self, session_id: str) -> dict[str, Any] | None:
         ...
 
+    def get_recent_dialogue_context(
+        self,
+        session_id: str,
+        *,
+        limit: int = 6,
+    ) -> list[dict[str, Any]]:
+        ...
+
     def create_user_text_message(
         self,
         session_id: str,
@@ -731,6 +739,48 @@ class PostgresSessionRepository:
         if row is None:
             raise RuntimeError("session insert returned no row")
         return row
+
+    def get_recent_dialogue_context(
+        self,
+        session_id: str,
+        *,
+        limit: int = 6,
+    ) -> list[dict[str, Any]]:
+        safe_limit = min(max(limit, 1), 10)
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        message_id,
+                        role,
+                        source_kind,
+                        content_text,
+                        metadata,
+                        submitted_at
+                    FROM messages
+                    WHERE session_id = %s
+                    ORDER BY submitted_at DESC, created_at DESC
+                    LIMIT %s
+                    """,
+                    (session_id, safe_limit),
+                )
+                rows = cur.fetchall()
+
+        history: list[dict[str, Any]] = []
+        for row in reversed(rows):
+            metadata = row.get("metadata") or {}
+            history.append(
+                {
+                    "message_id": row["message_id"],
+                    "role": row["role"],
+                    "source_kind": row["source_kind"],
+                    "content_text": row["content_text"],
+                    "stage": metadata.get("stage"),
+                    "submitted_at": row["submitted_at"],
+                }
+            )
+        return history
 
     def get_session_summary(self, session_id: str) -> dict[str, Any] | None:
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
@@ -1528,6 +1578,8 @@ def request_dialogue_reply(
     settings: GatewaySettings,
     session: dict[str, Any],
     message: dict[str, Any],
+    *,
+    short_term_memory: list[dict[str, Any]] | None = None,
 ) -> DialogueReplyResponse:
     request_payload = DialogueReplyRequest(
         session_id=session["session_id"],
@@ -1535,9 +1587,12 @@ def request_dialogue_reply(
         user_message_id=message["message_id"],
         content_text=message["content_text"],
         current_stage=session["stage"],
-        metadata={"source_service": "api_gateway"},
+        metadata={
+            "source_service": "api_gateway",
+            "short_term_memory": short_term_memory or [],
+        },
     )
-    body = json.dumps(request_payload.model_dump()).encode("utf-8")
+    body = json.dumps(request_payload.model_dump(mode="json")).encode("utf-8")
     request = urllib_request.Request(
         url=f"{settings.orchestrator_base_url.rstrip('/')}/internal/dialogue/respond",
         data=body,
@@ -1792,7 +1847,13 @@ async def dispatch_message_pipeline(
     await request.app.state.connection_registry.enqueue_event(session_id, accepted_event)
 
     try:
-        dialogue_reply = request_dialogue_reply(settings, result["session"], result["message"])
+        short_term_memory = repository.get_recent_dialogue_context(session_id, limit=6)
+        dialogue_reply = request_dialogue_reply(
+            settings,
+            result["session"],
+            result["message"],
+            short_term_memory=short_term_memory,
+        )
         assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
         assistant_metadata = assistant_result["message"].get("metadata", {})
         dialogue_event = build_event_envelope(

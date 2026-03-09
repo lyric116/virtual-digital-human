@@ -171,6 +171,26 @@ class FakeSessionRepository:
             ],
         }
 
+    def get_recent_dialogue_context(self, session_id: str, *, limit: int = 6):
+        return [
+            {
+                "message_id": "msg_user_000",
+                "role": "user",
+                "source_kind": "text",
+                "content_text": "我叫小李。",
+                "stage": None,
+                "submitted_at": "2026-03-07T14:00:30Z",
+            },
+            {
+                "message_id": "msg_assistant_000",
+                "role": "assistant",
+                "source_kind": "text",
+                "content_text": "你好，小李。",
+                "stage": "engage",
+                "submitted_at": "2026-03-07T14:00:40Z",
+            },
+        ][:limit]
+
     def create_user_text_message(self, session_id: str, payload):
         dumped = payload.model_dump()
         self.message_calls.append({"session_id": session_id, **dumped})
@@ -277,6 +297,58 @@ def test_text_message_accept_returns_contract_shape():
     assert body["message"]["status"] == "accepted"
     assert body["message"]["content_text"] == "今天压力有点大"
     assert repository.message_calls[0]["client_seq"] == 3
+
+
+def test_request_dialogue_reply_includes_short_term_memory(monkeypatch):
+    module = load_gateway_module()
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return (
+                b'{"session_id":"sess_fake_001","trace_id":"trace_fake_001","message_id":"msg_assistant_001",'
+                b'"reply":"\xe4\xbd\xa0\xe5\xa5\xbd\xef\xbc\x8c\xe5\xb0\x8f\xe6\x9d\x8e\xe3\x80\x82","emotion":"neutral",'
+                b'"risk_level":"low","stage":"engage","next_action":"ask_followup",'
+                b'"knowledge_refs":[],"avatar_style":"warm_support","safety_flags":[]}'
+            )
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(module.urllib_request, "urlopen", fake_urlopen)
+
+    response = module.request_dialogue_reply(
+        module.GatewaySettings.from_env(),
+        {
+            "session_id": "sess_fake_001",
+            "trace_id": "trace_fake_001",
+            "stage": "engage",
+        },
+        {
+            "message_id": "msg_user_001",
+            "content_text": "你还记得我叫什么吗？",
+        },
+        short_term_memory=[
+            {
+                "message_id": "msg_user_000",
+                "role": "user",
+                "source_kind": "text",
+                "content_text": "我叫小李。",
+                "stage": None,
+                "submitted_at": "2026-03-07T14:00:30Z",
+            }
+        ],
+    )
+
+    assert response.reply == "你好，小李。"
+    assert captured["body"]["metadata"]["short_term_memory"][0]["content_text"] == "我叫小李。"
 
 
 def test_text_message_rejects_blank_content():

@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - step 26 short-term dialogue memory
+
+### Scope
+
+Added a gateway-side short-term memory layer that reads recent message rows, forwards them as metadata.short_term_memory to dialogue-service, and verifies factual recall after two turns with the real LLM stack.
+
+### Outputs
+
+- apps/api-gateway/main.py now fetches recent dialogue context and injects it into request_dialogue_reply metadata
+- services/dialogue-service/main.py prompt now instructs the LLM to use short_term_memory for recent-turn continuity and factual recall
+- scripts/verify_dialogue_short_term_memory.py proves the system can recall a user name after two turns
+- README and dialogue/gateway docs now describe short-term memory as the only pre-summary memory layer
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 101 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_short_term_memory.py
+
+### Next
+
+- Implement step 27 staged dialogue summaries so longer sessions stop relying only on raw-turn memory
+
 ## 2026-03-09 - step 25 dialogue stage machine
 
 ### Scope

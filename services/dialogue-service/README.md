@@ -39,6 +39,8 @@ Required environment variables:
 
 - `POST /internal/dialogue/respond` now calls the configured LLM and converts its JSON
   output into the shared `DialogueReplyResponse` contract.
+- `metadata.short_term_memory` is now part of the prompt contract so the service can
+  answer simple factual recall questions over the last few turns.
 - `POST /internal/dialogue/validate` is the strict schema gate used to reject malformed
   response payloads before they can leak into orchestrator or gateway code.
 - `scripts/verify_dialogue_llm_samples.py` runs five fixed text samples against the real
