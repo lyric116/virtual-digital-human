@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - Step 34 dual avatar switch
+
+### Scope
+
+Completed implementation plan step 34 by adding two selectable static avatar roles in the frontend, routing the selected role into session bootstrap and TTS synthesis, and verifying that switching changes both the rendered stage profile and the voice output.
+
+### Outputs
+
+- Added companion_female_01 and coach_male_01 avatar profiles to apps/web/app.js with explicit labels, notes, and voice previews
+- Extended apps/web/index.html and apps/web/styles.css with two selectable avatar option cards plus profile-specific stage styling
+- Updated scripts/web_tts_playback_harness.js, added tests/test_web_avatar_switch.py, and added live verification in scripts/verify_web_avatar_switch.py
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_web_shell.py tests/test_web_avatar_baseline.py tests/test_web_avatar_mouth_drive.py tests/test_web_tts_playback.py tests/test_web_avatar_switch.py -> 11 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_switch.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 138 passed
+
+### Next
+
+- Step 35: map dialogue stage and emotion to expression presets
+
 ## 2026-03-09 - Step 33 basic mouth drive
 
 ### Scope

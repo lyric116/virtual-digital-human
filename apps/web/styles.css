@@ -230,6 +230,59 @@ body::before {
   gap: 12px;
 }
 
+.avatar-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.avatar-option-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(29, 42, 43, 0.12);
+  background: rgba(255, 250, 242, 0.72);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.avatar-option-card:hover {
+  border-color: rgba(15, 108, 104, 0.22);
+  transform: translateY(-1px);
+}
+
+.avatar-option-card[data-selected="true"] {
+  border-color: rgba(15, 108, 104, 0.42);
+  box-shadow: 0 12px 26px rgba(15, 108, 104, 0.1);
+}
+
+.avatar-option-card[data-effective="true"]::after {
+  content: "current";
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 108, 104, 0.12);
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.avatar-option-name {
+  font-weight: 700;
+}
+
+.avatar-option-meta {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
 .avatar-baseline-card {
   display: flex;
   flex-direction: column;
@@ -245,6 +298,10 @@ body::before {
   border-color: rgba(15, 108, 104, 0.42);
   box-shadow: 0 18px 40px rgba(15, 108, 104, 0.12);
   transform: translateY(-2px);
+}
+
+.avatar-baseline-card[data-avatar-profile="coach"] {
+  background: linear-gradient(180deg, rgba(242, 247, 251, 0.96), rgba(227, 235, 246, 0.76));
 }
 
 .avatar-baseline-header {
@@ -295,6 +352,13 @@ body::before {
     linear-gradient(180deg, #d6e6e0 0%, #f1e2cf 52%, #f7f2ea 100%);
 }
 
+.avatar-baseline-card[data-avatar-profile="coach"] .avatar-baseline-canvas {
+  background:
+    radial-gradient(circle at 26% 18%, rgba(200, 218, 246, 0.82), transparent 24%),
+    radial-gradient(circle at 74% 20%, rgba(34, 71, 122, 0.16), transparent 28%),
+    linear-gradient(180deg, #dce6f4 0%, #e9eef7 48%, #f3f6fb 100%);
+}
+
 .avatar-halo {
   position: absolute;
   inset: 24px 92px 74px;
@@ -306,6 +370,10 @@ body::before {
 .avatar-baseline-card[data-avatar-state="speaking"] .avatar-halo {
   opacity: 1;
   transform: scale(1.08);
+}
+
+.avatar-baseline-card[data-avatar-profile="coach"] .avatar-halo {
+  background: radial-gradient(circle, rgba(34, 71, 122, 0.18), rgba(34, 71, 122, 0));
 }
 
 .avatar-figure {
@@ -326,11 +394,23 @@ body::before {
   border: 1px solid rgba(29, 42, 43, 0.08);
 }
 
+.avatar-baseline-card[data-avatar-profile="coach"] .avatar-head {
+  width: 132px;
+  border-radius: 50% 50% 46% 46%;
+  background: linear-gradient(180deg, #efd3bf 0%, #e6bea4 100%);
+}
+
 .avatar-hair {
   position: absolute;
   inset: -6px 8px 58px;
   border-radius: 52% 52% 30% 30%;
   background: linear-gradient(180deg, #2b4445 0%, #486766 100%);
+}
+
+.avatar-baseline-card[data-avatar-profile="coach"] .avatar-hair {
+  inset: -10px 10px 64px;
+  border-radius: 38% 38% 18% 18%;
+  background: linear-gradient(180deg, #23344e 0%, #4f6588 100%);
 }
 
 .avatar-eye {
@@ -348,6 +428,13 @@ body::before {
 
 .avatar-eye-right {
   right: 28px;
+}
+
+.avatar-baseline-card[data-avatar-profile="coach"] .avatar-eye {
+  top: 76px;
+  width: 18px;
+  height: 7px;
+  background: #20324a;
 }
 
 .avatar-mouth {
@@ -394,12 +481,22 @@ body::before {
   background: #efc5ae;
 }
 
+.avatar-baseline-card[data-avatar-profile="coach"] .avatar-neck {
+  width: 30px;
+  background: #e2b69b;
+}
+
 .avatar-body {
   width: 180px;
   height: 120px;
   margin: 0 auto;
   border-radius: 36px 36px 18px 18px;
   background: linear-gradient(180deg, #537a78 0%, #2e5352 100%);
+}
+
+.avatar-baseline-card[data-avatar-profile="coach"] .avatar-body {
+  width: 188px;
+  background: linear-gradient(180deg, #5a6e91 0%, #314562 100%);
 }
 
 .avatar-character-detail,
@@ -688,6 +785,10 @@ body::before {
   }
 
   .avatar-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .avatar-selector-grid {
     grid-template-columns: 1fr;
   }
 

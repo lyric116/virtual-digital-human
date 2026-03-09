@@ -13,6 +13,7 @@ function parseArgs(argv) {
     apiBaseUrl: "http://127.0.0.1:8000",
     wsUrl: "ws://127.0.0.1:8000/ws",
     ttsBaseUrl: "http://127.0.0.1:8040",
+    avatarId: "companion_female_01",
     replyText: "谢谢你愿意说出来。我们先慢一点，把今晚最难受的部分说清楚。",
     connectTimeoutMs: 5000,
     replyTimeoutMs: 8000,
@@ -39,6 +40,11 @@ function parseArgs(argv) {
     }
     if (current === "--tts-base-url") {
       args.ttsBaseUrl = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (current === "--avatar-id") {
+      args.avatarId = argv[index + 1];
       index += 1;
       continue;
     }
@@ -163,16 +169,21 @@ class FakeDocument {
       ["transcript-user-final-text", "等待用户提交文本...", ""],
       ["transcript-assistant-reply-text", "等待 mock orchestrator reply...", ""],
       ["avatar-latest-reply-text", "等待 mock reply...", ""],
+      ["avatar-option-companion", "Companion Avatar A", ""],
+      ["avatar-option-coach", "Coach Avatar B", ""],
       ["avatar-baseline-card", "", ""],
+      ["avatar-label-value", "Companion Avatar A", ""],
+      ["avatar-meta-value", "Warm support / static 2D baseline / low motion", ""],
       ["avatar-character-state-value", "idle", ""],
       ["avatar-character-detail-value", "静态角色等待中。", ""],
+      ["avatar-stage-note-value", "温和陪伴型角色，适合建立联系和低刺激安抚。", ""],
       ["avatar-mouth-shape", "", ""],
       ["avatar-mouth-state-value", "closed", ""],
       ["avatar-mouth-detail-value", "嘴部闭合，累计切换 0 次。", ""],
       ["avatar-speech-state-value", "idle", ""],
       ["avatar-speech-detail-value", "等待系统回复并合成语音。", ""],
-      ["avatar-voice-value", "pending", ""],
-      ["avatar-duration-value", "0.0s / pending", ""],
+      ["avatar-voice-value", "zh-CN-XiaoxiaoNeural", ""],
+      ["avatar-duration-value", "0.0s / preview", ""],
       ["avatar-replay-button", "Replay Voice", ""],
       ["fusion-risk-value", "pending", ""],
       ["fusion-stage-value", "stage: idle / next: pending", ""],
@@ -233,15 +244,22 @@ function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null,
   };
 }
 
-function createMockRuntime(ttsBaseUrl, replyText) {
+function resolveMockVoice(requestedVoiceId) {
+  if (requestedVoiceId === "coach_male_01") {
+    return "zh-CN-YunxiNeural";
+  }
+  return "zh-CN-XiaoxiaoNeural";
+}
+
+function createMockRuntime(ttsBaseUrl, replyText, defaultAvatarId) {
   let currentSocket = null;
-  const sessionPayload = {
+  let sessionPayload = {
     session_id: "sess_mock_tts_001",
     trace_id: "trace_mock_tts_001",
     status: "created",
     stage: "engage",
     input_modes: ["text", "audio"],
-    avatar_id: "companion_female_01",
+    avatar_id: defaultAvatarId,
     started_at: "2026-03-09T10:10:00Z",
     updated_at: "2026-03-09T10:10:00Z",
   };
@@ -315,6 +333,11 @@ function createMockRuntime(ttsBaseUrl, replyText) {
 
   async function mockFetch(url, options = {}) {
     if (url.endsWith("/api/session/create")) {
+      const requestPayload = JSON.parse(options.body || "{}");
+      sessionPayload = {
+        ...sessionPayload,
+        avatar_id: requestPayload.avatar_id || defaultAvatarId,
+      };
       return {
         ok: true,
         status: 201,
@@ -393,6 +416,7 @@ function createMockRuntime(ttsBaseUrl, replyText) {
 
     if (url === `${ttsBaseUrl}/internal/tts/synthesize`) {
       const payload = JSON.parse(options.body || "{}");
+      const resolvedVoiceId = resolveMockVoice(payload.voice_id);
       return {
         ok: true,
         status: 200,
@@ -402,7 +426,7 @@ function createMockRuntime(ttsBaseUrl, replyText) {
             session_id: sessionPayload.session_id,
             trace_id: sessionPayload.trace_id,
             message_id: payload.message_id || "msg_assistant_mock_001",
-            voice_id: "zh-CN-XiaoxiaoNeural",
+            voice_id: resolvedVoiceId,
             subtitle: payload.subtitle || payload.text,
             audio_format: "mp3",
             audio_url: `${ttsBaseUrl}/media/tts/tts_mock_001.mp3`,
@@ -436,12 +460,18 @@ function collectSnapshot(document) {
     dialogueReplyState: document.body.dataset.dialogueReplyState || null,
     ttsPlaybackState: document.body.dataset.ttsPlaybackState || null,
     avatarVisualState: document.body.dataset.avatarVisualState || null,
+    activeAvatarId: document.body.dataset.activeAvatarId || null,
+    effectiveAvatarId: document.body.dataset.effectiveAvatarId || null,
+    effectiveAvatarProfile: document.body.dataset.effectiveAvatarProfile || null,
     avatarMouthState: document.body.dataset.avatarMouthState || null,
     avatarMouthTransitionCount: Number(document.body.dataset.avatarMouthTransitionCount || "0"),
     assistantReply: document.getElementById("transcript-assistant-reply-text").textContent,
     avatarReply: document.getElementById("avatar-latest-reply-text").textContent,
+    avatarLabel: document.getElementById("avatar-label-value").textContent,
+    avatarMeta: document.getElementById("avatar-meta-value").textContent,
     avatarCharacterState: document.getElementById("avatar-character-state-value").textContent,
     avatarCharacterDetail: document.getElementById("avatar-character-detail-value").textContent,
+    avatarStageNote: document.getElementById("avatar-stage-note-value").textContent,
     avatarMouthLabel: document.getElementById("avatar-mouth-state-value").textContent,
     avatarMouthDetail: document.getElementById("avatar-mouth-detail-value").textContent,
     avatarSpeechState: document.getElementById("avatar-speech-state-value").textContent,
@@ -500,6 +530,8 @@ function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl, ttsBaseUrl })
     startButton: document.getElementById("session-start-button"),
     textInputField: document.getElementById("text-input-field"),
     textSubmitButton: document.getElementById("text-submit-button"),
+    avatarOptionCompanion: document.getElementById("avatar-option-companion"),
+    avatarOptionCoach: document.getElementById("avatar-option-coach"),
   };
 }
 
@@ -518,7 +550,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const runtimeConfig = args.mode === "live"
     ? { fetchImpl: fetch, WebSocketImpl: WebSocket }
-    : createMockRuntime(args.ttsBaseUrl, args.replyText);
+    : createMockRuntime(args.ttsBaseUrl, args.replyText, args.avatarId);
 
   if (typeof runtimeConfig.fetchImpl !== "function") {
     throw new Error("fetch is not available in this runtime");
@@ -534,6 +566,10 @@ async function main() {
     wsUrl: args.wsUrl,
     ttsBaseUrl: args.ttsBaseUrl,
   });
+
+  if (args.avatarId === "coach_male_01" && runtime.avatarOptionCoach) {
+    await runtime.avatarOptionCoach.click();
+  }
 
   const beforeCreate = collectSnapshot(runtime.document);
   await runtime.startButton.click();

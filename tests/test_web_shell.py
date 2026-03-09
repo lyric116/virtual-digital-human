@@ -64,9 +64,14 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="transcript-user-final-text"' in content
     assert 'id="transcript-assistant-reply-text"' in content
     assert 'id="avatar-latest-reply-text"' in content
+    assert 'id="avatar-option-companion"' in content
+    assert 'id="avatar-option-coach"' in content
     assert 'id="avatar-baseline-card"' in content
+    assert 'id="avatar-label-value"' in content
+    assert 'id="avatar-meta-value"' in content
     assert 'id="avatar-character-state-value"' in content
     assert 'id="avatar-character-detail-value"' in content
+    assert 'id="avatar-stage-note-value"' in content
     assert 'id="avatar-mouth-shape"' in content
     assert 'id="avatar-mouth-state-value"' in content
     assert 'id="avatar-mouth-detail-value"' in content

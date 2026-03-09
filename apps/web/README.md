@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, and 33:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, 33, and 34:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -37,6 +37,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
   between `idle` and `speaking` based on the current TTS playback state
 - step 33: the avatar mouth now follows a deterministic coarse cue sequence during
   playback and returns to `closed` after audio ends
+- step 34: the avatar panel now exposes two selectable roles and routes the chosen
+  role into both new session bootstrap requests and the TTS voice used for that role
 
 ## Files
 
@@ -50,7 +52,7 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
     history restore plus session export, microphone recording, audio chunk upload, and
     finalized audio submission plus partial transcript preview back into the text dialogue loop,
     followed by frontend TTS synthesis, avatar audio playback, subtitle sync, static
-    avatar state switching, and basic mouth cue playback
+    avatar state switching, basic mouth cue playback, and dual-avatar selection
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -94,8 +96,10 @@ Then open:
 - after one valid assistant reply, the frontend requests one TTS asset, attempts
   autoplay, and still keeps subtitle text visible even if TTS synthesis or playback fails
 - `Replay Voice` reuses the latest successful `audio_url` without re-running dialogue generation
-- the single baseline avatar is intentionally static; only `idle` and `speaking` states
-  are implemented in this step, while mouth movement and the second avatar remain later steps
+- both avatars are intentionally static; only `idle` and `speaking` states plus coarse
+  mouth motion are implemented, without expressions or body gestures yet
+- avatar switching updates the selected role immediately, and a new session binds the
+  chosen `avatar_id` into the gateway session bootstrap request
 - the mouth layer now uses a deterministic coarse cue sequence derived from reply text and
   TTS duration so playback visibly opens and closes even before a dedicated viseme model exists
 - the current active `sessionId` is stored in browser storage and used to restore
@@ -121,3 +125,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_baseline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_mouth_drive.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_switch.py`

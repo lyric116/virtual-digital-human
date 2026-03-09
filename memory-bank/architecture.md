@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - Dual avatar selection stays frontend-owned in V1
+
+- Step 34 keeps avatar switching inside apps/web: the frontend now owns the active avatar registry, selected avatar state, and the mapping from selected avatar to the session bootstrap avatar_id and TTS voice_id.
+- The current effective speaking avatar remains session-scoped, while a newly selected avatar is staged for the next session; this avoids silently changing the persisted backend session avatar_id mid-session.
+- services/tts-service already had provider-agnostic voice aliases, so adding the second avatar only required using coach_male_01 in the frontend and verification tooling rather than changing the service contract.
+
 ## 2026-03-09 - Baseline mouth cues stay frontend-owned
 
 - Step 33 keeps mouth motion as a frontend concern: apps/web derives a coarse cue sequence from reply text and TTS duration, then advances mouth states locally during playback instead of introducing a separate viseme service too early.

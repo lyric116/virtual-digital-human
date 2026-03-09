@@ -6,6 +6,51 @@
   const defaultApiBaseUrl = "http://127.0.0.1:8000";
   const defaultWsUrl = "ws://127.0.0.1:8000/ws";
   const defaultTtsBaseUrl = "http://127.0.0.1:8040";
+  const defaultAvatarId = "companion_female_01";
+  const avatarProfiles = {
+    companion_female_01: {
+      avatarId: "companion_female_01",
+      profileId: "companion",
+      label: "Companion Avatar A",
+      meta: "Warm support / static 2D baseline / low motion",
+      stageNote: "温和陪伴型角色，适合建立联系和低刺激安抚。",
+      idleDetail: "陪伴型角色等待中，语气柔和，准备接住当前情绪。",
+      speakingDetail: "陪伴型角色说话中，声线更柔和，节奏更慢。",
+      voicePreview: "zh-CN-XiaoxiaoNeural",
+    },
+    coach_male_01: {
+      avatarId: "coach_male_01",
+      profileId: "coach",
+      label: "Coach Avatar B",
+      meta: "Structured guidance / static 2D baseline / firmer pacing",
+      stageNote: "理性引导型角色，适合澄清问题和推进下一步行动。",
+      idleDetail: "引导型角色等待中，表达更克制，准备做结构化追问。",
+      speakingDetail: "引导型角色说话中，声线更沉稳，节奏更明确。",
+      voicePreview: "zh-CN-YunxiNeural",
+    },
+  };
+
+  function resolveAvatarId(candidateAvatarId) {
+    if (typeof candidateAvatarId === "string" && avatarProfiles[candidateAvatarId]) {
+      return candidateAvatarId;
+    }
+    return defaultAvatarId;
+  }
+
+  function getAvatarProfile(candidateAvatarId) {
+    return avatarProfiles[resolveAvatarId(candidateAvatarId)];
+  }
+
+  function getEffectiveAvatarId(state) {
+    if (state.sessionId && state.sessionAvatarId) {
+      return resolveAvatarId(state.sessionAvatarId);
+    }
+    return resolveAvatarId(state.activeAvatarId);
+  }
+
+  function getEffectiveAvatarProfile(state) {
+    return getAvatarProfile(getEffectiveAvatarId(state));
+  }
 
   function findMissingPanels(rootDocument) {
     return panelIds.filter(
@@ -19,7 +64,7 @@
       apiBaseUrl: config.apiBaseUrl || config.gatewayBaseUrl || defaultApiBaseUrl,
       wsUrl: config.wsUrl || defaultWsUrl,
       ttsBaseUrl: config.ttsBaseUrl || defaultTtsBaseUrl,
-      defaultAvatarId: config.defaultAvatarId || "companion_female_01",
+      defaultAvatarId: resolveAvatarId(config.defaultAvatarId || defaultAvatarId),
       activeSessionStorageKey: config.activeSessionStorageKey || "virtual-human-active-session-id",
       heartbeatIntervalMs: config.heartbeatIntervalMs || 5000,
       reconnectDelayMs: config.reconnectDelayMs || 1000,
@@ -33,6 +78,8 @@
   function createInitialSessionState() {
     return {
       sessionId: null,
+      activeAvatarId: defaultAvatarId,
+      sessionAvatarId: null,
       traceId: null,
       status: "idle",
       stage: "idle",
@@ -131,9 +178,14 @@
       transcriptUserFinalText: findRequiredElement(rootDocument, "transcript-user-final-text"),
       transcriptAssistantReplyText: findRequiredElement(rootDocument, "transcript-assistant-reply-text"),
       avatarLatestReplyText: findRequiredElement(rootDocument, "avatar-latest-reply-text"),
+      avatarOptionCompanion: findOptionalElement(rootDocument, "avatar-option-companion"),
+      avatarOptionCoach: findOptionalElement(rootDocument, "avatar-option-coach"),
       avatarBaselineCard: findOptionalElement(rootDocument, "avatar-baseline-card"),
+      avatarLabelValue: findOptionalElement(rootDocument, "avatar-label-value"),
+      avatarMetaValue: findOptionalElement(rootDocument, "avatar-meta-value"),
       avatarCharacterStateValue: findOptionalElement(rootDocument, "avatar-character-state-value"),
       avatarCharacterDetailValue: findOptionalElement(rootDocument, "avatar-character-detail-value"),
+      avatarStageNoteValue: findOptionalElement(rootDocument, "avatar-stage-note-value"),
       avatarMouthShape: findOptionalElement(rootDocument, "avatar-mouth-shape"),
       avatarMouthStateValue: findOptionalElement(rootDocument, "avatar-mouth-state-value"),
       avatarMouthDetailValue: findOptionalElement(rootDocument, "avatar-mouth-detail-value"),
@@ -370,10 +422,28 @@
   }
 
   function getAvatarVisualDetail(state) {
+    const avatarProfile = getEffectiveAvatarProfile(state);
     if (state.ttsPlaybackState === "playing") {
-      return "静态角色说话中。";
+      return avatarProfile.speakingDetail;
     }
-    return "静态角色等待中。";
+    return avatarProfile.idleDetail;
+  }
+
+  function getAvatarStageNote(state) {
+    const effectiveAvatar = getEffectiveAvatarProfile(state);
+    const selectedAvatar = getAvatarProfile(state.activeAvatarId);
+    if (
+      state.sessionId
+      && state.sessionAvatarId
+      && resolveAvatarId(state.sessionAvatarId) !== resolveAvatarId(state.activeAvatarId)
+    ) {
+      return `已选 ${selectedAvatar.label}，点击 Create New Session 后切换当前会话角色。`;
+    }
+    return effectiveAvatar.stageNote;
+  }
+
+  function getAvatarVoicePreview(state) {
+    return getEffectiveAvatarProfile(state).voicePreview;
   }
 
   function getAvatarMouthDetail(state) {
@@ -514,6 +584,8 @@
   }
 
   function renderSessionState(rootDocument, elements, state, appConfig) {
+    const selectedAvatar = getAvatarProfile(state.activeAvatarId);
+    const effectiveAvatar = getEffectiveAvatarProfile(state);
     elements.sessionIdValue.textContent = state.sessionId || defaultSessionIdLabel;
     elements.sessionStatusValue.textContent = state.status;
     elements.sessionStageValue.textContent = state.stage;
@@ -612,12 +684,36 @@
     const avatarVisualState = getAvatarVisualState(state);
     if (elements.avatarBaselineCard && typeof elements.avatarBaselineCard.dataset === "object") {
       elements.avatarBaselineCard.dataset.avatarState = avatarVisualState;
+      elements.avatarBaselineCard.dataset.avatarProfile = effectiveAvatar.profileId;
+    }
+    if (elements.avatarOptionCompanion && typeof elements.avatarOptionCompanion.dataset === "object") {
+      elements.avatarOptionCompanion.dataset.selected = selectedAvatar.avatarId === "companion_female_01" ? "true" : "false";
+      elements.avatarOptionCompanion.dataset.effective = effectiveAvatar.avatarId === "companion_female_01" ? "true" : "false";
+    }
+    if (elements.avatarOptionCoach && typeof elements.avatarOptionCoach.dataset === "object") {
+      elements.avatarOptionCoach.dataset.selected = selectedAvatar.avatarId === "coach_male_01" ? "true" : "false";
+      elements.avatarOptionCoach.dataset.effective = effectiveAvatar.avatarId === "coach_male_01" ? "true" : "false";
+    }
+    if (elements.avatarOptionCompanion) {
+      elements.avatarOptionCompanion.disabled = state.requestState === "loading" || state.requestState === "restoring";
+    }
+    if (elements.avatarOptionCoach) {
+      elements.avatarOptionCoach.disabled = state.requestState === "loading" || state.requestState === "restoring";
+    }
+    if (elements.avatarLabelValue) {
+      elements.avatarLabelValue.textContent = effectiveAvatar.label;
+    }
+    if (elements.avatarMetaValue) {
+      elements.avatarMetaValue.textContent = effectiveAvatar.meta;
     }
     if (elements.avatarCharacterStateValue) {
       elements.avatarCharacterStateValue.textContent = avatarVisualState;
     }
     if (elements.avatarCharacterDetailValue) {
       elements.avatarCharacterDetailValue.textContent = getAvatarVisualDetail(state);
+    }
+    if (elements.avatarStageNoteValue) {
+      elements.avatarStageNoteValue.textContent = getAvatarStageNote(state);
     }
     if (elements.avatarMouthShape && typeof elements.avatarMouthShape.dataset === "object") {
       elements.avatarMouthShape.dataset.mouthState = state.avatarMouthState;
@@ -635,12 +731,14 @@
       elements.avatarSpeechDetailValue.textContent = getAvatarSpeechStatusMessage(state);
     }
     if (elements.avatarVoiceValue) {
-      elements.avatarVoiceValue.textContent = state.ttsVoiceId || "pending";
+      elements.avatarVoiceValue.textContent = state.ttsVoiceId !== "pending"
+        ? state.ttsVoiceId
+        : getAvatarVoicePreview(state);
     }
     if (elements.avatarDurationValue) {
       elements.avatarDurationValue.textContent = state.ttsDurationMs
         ? `${formatDurationMs(state.ttsDurationMs)} / ${state.ttsAudioFormat}`
-        : `0.0s / ${state.ttsAudioFormat}`;
+        : `0.0s / preview`;
     }
     if (elements.avatarReplayButton) {
       elements.avatarReplayButton.disabled = !state.ttsAudioUrl || state.ttsPlaybackState === "synthesizing";
@@ -671,6 +769,9 @@
     rootDocument.body.dataset.avatarVisualState = avatarVisualState;
     rootDocument.body.dataset.avatarMouthState = state.avatarMouthState;
     rootDocument.body.dataset.avatarMouthTransitionCount = String(state.avatarMouthTransitionCount);
+    rootDocument.body.dataset.activeAvatarId = selectedAvatar.avatarId;
+    rootDocument.body.dataset.effectiveAvatarId = effectiveAvatar.avatarId;
+    rootDocument.body.dataset.effectiveAvatarProfile = effectiveAvatar.profileId;
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -736,7 +837,7 @@
       },
       body: JSON.stringify({
         input_modes: ["text", "audio"],
-        avatar_id: appConfig.defaultAvatarId,
+        avatar_id: resolveAvatarId(appConfig.activeAvatarId || appConfig.defaultAvatarId),
         metadata: {
           source: "web-shell",
         },
@@ -1196,6 +1297,8 @@
     }
 
     state.sessionId = session.session_id;
+    state.sessionAvatarId = resolveAvatarId(session.avatar_id || state.activeAvatarId);
+    state.activeAvatarId = state.sessionAvatarId;
     state.traceId = session.trace_id;
     state.status = session.status || "active";
     state.stage = reconstructed.currentStage || session.stage || "engage";
@@ -1231,6 +1334,7 @@
     const appConfig = getAppConfig(rootWindow);
     const elements = getViewElements(rootDocument);
     const state = createInitialSessionState();
+    state.activeAvatarId = resolveAvatarId(appConfig.defaultAvatarId);
     const runtime = {
       socket: null,
       heartbeatTimerId: null,
@@ -1400,7 +1504,7 @@
       try {
         const payload = await requestTTSSynthesis(resolvedFetch, appConfig, {
           text: replyPayload.reply,
-          voice_id: appConfig.defaultAvatarId,
+          voice_id: getEffectiveAvatarId(state),
           session_id: state.sessionId,
           trace_id: replyPayload.trace_id || state.traceId,
           message_id: replyPayload.message_id,
@@ -1778,6 +1882,7 @@
       teardownRealtime(true);
       clearExportCache(rootWindow);
       state.sessionId = null;
+      state.sessionAvatarId = null;
       state.traceId = null;
       state.status = "idle";
       state.stage = "idle";
@@ -1840,8 +1945,10 @@
       renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
+        appConfig.activeAvatarId = resolveAvatarId(state.activeAvatarId);
         const payload = await requestSession(resolvedFetch, appConfig);
         state.sessionId = payload.session_id;
+        state.sessionAvatarId = resolveAvatarId(payload.avatar_id || state.activeAvatarId);
         state.traceId = payload.trace_id;
         state.status = payload.status || "created";
         state.stage = payload.stage || "engage";
@@ -1857,6 +1964,26 @@
         renderSessionState(rootDocument, elements, state, appConfig);
       }
 
+      return { ...state };
+    }
+
+    function selectAvatar(nextAvatarId) {
+      const resolvedAvatarId = resolveAvatarId(nextAvatarId);
+      if (resolvedAvatarId === state.activeAvatarId) {
+        return { ...state };
+      }
+      state.activeAvatarId = resolvedAvatarId;
+      appConfig.activeAvatarId = resolvedAvatarId;
+      if (!state.sessionId) {
+        state.ttsPlaybackState = "idle";
+        state.ttsPlaybackMessage = "已选择角色，创建会话后会沿用当前声线。";
+        state.ttsAudioUrl = null;
+        state.ttsAudioFormat = "pending";
+        state.ttsVoiceId = "pending";
+        state.ttsDurationMs = 0;
+        state.ttsGeneratedAt = null;
+      }
+      renderSessionState(rootDocument, elements, state, appConfig);
       return { ...state };
     }
 
@@ -2375,6 +2502,16 @@
     elements.startButton.addEventListener("click", function () {
       return startSession();
     });
+    if (elements.avatarOptionCompanion) {
+      elements.avatarOptionCompanion.addEventListener("click", function () {
+        return selectAvatar("companion_female_01");
+      });
+    }
+    if (elements.avatarOptionCoach) {
+      elements.avatarOptionCoach.addEventListener("click", function () {
+        return selectAvatar("coach_male_01");
+      });
+    }
     if (elements.micRequestButton) {
       elements.micRequestButton.addEventListener("click", function () {
         return requestMicrophoneAccess();
@@ -2451,6 +2588,7 @@
       replayAssistantAudio,
       exportSession,
       restoreSessionFromStorage,
+      selectAvatar,
       forceRealtimeDropForTest,
       shutdownForTest,
     };

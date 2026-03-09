@@ -51,6 +51,8 @@ Current repository state:
   and speaking while reply audio is playing
 - the static avatar now also drives a coarse mouth open-close sequence during playback
   and closes the mouth after audio ends
+- the frontend avatar stage now supports two selectable static roles, and each role maps
+  to a distinct TTS voice plus a visibly different stage profile
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -129,6 +131,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_baseline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_mouth_drive.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_switch.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

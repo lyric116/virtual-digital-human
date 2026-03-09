@@ -20,7 +20,7 @@
           </p>
         </div>
         <div class="hero-badges">
-          <span>2 avatars planned</span>
+          <span>2 avatars available</span>
           <span>text + voice</span>
           <span>camera + mic</span>
         </div>
@@ -90,15 +90,41 @@
             <h2>Avatar Stage</h2>
           </div>
           <p class="panel-summary">
-            One static 2D avatar baseline now switches between idle and speaking states with the
-            current reply playback.
+            Two static 2D avatars are now available. Selection changes both the stage styling and
+            the TTS voice used for the next session.
           </p>
           <div class="avatar-stage">
+            <div class="avatar-selector-grid" aria-label="Avatar selector">
+              <button
+                type="button"
+                class="avatar-option-card"
+                id="avatar-option-companion"
+                data-avatar-option="companion"
+                data-selected="true"
+                data-effective="true"
+              >
+                <span class="avatar-option-name">Companion Avatar A</span>
+                <span class="avatar-option-meta">Warm support / Xiaoxiao voice</span>
+              </button>
+              <button
+                type="button"
+                class="avatar-option-card"
+                id="avatar-option-coach"
+                data-avatar-option="coach"
+                data-selected="false"
+                data-effective="false"
+              >
+                <span class="avatar-option-name">Coach Avatar B</span>
+                <span class="avatar-option-meta">Structured guidance / Yunxi voice</span>
+              </button>
+            </div>
             <div class="avatar-baseline-card" id="avatar-baseline-card" data-avatar-state="idle">
               <div class="avatar-baseline-header">
                 <div>
-                  <p class="avatar-label">Companion Avatar A</p>
-                  <p class="avatar-meta">Warm support / static 2D baseline / low motion</p>
+                  <p class="avatar-label" id="avatar-label-value">Companion Avatar A</p>
+                  <p class="avatar-meta" id="avatar-meta-value">
+                    Warm support / static 2D baseline / low motion
+                  </p>
                 </div>
                 <span class="avatar-state-pill" id="avatar-character-state-value">idle</span>
               </div>
@@ -118,7 +144,9 @@
               <p class="avatar-character-detail" id="avatar-character-detail-value">
                 静态角色等待中。
               </p>
-              <p class="avatar-stage-note">Step 34 will add the second avatar and a distinct voice.</p>
+              <p class="avatar-stage-note" id="avatar-stage-note-value">
+                温和陪伴型角色，适合建立联系和低刺激安抚。
+              </p>
             </div>
             <div class="subtitle-bar">
               <span>Latest reply</span>
