@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,12 +38,24 @@ def bootstrap_runtime_env() -> None:
 class DialogueServiceSettings:
     dialogue_service_host: str
     dialogue_service_port: int
+    llm_provider: str
+    llm_base_url: str
+    llm_api_key: str
+    llm_model: str
+    llm_timeout_seconds: float
+    llm_context_window: int
 
     @classmethod
     def from_env(cls) -> "DialogueServiceSettings":
         return cls(
             dialogue_service_host=os.getenv("DIALOGUE_SERVICE_HOST", "0.0.0.0"),
             dialogue_service_port=int(os.getenv("DIALOGUE_SERVICE_PORT", "8030")),
+            llm_provider=os.getenv("LLM_PROVIDER", "openai_compatible"),
+            llm_base_url=os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
+            llm_api_key=os.getenv("LLM_API_KEY", ""),
+            llm_model=os.getenv("LLM_MODEL", "set-your-llm-model"),
+            llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "60")),
+            llm_context_window=int(os.getenv("LLM_CONTEXT_WINDOW", "8192")),
         )
 
 
@@ -69,83 +82,166 @@ class DialogueReplyResponse(BaseModel):
     safety_flags: list[str] = Field(default_factory=list)
 
 
-def build_mock_dialogue_reply(payload: DialogueReplyRequest) -> DialogueReplyResponse:
-    text = payload.content_text.strip()
-    lowered = text.lower()
-    message_id = f"msg_assistant_{uuid4().hex[:16]}"
+class LLMDialogueFields(BaseModel):
+    reply: str
+    emotion: str
+    risk_level: Literal["low", "medium", "high"]
+    stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    next_action: str
+    knowledge_refs: list[str] = Field(default_factory=list)
+    avatar_style: str | None = None
+    safety_flags: list[str] = Field(default_factory=list)
 
-    if any(token in text for token in ["不想活", "伤害自己", "活着没意义"]) or "suicide" in lowered:
-        return DialogueReplyResponse(
-            session_id=payload.session_id,
-            trace_id=payload.trace_id,
-            message_id=message_id,
-            reply="听起来你现在很难受。如果你已经有伤害自己的想法，请立刻联系身边可信任的人，并尽快寻求线下专业帮助。",
-            emotion="distressed",
-            risk_level="high",
-            stage="handoff",
-            next_action="handoff",
-            knowledge_refs=["handoff_emergency_support"],
-            avatar_style="calm_guarded",
-            safety_flags=["high_risk_expression"],
-        )
+    @field_validator("knowledge_refs", "safety_flags", mode="before")
+    @classmethod
+    def normalize_string_lists(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            stripped = value.strip()
+            return [stripped] if stripped else []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        raise TypeError("expected string or list of strings")
 
-    if payload.current_stage == "intervene":
-        return DialogueReplyResponse(
-            session_id=payload.session_id,
-            trace_id=payload.trace_id,
-            message_id=message_id,
-            reply="刚才这些方法里，哪一种对你最有帮助？如果只看现在这一刻，紧绷感有没有比刚才轻一点？",
-            emotion="calmer",
-            risk_level="low",
-            stage="reassess",
-            next_action="reassess",
-            knowledge_refs=["reassess_checkin_basic"],
-            avatar_style="warm_support",
-            safety_flags=[],
-        )
+    @field_validator("avatar_style", mode="before")
+    @classmethod
+    def normalize_avatar_style(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
 
-    if payload.current_stage == "assess":
-        return DialogueReplyResponse(
-            session_id=payload.session_id,
-            trace_id=payload.trace_id,
-            message_id=message_id,
-            reply="我们先不急着一下子解决全部问题。你现在可以先试一次慢呼吸：吸气四拍，停两拍，呼气六拍，做两轮看看身体有没有一点放松。",
-            emotion="anxious",
-            risk_level="medium",
-            stage="intervene",
-            next_action="breathing",
-            knowledge_refs=["breathing_426"],
-            avatar_style="warm_support",
-            safety_flags=[],
-        )
 
-    if any(token in text for token in ["睡不好", "睡不着", "晚上", "停不下来", "焦虑"]) or "sleep" in lowered:
-        return DialogueReplyResponse(
-            session_id=payload.session_id,
-            trace_id=payload.trace_id,
-            message_id=message_id,
-            reply="谢谢你愿意说出来。最近这种睡不稳和停不下来的感觉，是这几天一直这样，还是晚上更明显？",
-            emotion="anxious",
-            risk_level="medium",
-            stage="assess",
-            next_action="ask_followup",
-            knowledge_refs=["sleep_hygiene_basic"],
-            avatar_style="warm_support",
-            safety_flags=[],
-        )
+def build_llm_client(settings: DialogueServiceSettings):
+    from openai import OpenAI
 
+    return OpenAI(
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+        timeout=settings.llm_timeout_seconds,
+    )
+
+
+def ensure_llm_configured(settings: DialogueServiceSettings) -> None:
+    if not settings.llm_api_key:
+        raise RuntimeError("LLM_API_KEY is not configured")
+    if not settings.llm_base_url:
+        raise RuntimeError("LLM_BASE_URL is not configured")
+    if not settings.llm_model or settings.llm_model == "set-your-llm-model":
+        raise RuntimeError("LLM_MODEL is not configured")
+
+
+def build_dialogue_system_prompt() -> str:
+    return (
+        "You are the structured dialogue core for a mental-support virtual human. "
+        "Return one JSON object only with keys: reply, emotion, risk_level, stage, "
+        "next_action, knowledge_refs, avatar_style, safety_flags. "
+        "Rules: reply in Simplified Chinese, empathetic, concrete, 1-3 sentences, "
+        "no markdown, no diagnosis, no extra keys. risk_level must be low, medium, "
+        "or high. stage must be engage, assess, intervene, reassess, or handoff. "
+        "If the user expresses self-harm or suicide intent, set risk_level=high, "
+        "stage=handoff, next_action=handoff, and add a safety flag. "
+        "If current_stage=assess, prefer intervene. If current_stage=intervene, "
+        "prefer reassess. If current_stage=engage and the user mentions sleep, "
+        "anxiety, stress, or pressure, prefer assess. Use short knowledge_refs "
+        "only when clearly relevant. avatar_style should be warm_support, "
+        "calm_guarded, or rational_guide."
+    )
+
+
+def build_dialogue_user_prompt(payload: DialogueReplyRequest) -> str:
+    return json.dumps(
+        {
+            "current_stage": payload.current_stage,
+            "user_text": payload.content_text,
+            "metadata": payload.metadata,
+        },
+        ensure_ascii=False,
+    )
+
+
+def extract_text_content(message_content: Any) -> str:
+    if isinstance(message_content, str):
+        return message_content
+    if isinstance(message_content, list):
+        parts: list[str] = []
+        for item in message_content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+            elif hasattr(item, "text") and isinstance(item.text, str):
+                parts.append(item.text)
+        return "\n".join(part for part in parts if part).strip()
+    return str(message_content or "")
+
+
+def extract_json_object(raw_text: str) -> dict[str, Any]:
+    stripped = raw_text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 3:
+            stripped = "\n".join(lines[1:-1]).strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise RuntimeError("llm response did not contain a json object")
+        candidate = stripped[start : end + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("llm response did not contain valid json") from exc
+
+
+def generate_dialogue_fields(
+    settings: DialogueServiceSettings,
+    payload: DialogueReplyRequest,
+) -> LLMDialogueFields:
+    ensure_llm_configured(settings)
+    client = build_llm_client(settings)
+    completion = client.chat.completions.create(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": build_dialogue_system_prompt()},
+            {"role": "user", "content": build_dialogue_user_prompt(payload)},
+        ],
+        temperature=0,
+        max_tokens=300,
+        response_format={"type": "json_object"},
+    )
+    choices = getattr(completion, "choices", None) or []
+    if not choices:
+        raise RuntimeError("llm returned no choices")
+    content = extract_text_content(choices[0].message.content)
+    if not content:
+        raise RuntimeError("llm returned empty content")
+    parsed = extract_json_object(content)
+    try:
+        return LLMDialogueFields.model_validate(parsed)
+    except ValidationError as exc:
+        raise RuntimeError(f"llm returned invalid dialogue fields: {exc}") from exc
+
+
+def build_dialogue_reply(
+    payload: DialogueReplyRequest,
+    llm_fields: LLMDialogueFields,
+) -> DialogueReplyResponse:
     return DialogueReplyResponse(
         session_id=payload.session_id,
         trace_id=payload.trace_id,
-        message_id=message_id,
-        reply="谢谢你愿意继续说。你现在最希望我先帮你理清哪一部分，是情绪、压力来源，还是最近的作息状态？",
-        emotion="neutral",
-        risk_level="low",
-        stage="engage" if payload.current_stage == "engage" else "assess",
-        next_action="ask_followup",
-        knowledge_refs=[],
-        avatar_style="warm_support",
-        safety_flags=[],
+        message_id=f"msg_assistant_{uuid4().hex[:16]}",
+        reply=llm_fields.reply,
+        emotion=llm_fields.emotion,
+        risk_level=llm_fields.risk_level,
+        stage=llm_fields.stage,
+        next_action=llm_fields.next_action,
+        knowledge_refs=llm_fields.knowledge_refs,
+        avatar_style=llm_fields.avatar_style,
+        safety_flags=llm_fields.safety_flags,
     )
 
 
@@ -162,7 +258,13 @@ def create_app() -> FastAPI:
 
     @app.post("/internal/dialogue/respond", response_model=DialogueReplyResponse)
     def respond(payload: DialogueReplyRequest) -> DialogueReplyResponse:
-        return build_mock_dialogue_reply(payload)
+        try:
+            llm_fields = generate_dialogue_fields(settings, payload)
+            return build_dialogue_reply(payload, llm_fields)
+        except RuntimeError as exc:
+            if "not configured" in str(exc):
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @app.post("/internal/dialogue/validate", response_model=DialogueReplyResponse)
     def validate(payload: DialogueReplyResponse) -> DialogueReplyResponse:

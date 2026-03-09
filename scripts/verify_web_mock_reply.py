@@ -19,6 +19,7 @@ from psycopg.rows import dict_row
 ROOT = Path(__file__).resolve().parents[1]
 GATEWAY_MAIN = ROOT / "apps" / "api-gateway" / "main.py"
 ORCHESTRATOR_MAIN = ROOT / "apps" / "orchestrator" / "main.py"
+DIALOGUE_MAIN = ROOT / "services" / "dialogue-service" / "main.py"
 HARNESS = ROOT / "scripts" / "web_mock_reply_harness.js"
 
 
@@ -66,21 +67,48 @@ def wait_for_health(url: str, label: str) -> None:
 
 def main() -> None:
     env = {**parse_env_file(ROOT / ".env.example"), **parse_env_file(ROOT / ".env"), **os.environ}
+    dialogue_port = reserve_local_port()
     orchestrator_port = reserve_local_port()
     gateway_port = reserve_local_port()
+    dialogue_base_url = f"http://127.0.0.1:{dialogue_port}"
     orchestrator_base_url = f"http://127.0.0.1:{orchestrator_port}"
     gateway_base_url = f"http://127.0.0.1:{gateway_port}"
     gateway_ws_url = f"ws://127.0.0.1:{gateway_port}/ws"
+
+    dialogue_env = dict(env)
+    dialogue_env["PYTHONPATH"] = str(DIALOGUE_MAIN.parent)
+    dialogue_env["DIALOGUE_SERVICE_PORT"] = str(dialogue_port)
+    dialogue_env["DIALOGUE_SERVICE_BASE_URL"] = dialogue_base_url
 
     orchestrator_env = dict(env)
     orchestrator_env["PYTHONPATH"] = str(ORCHESTRATOR_MAIN.parent)
     orchestrator_env["ORCHESTRATOR_PORT"] = str(orchestrator_port)
     orchestrator_env["ORCHESTRATOR_BASE_URL"] = orchestrator_base_url
+    orchestrator_env["DIALOGUE_SERVICE_BASE_URL"] = dialogue_base_url
 
     gateway_env = dict(env)
     gateway_env["PYTHONPATH"] = str(GATEWAY_MAIN.parent)
     gateway_env["GATEWAY_CORS_ORIGINS"] = "http://127.0.0.1:4173,http://localhost:4173"
     gateway_env["ORCHESTRATOR_BASE_URL"] = orchestrator_base_url
+
+    dialogue_service = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "--app-dir",
+            str(DIALOGUE_MAIN.parent),
+            "main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(dialogue_port),
+        ],
+        cwd=ROOT,
+        env=dialogue_env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
     orchestrator = subprocess.Popen(
         [
@@ -121,6 +149,7 @@ def main() -> None:
     )
 
     try:
+        wait_for_health(f"{dialogue_base_url}/health", "dialogue-service")
         wait_for_health(f"{orchestrator_base_url}/health", "orchestrator")
         wait_for_health(f"{gateway_base_url}/health", "gateway")
 
@@ -138,13 +167,21 @@ def main() -> None:
             cwd=ROOT,
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
         )
     finally:
         gateway.terminate()
         gateway.wait(timeout=5)
         orchestrator.terminate()
         orchestrator.wait(timeout=5)
+        dialogue_service.terminate()
+        dialogue_service.wait(timeout=5)
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            "web mock reply harness failed: "
+            f"stdout={result.stdout.strip()} stderr={result.stderr.strip()}"
+        )
 
     payload = json.loads(result.stdout)
     session_id = payload["afterReply"]["sessionId"]

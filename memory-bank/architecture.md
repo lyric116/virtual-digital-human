@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - dialogue service owns real llm contract boundary
+
+- The real LLM now only produces semantic dialogue fields inside services/dialogue-service, while session_id, trace_id, and message_id remain server-owned to prevent identifier drift across orchestrator, gateway, and exports.
+- Live web verifiers that exercise assistant replies must start dialogue-service explicitly after step 24 because orchestrator no longer has any local reply generation path.
+
 ## 2026-03-09 - Dialogue Payload Construction Now Belongs To dialogue-service
 
 - services/dialogue-service is now the only approved place to construct and validate dialogue reply payloads; apps/orchestrator should proxy to it and reject malformed replies rather than generating reply JSON locally.

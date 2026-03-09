@@ -8,8 +8,10 @@ Current repository state:
 - `16kHz mono` ASR input audio has been generated under `data/derived/audio_16k_mono`
 - external ASR draft generation has been verified with `qwen3-asr-flash`
 - the monorepo engineering skeleton from `implementation_plan` step 1 is now in place
-- `services/dialogue-service` now owns the mock dialogue schema boundary, and
+- `services/dialogue-service` now owns the dialogue schema boundary, and
   `apps/orchestrator` forwards dialogue requests through that validated service
+- `services/dialogue-service` now calls a real LLM through standard `LLM_*`
+  configuration while keeping the existing dialogue response contract stable
 - the text loop now reaches a mock structured assistant reply through `apps/orchestrator`
 - the frontend now renders a recoverable chat timeline and restores session history from
   the gateway session state endpoint
@@ -86,6 +88,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_schema_validation.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_llm_samples.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`

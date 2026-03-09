@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This service now covers implementation plan steps 12 and 23:
+This service now covers implementation plan steps 12, 23, and 24:
 
 - receive a text turn from the gateway
 - forward the request to `services/dialogue-service`
@@ -30,7 +30,8 @@ Required environment variable:
 
 ## Notes
 
-- Mock dialogue output is now generated inside `services/dialogue-service`, not in orchestrator.
-- Stage, risk level, and next action are still validated even though no real LLM is used yet.
+- Real dialogue output is generated inside `services/dialogue-service`, not in orchestrator.
+- Stage, risk level, and next action remain validated after the real LLM call so the
+  gateway only receives contract-safe payloads.
 - The gateway remains responsible for persisting assistant messages and forwarding
   `dialogue.reply` to the frontend session channel.

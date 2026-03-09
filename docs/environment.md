@@ -101,9 +101,9 @@ code or deployment files.
 | Variable | Required | Default / Example | Purpose |
 | --- | --- | --- | --- |
 | `LLM_PROVIDER` | Yes | `openai_compatible` | Logical provider name used by dialogue service. |
-| `LLM_BASE_URL` | Yes | `https://api.openai.com/v1` | Base URL for the selected LLM provider. |
+| `LLM_BASE_URL` | Yes | `https://dashscope.aliyuncs.com/compatible-mode/v1` | Base URL for the selected LLM provider. The current step-24 baseline is verified against DashScope's OpenAI-compatible endpoint. |
 | `LLM_API_KEY` | Yes | empty | API key for the selected LLM provider. |
-| `LLM_MODEL` | Yes | `set-your-llm-model` | Model identifier for structured dialogue generation. |
+| `LLM_MODEL` | Yes | `qwen-plus` | Model identifier for structured dialogue generation. The current real-LLM baseline uses `qwen-plus`. |
 | `LLM_TIMEOUT_SECONDS` | Yes | `60` | End-to-end timeout per LLM request. |
 | `LLM_CONTEXT_WINDOW` | Yes | `8192` | Minimum supported context budget for prompts and history. |
 

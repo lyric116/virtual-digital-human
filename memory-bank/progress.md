@@ -21,6 +21,30 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - step 24 real llm dialogue baseline
+
+### Scope
+
+Replaced dialogue-service mock generation with real openai-compatible LLM inference, validated five fixed samples with latency checks, and restored the web text reply live verifier to start dialogue-service explicitly.
+
+### Outputs
+
+- services/dialogue-service/main.py now calls the configured LLM and preserves DialogueReplyResponse contract
+- scripts/verify_dialogue_llm_samples.py verifies five fixed text samples and high-risk routing
+- scripts/verify_web_mock_reply.py now starts dialogue-service so web text reply live verification matches the new service topology
+- README and dialogue-related docs now describe standard LLM_* configuration and the qwen-plus baseline
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 98 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_llm_samples.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_schema_validation.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py
+
+### Next
+
+- Implement step 25 session stage machine on top of the now-stable real LLM contract
+
 ## 2026-03-09 - Step 23 Dialogue Service Schema Gate
 
 ### Scope
