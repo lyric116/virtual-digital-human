@@ -362,10 +362,28 @@ body::before {
   transition: width 140ms ease, height 140ms ease, border-radius 140ms ease;
 }
 
-.avatar-baseline-card[data-avatar-state="speaking"] .avatar-mouth {
+.avatar-mouth[data-mouth-state="small"] {
+  width: 20px;
+  height: 14px;
+  border-radius: 50% 50% 60% 60%;
+}
+
+.avatar-mouth[data-mouth-state="wide"] {
+  width: 34px;
+  height: 12px;
+  border-radius: 14px;
+}
+
+.avatar-mouth[data-mouth-state="round"] {
   width: 20px;
   height: 18px;
   border-radius: 50% 50% 60% 60%;
+}
+
+.avatar-mouth[data-mouth-state="closed"] {
+  width: 28px;
+  height: 8px;
+  border-radius: 999px;
 }
 
 .avatar-neck {

@@ -49,6 +49,8 @@ Current repository state:
   spoken with synced subtitle text and replay controls in the avatar panel
 - the avatar stage now has one static 2D baseline character that switches between idle
   and speaking while reply audio is playing
+- the static avatar now also drives a coarse mouth open-close sequence during playback
+  and closes the mouth after audio ends
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -126,6 +128,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_tts_service.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_baseline.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_mouth_drive.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

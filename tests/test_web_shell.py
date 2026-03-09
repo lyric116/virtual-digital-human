@@ -67,6 +67,9 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="avatar-baseline-card"' in content
     assert 'id="avatar-character-state-value"' in content
     assert 'id="avatar-character-detail-value"' in content
+    assert 'id="avatar-mouth-shape"' in content
+    assert 'id="avatar-mouth-state-value"' in content
+    assert 'id="avatar-mouth-detail-value"' in content
     assert 'id="avatar-speech-state-value"' in content
     assert 'id="avatar-speech-detail-value"' in content
     assert 'id="avatar-voice-value"' in content

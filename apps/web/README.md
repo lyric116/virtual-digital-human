@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, and 32:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, and 33:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -35,6 +35,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
   replay button plus playback state labels
 - step 32: the avatar panel now shows one static 2D character baseline and switches
   between `idle` and `speaking` based on the current TTS playback state
+- step 33: the avatar mouth now follows a deterministic coarse cue sequence during
+  playback and returns to `closed` after audio ends
 
 ## Files
 
@@ -47,8 +49,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
     ack handling, mock dialogue reply handling, chat timeline rendering, and session
     history restore plus session export, microphone recording, audio chunk upload, and
     finalized audio submission plus partial transcript preview back into the text dialogue loop,
-    followed by frontend TTS synthesis, avatar audio playback, subtitle sync, and static
-    avatar state switching
+    followed by frontend TTS synthesis, avatar audio playback, subtitle sync, static
+    avatar state switching, and basic mouth cue playback
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -94,6 +96,8 @@ Then open:
 - `Replay Voice` reuses the latest successful `audio_url` without re-running dialogue generation
 - the single baseline avatar is intentionally static; only `idle` and `speaking` states
   are implemented in this step, while mouth movement and the second avatar remain later steps
+- the mouth layer now uses a deterministic coarse cue sequence derived from reply text and
+  TTS duration so playback visibly opens and closes even before a dedicated viseme model exists
 - the current active `sessionId` is stored in browser storage and used to restore
   history through `GET /api/session/{session_id}/state`
 - `Export` calls `GET /api/session/{session_id}/export` and downloads the returned JSON
@@ -116,3 +120,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_partial_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_baseline.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_mouth_drive.py`

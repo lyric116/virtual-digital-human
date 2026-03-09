@@ -86,6 +86,8 @@
       ttsVoiceId: "pending",
       ttsDurationMs: 0,
       ttsGeneratedAt: null,
+      avatarMouthState: "closed",
+      avatarMouthTransitionCount: 0,
       exportState: "idle",
       exportMessage: "创建或恢复会话后可导出当前 JSON。",
       lastExportedAt: null,
@@ -132,6 +134,9 @@
       avatarBaselineCard: findOptionalElement(rootDocument, "avatar-baseline-card"),
       avatarCharacterStateValue: findOptionalElement(rootDocument, "avatar-character-state-value"),
       avatarCharacterDetailValue: findOptionalElement(rootDocument, "avatar-character-detail-value"),
+      avatarMouthShape: findOptionalElement(rootDocument, "avatar-mouth-shape"),
+      avatarMouthStateValue: findOptionalElement(rootDocument, "avatar-mouth-state-value"),
+      avatarMouthDetailValue: findOptionalElement(rootDocument, "avatar-mouth-detail-value"),
       avatarSpeechStateValue: findOptionalElement(rootDocument, "avatar-speech-state-value"),
       avatarSpeechDetailValue: findOptionalElement(rootDocument, "avatar-speech-detail-value"),
       avatarVoiceValue: findOptionalElement(rootDocument, "avatar-voice-value"),
@@ -371,6 +376,64 @@
     return "静态角色等待中。";
   }
 
+  function getAvatarMouthDetail(state) {
+    if (state.avatarMouthState === "closed") {
+      return `嘴部闭合，累计切换 ${state.avatarMouthTransitionCount} 次。`;
+    }
+    return `嘴型 ${state.avatarMouthState}，累计切换 ${state.avatarMouthTransitionCount} 次。`;
+  }
+
+  function buildMouthCueSequence(text, durationMs) {
+    const safeDurationMs = Math.max(1200, durationMs || 0);
+    const characters = Array.from(String(text || "").trim());
+    if (!characters.length) {
+      return [{ startMs: 0, endMs: safeDurationMs, mouthState: "closed" }];
+    }
+
+    const visibleCharacters = characters.filter(function (character) {
+      return !/\s/.test(character);
+    });
+    const cueCharacters = visibleCharacters.length ? visibleCharacters : characters;
+    const stepMs = Math.max(90, Math.min(220, Math.floor(safeDurationMs / Math.max(cueCharacters.length, 1))));
+    const cues = [];
+    let cursorMs = 0;
+
+    cueCharacters.forEach(function (character, index) {
+      const codePoint = character.codePointAt(0) || 0;
+      const isPause = /[，。！？,.!?、；;：:]/.test(character);
+      let mouthState = "closed";
+      if (!isPause) {
+        const variant = (codePoint + index) % 3;
+        if (variant === 0) {
+          mouthState = "small";
+        } else if (variant === 1) {
+          mouthState = "wide";
+        } else {
+          mouthState = "round";
+        }
+      }
+
+      cues.push({
+        startMs: cursorMs,
+        endMs: Math.min(safeDurationMs, cursorMs + stepMs),
+        mouthState,
+      });
+      cursorMs += stepMs;
+    });
+
+    if (!cues.length || cues[cues.length - 1].mouthState !== "closed") {
+      cues.push({
+        startMs: Math.min(cursorMs, safeDurationMs),
+        endMs: safeDurationMs,
+        mouthState: "closed",
+      });
+    } else {
+      cues[cues.length - 1].endMs = safeDurationMs;
+    }
+
+    return cues;
+  }
+
   function getExportStatusMessage(state) {
     if (!state.sessionId) {
       return "创建或恢复会话后可导出当前 JSON。";
@@ -556,6 +619,15 @@
     if (elements.avatarCharacterDetailValue) {
       elements.avatarCharacterDetailValue.textContent = getAvatarVisualDetail(state);
     }
+    if (elements.avatarMouthShape && typeof elements.avatarMouthShape.dataset === "object") {
+      elements.avatarMouthShape.dataset.mouthState = state.avatarMouthState;
+    }
+    if (elements.avatarMouthStateValue) {
+      elements.avatarMouthStateValue.textContent = state.avatarMouthState;
+    }
+    if (elements.avatarMouthDetailValue) {
+      elements.avatarMouthDetailValue.textContent = getAvatarMouthDetail(state);
+    }
     if (elements.avatarSpeechStateValue) {
       elements.avatarSpeechStateValue.textContent = state.ttsPlaybackState;
     }
@@ -597,6 +669,8 @@
     rootDocument.body.dataset.partialTranscriptState = state.partialTranscriptState;
     rootDocument.body.dataset.ttsPlaybackState = state.ttsPlaybackState;
     rootDocument.body.dataset.avatarVisualState = avatarVisualState;
+    rootDocument.body.dataset.avatarMouthState = state.avatarMouthState;
+    rootDocument.body.dataset.avatarMouthTransitionCount = String(state.avatarMouthTransitionCount);
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -1176,6 +1250,9 @@
       nextPreviewSeq: 1,
       currentRecordingId: null,
       ttsRequestToken: 0,
+      avatarMouthTimerId: null,
+      avatarMouthCueSequence: [],
+      avatarMouthPlaybackStartedAt: null,
     };
 
     function clearHeartbeatTimer() {
@@ -1199,6 +1276,51 @@
       }
     }
 
+    function clearAvatarMouthTimer() {
+      if (runtime.avatarMouthTimerId) {
+        rootWindow.clearInterval(runtime.avatarMouthTimerId);
+        runtime.avatarMouthTimerId = null;
+      }
+    }
+
+    function setAvatarMouthState(nextState) {
+      if (state.avatarMouthState === nextState) {
+        return;
+      }
+      state.avatarMouthState = nextState;
+      state.avatarMouthTransitionCount += 1;
+      renderSessionState(rootDocument, elements, state, appConfig);
+    }
+
+    function updateAvatarMouthFromElapsed(elapsedMs) {
+      const cues = runtime.avatarMouthCueSequence;
+      if (!cues.length) {
+        setAvatarMouthState("closed");
+        return;
+      }
+      const activeCue = cues.find(function (cue) {
+        return elapsedMs >= cue.startMs && elapsedMs < cue.endMs;
+      }) || cues[cues.length - 1];
+      setAvatarMouthState(activeCue.mouthState);
+    }
+
+    function startAvatarMouthAnimation() {
+      clearAvatarMouthTimer();
+      runtime.avatarMouthPlaybackStartedAt = Date.now();
+      updateAvatarMouthFromElapsed(0);
+      runtime.avatarMouthTimerId = rootWindow.setInterval(function () {
+        const elapsedMs = Math.max(0, Date.now() - (runtime.avatarMouthPlaybackStartedAt || Date.now()));
+        updateAvatarMouthFromElapsed(elapsedMs);
+      }, 90);
+    }
+
+    function stopAvatarMouthAnimation() {
+      clearAvatarMouthTimer();
+      runtime.avatarMouthPlaybackStartedAt = null;
+      runtime.avatarMouthCueSequence = [];
+      setAvatarMouthState("closed");
+    }
+
     function buildRecordedAudioBlob() {
       const BlobCtor = getBlobCtor();
       if (!BlobCtor || !runtime.recordedAudioParts.length) {
@@ -1212,6 +1334,7 @@
     }
 
     function stopAvatarAudioPlayback() {
+      stopAvatarMouthAnimation();
       if (!elements.avatarAudioPlayer) {
         return;
       }
@@ -1270,6 +1393,8 @@
       state.ttsVoiceId = "pending";
       state.ttsDurationMs = 0;
       state.ttsGeneratedAt = null;
+      runtime.avatarMouthCueSequence = [];
+      state.avatarMouthState = "closed";
       renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
@@ -1291,12 +1416,18 @@
         state.ttsVoiceId = payload.voice_id || "pending";
         state.ttsDurationMs = typeof payload.duration_ms === "number" ? payload.duration_ms : 0;
         state.ttsGeneratedAt = payload.generated_at || new Date().toISOString();
+        runtime.avatarMouthCueSequence = buildMouthCueSequence(payload.subtitle || replyPayload.reply, state.ttsDurationMs);
         state.ttsPlaybackState = "ready";
         state.ttsPlaybackMessage = "语音已生成，准备播放。";
         pushConnectionLog(state, `tts asset ready: ${payload.tts_id || "unknown"}`);
         renderSessionState(rootDocument, elements, state, appConfig);
 
         if (elements.avatarAudioPlayer && appConfig.autoplayAssistantAudio) {
+          if (typeof elements.avatarAudioPlayer.dataset === "object") {
+            elements.avatarAudioPlayer.dataset.mockPlaybackDurationMs = String(
+              Math.min(Math.max(state.ttsDurationMs, 700), 1800),
+            );
+          }
           elements.avatarAudioPlayer.src = payload.audio_url;
           if (typeof elements.avatarAudioPlayer.load === "function") {
             elements.avatarAudioPlayer.load();
@@ -1682,6 +1813,8 @@
       state.ttsVoiceId = "pending";
       state.ttsDurationMs = 0;
       state.ttsGeneratedAt = null;
+      state.avatarMouthState = "closed";
+      state.avatarMouthTransitionCount = 0;
       state.exportState = "idle";
       state.exportMessage = "创建或恢复会话后可导出当前 JSON。";
       state.lastExportedAt = null;
@@ -1797,6 +1930,8 @@
       state.ttsVoiceId = "pending";
       state.ttsDurationMs = 0;
       state.ttsGeneratedAt = null;
+      state.avatarMouthState = "closed";
+      state.avatarMouthTransitionCount = 0;
       runtime.ttsRequestToken += 1;
       stopAvatarAudioPlayback();
       renderSessionState(rootDocument, elements, state, appConfig);
@@ -2024,6 +2159,8 @@
       state.ttsVoiceId = "pending";
       state.ttsDurationMs = 0;
       state.ttsGeneratedAt = null;
+      state.avatarMouthState = "closed";
+      state.avatarMouthTransitionCount = 0;
       runtime.ttsRequestToken += 1;
       stopAvatarAudioPlayback();
       state.audioUploadState = "processing_final";
@@ -2270,16 +2407,24 @@
       elements.avatarAudioPlayer.addEventListener("play", function () {
         state.ttsPlaybackState = "playing";
         state.ttsPlaybackMessage = "数字人语音播放中。";
+        startAvatarMouthAnimation();
         renderSessionState(rootDocument, elements, state, appConfig);
       });
       elements.avatarAudioPlayer.addEventListener("ended", function () {
         state.ttsPlaybackState = "completed";
         state.ttsPlaybackMessage = "本轮语音播放完成。";
+        stopAvatarMouthAnimation();
         renderSessionState(rootDocument, elements, state, appConfig);
+      });
+      elements.avatarAudioPlayer.addEventListener("pause", function () {
+        if (state.ttsPlaybackState === "playing") {
+          stopAvatarMouthAnimation();
+        }
       });
       elements.avatarAudioPlayer.addEventListener("error", function () {
         state.ttsPlaybackState = "error";
         state.ttsPlaybackMessage = "语音播放失败。";
+        stopAvatarMouthAnimation();
         renderSessionState(rootDocument, elements, state, appConfig);
       });
     }

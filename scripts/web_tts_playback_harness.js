@@ -13,6 +13,7 @@ function parseArgs(argv) {
     apiBaseUrl: "http://127.0.0.1:8000",
     wsUrl: "ws://127.0.0.1:8000/ws",
     ttsBaseUrl: "http://127.0.0.1:8040",
+    replyText: "谢谢你愿意说出来。我们先慢一点，把今晚最难受的部分说清楚。",
     connectTimeoutMs: 5000,
     replyTimeoutMs: 8000,
     playbackStartTimeoutMs: 8000,
@@ -38,6 +39,11 @@ function parseArgs(argv) {
     }
     if (current === "--tts-base-url") {
       args.ttsBaseUrl = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (current === "--reply-text") {
+      args.replyText = argv[index + 1];
       index += 1;
       continue;
     }
@@ -126,10 +132,11 @@ class FakeAudioElement extends FakeElement {
     if (this._endedTimer) {
       clearTimeout(this._endedTimer);
     }
+    const playbackDurationMs = Number(this.dataset.mockPlaybackDurationMs || "420");
     this._endedTimer = setTimeout(() => {
       this._endedTimer = null;
       this.emit("ended", { currentTarget: this });
-    }, 40);
+    }, playbackDurationMs);
     return Promise.resolve();
   }
 }
@@ -159,6 +166,9 @@ class FakeDocument {
       ["avatar-baseline-card", "", ""],
       ["avatar-character-state-value", "idle", ""],
       ["avatar-character-detail-value", "静态角色等待中。", ""],
+      ["avatar-mouth-shape", "", ""],
+      ["avatar-mouth-state-value", "closed", ""],
+      ["avatar-mouth-detail-value", "嘴部闭合，累计切换 0 次。", ""],
       ["avatar-speech-state-value", "idle", ""],
       ["avatar-speech-detail-value", "等待系统回复并合成语音。", ""],
       ["avatar-voice-value", "pending", ""],
@@ -223,7 +233,7 @@ function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null,
   };
 }
 
-function createMockRuntime(ttsBaseUrl) {
+function createMockRuntime(ttsBaseUrl, replyText) {
   let currentSocket = null;
   const sessionPayload = {
     session_id: "sess_mock_tts_001",
@@ -332,7 +342,7 @@ function createMockRuntime(ttsBaseUrl) {
         session_id: sessionPayload.session_id,
         trace_id: sessionPayload.trace_id,
         message_id: "msg_assistant_mock_001",
-        reply: "谢谢你愿意说出来。我们先慢一点，把今晚最难受的部分说清楚。",
+        reply: replyText,
         emotion: "anxious",
         risk_level: "medium",
         stage: "assess",
@@ -396,7 +406,7 @@ function createMockRuntime(ttsBaseUrl) {
             subtitle: payload.subtitle || payload.text,
             audio_format: "mp3",
             audio_url: `${ttsBaseUrl}/media/tts/tts_mock_001.mp3`,
-            duration_ms: 2280,
+            duration_ms: Math.max(1600, (payload.text || "").length * 180),
             byte_size: 1024,
             generated_at: "2026-03-09T10:10:03Z",
           };
@@ -426,10 +436,14 @@ function collectSnapshot(document) {
     dialogueReplyState: document.body.dataset.dialogueReplyState || null,
     ttsPlaybackState: document.body.dataset.ttsPlaybackState || null,
     avatarVisualState: document.body.dataset.avatarVisualState || null,
+    avatarMouthState: document.body.dataset.avatarMouthState || null,
+    avatarMouthTransitionCount: Number(document.body.dataset.avatarMouthTransitionCount || "0"),
     assistantReply: document.getElementById("transcript-assistant-reply-text").textContent,
     avatarReply: document.getElementById("avatar-latest-reply-text").textContent,
     avatarCharacterState: document.getElementById("avatar-character-state-value").textContent,
     avatarCharacterDetail: document.getElementById("avatar-character-detail-value").textContent,
+    avatarMouthLabel: document.getElementById("avatar-mouth-state-value").textContent,
+    avatarMouthDetail: document.getElementById("avatar-mouth-detail-value").textContent,
     avatarSpeechState: document.getElementById("avatar-speech-state-value").textContent,
     avatarSpeechDetail: document.getElementById("avatar-speech-detail-value").textContent,
     avatarVoice: document.getElementById("avatar-voice-value").textContent,
@@ -504,7 +518,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const runtimeConfig = args.mode === "live"
     ? { fetchImpl: fetch, WebSocketImpl: WebSocket }
-    : createMockRuntime(args.ttsBaseUrl);
+    : createMockRuntime(args.ttsBaseUrl, args.replyText);
 
   if (typeof runtimeConfig.fetchImpl !== "function") {
     throw new Error("fetch is not available in this runtime");

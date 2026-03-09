@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - Step 33 basic mouth drive
+
+### Scope
+
+Added a deterministic coarse mouth cue layer so the single static avatar no longer stays frozen while reply audio is playing, and the mouth always returns to closed after playback ends.
+
+### Outputs
+
+- Added frontend mouth cue generation in apps/web/app.js using reply text plus TTS duration to drive closed/small/wide/round mouth states
+- Extended avatar stage markup and styling with mouth state telemetry and cue-driven mouth shapes
+- Added short/long reply regression coverage in tests/test_web_avatar_mouth_drive.py and live verification in scripts/verify_web_avatar_mouth_drive.py
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 136 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_mouth_drive.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py -> passed
+
+### Next
+
+- Step 34: add the second avatar and role switching
+
 ## 2026-03-09 - Step 32 static avatar baseline
 
 ### Scope

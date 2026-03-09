@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - Baseline mouth cues stay frontend-owned
+
+- Step 33 keeps mouth motion as a frontend concern: apps/web derives a coarse cue sequence from reply text and TTS duration, then advances mouth states locally during playback instead of introducing a separate viseme service too early.
+- The current mouth baseline is deliberately deterministic and low-cost; it is acceptable for it to be approximate as long as playback shows repeated mouth changes and always returns to closed after silence.
+
 ## 2026-03-09 - Static avatar baseline state mapping
 
 - Step 32 keeps the avatar layer intentionally thin: apps/web owns the first visual avatar state machine, and it currently derives idle versus speaking directly from frontend TTS playback rather than from any separate avatar-driver service.
