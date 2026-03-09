@@ -197,3 +197,49 @@ def test_dialogue_service_app_and_readme_document_validation_endpoint():
     assert "/internal/dialogue/summarize" in paths
     assert "POST /internal/dialogue/validate" in content
     assert "POST /internal/dialogue/summarize" in content
+
+
+def test_dialogue_service_translate_llm_exception_handles_runtime_and_generic_errors():
+    module = load_dialogue_module()
+
+    not_configured = module.translate_llm_exception(RuntimeError("LLM_API_KEY is not configured"))
+    upstream_runtime = module.translate_llm_exception(RuntimeError("upstream timeout"))
+    generic_error = module.translate_llm_exception(ValueError("invalid auth"))
+
+    assert not_configured.status_code == 503
+    assert upstream_runtime.status_code == 502
+    assert upstream_runtime.detail == "upstream timeout"
+    assert generic_error.status_code == 502
+    assert generic_error.detail == "ValueError: invalid auth"
+
+
+def test_dialogue_service_routes_translate_generic_sdk_errors(monkeypatch):
+    module = load_dialogue_module()
+    app = module.create_app()
+    respond_route = next(route for route in app.routes if route.path == "/internal/dialogue/respond")
+    summarize_route = next(route for route in app.routes if route.path == "/internal/dialogue/summarize")
+
+    def boom_reply(settings, payload):
+        raise TimeoutError("request timed out")
+
+    def boom_summary(settings, payload):
+        raise ValueError("bad credentials")
+
+    monkeypatch.setattr(module, "generate_dialogue_fields", boom_reply)
+    monkeypatch.setattr(module, "generate_dialogue_summary_fields", boom_summary)
+
+    try:
+        respond_route.endpoint(build_request(module, content_text="普通文本"))
+    except module.HTTPException as exc:
+        assert exc.status_code == 502
+        assert exc.detail == "TimeoutError: request timed out"
+    else:
+        raise AssertionError("expected respond route to translate generic error")
+
+    try:
+        summarize_route.endpoint(build_summary_request(module))
+    except module.HTTPException as exc:
+        assert exc.status_code == 502
+        assert exc.detail == "ValueError: bad credentials"
+    else:
+        raise AssertionError("expected summarize route to translate generic error")

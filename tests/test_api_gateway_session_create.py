@@ -33,6 +33,7 @@ class FakeSessionRepository:
         self.event_calls: list[dict] = []
         self.memory_calls: list[dict] = []
         self.summary_update_calls: list[dict] = []
+        self.deleted_media_ids: list[str] = []
         self.user_turn_count = 1
         self.session_metadata: dict = {}
 
@@ -294,6 +295,9 @@ class FakeSessionRepository:
     def record_system_event(self, envelope: dict):
         self.event_calls.append(envelope)
 
+    def delete_media_asset(self, media_id: str) -> None:
+        self.deleted_media_ids.append(media_id)
+
 
 def test_create_session_endpoint_returns_contract_shape():
     module = load_gateway_module()
@@ -546,6 +550,10 @@ def test_dispatch_pipeline_excludes_current_message_from_memory_and_syncs_next_a
             },
         }
 
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
     monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
     repository.create_assistant_dialogue_message = fake_create_assistant_dialogue_message
 
@@ -642,6 +650,10 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
             generated_at="2026-03-07T14:01:05Z",
         )
 
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
     monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
     monkeypatch.setattr(module, "request_dialogue_summary", fake_request_dialogue_summary)
 
@@ -675,6 +687,191 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
     assert repository.session_metadata["dialogue_summary"]["generated_from_message_id"] == "msg_assistant_003"
     assert repository.event_calls[-1]["event_type"] == "dialogue.summary.updated"
     assert repository.event_calls[-1]["payload"]["user_turn_count"] == 3
+
+
+def test_connection_registry_does_not_requeue_when_any_connection_receives_event():
+    module = load_gateway_module()
+    registry = module.ConnectionRegistry()
+    delivered: list[dict] = []
+
+    class HealthyWebSocket:
+        async def send_json(self, envelope: dict) -> None:
+            delivered.append(envelope)
+
+    class BrokenWebSocket:
+        async def send_json(self, envelope: dict) -> None:
+            raise RuntimeError("socket closed")
+
+    asyncio.run(registry.add("sess_fake_001", HealthyWebSocket()))
+    asyncio.run(registry.add("sess_fake_001", BrokenWebSocket()))
+
+    envelope = {"event_id": "evt_001", "event_type": "message.accepted"}
+    asyncio.run(registry.enqueue_event("sess_fake_001", envelope))
+
+    assert delivered == [envelope]
+    assert registry._pending_events.get("sess_fake_001") is None
+    assert len(registry._connections["sess_fake_001"]) == 1
+
+
+def test_connection_registry_flush_keeps_queue_when_send_fails():
+    module = load_gateway_module()
+    registry = module.ConnectionRegistry()
+    registry._pending_events["sess_fake_001"] = [
+        {"event_id": "evt_001", "event_type": "message.accepted"}
+    ]
+
+    class BrokenWebSocket:
+        async def send_json(self, envelope: dict) -> None:
+            raise RuntimeError("network down")
+
+    try:
+        asyncio.run(registry.flush("sess_fake_001", BrokenWebSocket()))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("expected flush to propagate websocket send failure")
+
+    assert registry._pending_events["sess_fake_001"][0]["event_id"] == "evt_001"
+
+
+def test_submit_text_route_schedules_background_pipeline(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    app = module.create_app(repository=repository)
+    route = next(
+        route
+        for route in app.routes
+        if route.path == "/api/session/{session_id}/text" and "POST" in getattr(route, "methods", set())
+    )
+    scheduled: dict[str, object] = {}
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    async def fake_dispatch_message_pipeline(app_or_request, session_id, result):
+        scheduled["awaited"] = True
+
+    def fake_create_task(coro):
+        scheduled["coro"] = coro
+        coro.close()
+        return SimpleNamespace()
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "dispatch_message_pipeline", fake_dispatch_message_pipeline)
+    monkeypatch.setattr(module.asyncio, "create_task", fake_create_task)
+
+    response = asyncio.run(
+        route.endpoint(
+            "sess_fake_001",
+            module.TextMessageSubmitRequest(content_text="先记录一下。"),
+            SimpleNamespace(app=app),
+        )
+    )
+
+    assert response["message_id"] == "msg_fake_001"
+    assert "coro" in scheduled
+    assert "awaited" not in scheduled
+
+
+def test_finalize_audio_route_schedules_background_pipeline(monkeypatch):
+    module = load_gateway_module()
+
+    class RouteRepository(FakeSessionRepository):
+        def create_audio_final_asset(self, session_id: str, **kwargs):
+            return {
+                "media_id": "media_audio_final_001",
+                "session_id": session_id,
+                "trace_id": "trace_fake_001",
+                "media_kind": "audio_final",
+                "storage_backend": "local",
+                "storage_path": "data/derived/live_media/audio_final/sess_fake/media_audio_final_001.webm",
+                "mime_type": kwargs["mime_type"],
+                "duration_ms": kwargs.get("duration_ms"),
+                "byte_size": len(kwargs["content"]),
+                "created_at": "2026-03-07T14:01:00Z",
+            }
+
+        def create_user_audio_message(self, session_id: str, *, content_text: str, metadata: dict | None = None):
+            return {
+                "session": {
+                    "session_id": session_id,
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "engage",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_audio_001",
+                    "session_id": session_id,
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "audio",
+                    "content_text": content_text,
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                },
+            }
+
+    repository = RouteRepository()
+    app = module.create_app(repository=repository)
+    route = next(
+        route
+        for route in app.routes
+        if route.path == "/api/session/{session_id}/audio/finalize"
+        and "POST" in getattr(route, "methods", set())
+    )
+    scheduled: dict[str, object] = {}
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    async def fake_dispatch_message_pipeline(app_or_request, session_id, result):
+        scheduled["awaited"] = True
+
+    def fake_create_task(coro):
+        scheduled["coro"] = coro
+        coro.close()
+        return SimpleNamespace()
+
+    def fake_request_asr_transcription(settings, *, body: bytes, mime_type: str):
+        return module.ASRServiceTranscriptionResponse(
+            request_id="req_asr_001",
+            provider="dashscope",
+            model="qwen3-asr-flash",
+            transcript_text="测试语音。",
+            transcript_language="zh-CN",
+            duration_ms=200,
+            confidence_mean=None,
+            confidence_available=False,
+            transcript_segments=[],
+            audio={"filename": "recording.webm", "content_type": mime_type, "byte_size": len(body)},
+            generated_at="2026-03-07T14:01:00Z",
+        )
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "dispatch_message_pipeline", fake_dispatch_message_pipeline)
+    monkeypatch.setattr(module.asyncio, "create_task", fake_create_task)
+    monkeypatch.setattr(module, "request_asr_transcription", fake_request_asr_transcription)
+
+    async def fake_body() -> bytes:
+        return b"webm-bytes"
+
+    response = asyncio.run(
+        route.endpoint(
+            "sess_fake_001",
+            SimpleNamespace(
+                app=app,
+                headers={"content-type": "audio/webm;codecs=opus"},
+                body=fake_body,
+            ),
+            200,
+        )
+    )
+
+    assert response["message_id"] == "msg_audio_001"
+    assert response["mime_type"] == "audio/webm"
+    assert "coro" in scheduled
+    assert "awaited" not in scheduled
 
 
 def test_text_message_rejects_blank_content():

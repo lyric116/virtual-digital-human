@@ -11,3 +11,4 @@ data/derived/audio_16k_mono/
 data/derived/live_media/
 data/derived/transcripts-local/
 data/derived/eval-local/
+tmp_logs/

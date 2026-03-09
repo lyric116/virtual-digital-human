@@ -100,6 +100,25 @@ def test_create_transcription_record_returns_contract_shape():
     assert result["audio"]["channels"] == 1
 
 
+def test_create_transcription_record_normalizes_wave_content_type_parameters():
+    module = load_asr_module()
+    settings = build_settings(module)
+    engine = FakeASREngine()
+
+    result = module.create_transcription_record(
+        engine,
+        settings,
+        body=make_wave_bytes(),
+        filename="sample.wav",
+        content_type="audio/wav;codecs=pcm",
+        record_id="noxi/sample/3",
+    )
+
+    assert isinstance(result, dict)
+    assert result["audio"]["content_type"] == "audio/wav"
+    assert engine.calls[0]["audio_metadata"].content_type == "audio/wav"
+
+
 def test_create_transcription_record_rejects_empty_body():
     module = load_asr_module()
     settings = build_settings(module)

@@ -19,6 +19,7 @@ from psycopg.rows import dict_row
 ROOT = Path(__file__).resolve().parents[1]
 GATEWAY_MAIN = ROOT / "apps" / "api-gateway" / "main.py"
 ORCHESTRATOR_MAIN = ROOT / "apps" / "orchestrator" / "main.py"
+DIALOGUE_MAIN = ROOT / "services" / "dialogue-service" / "main.py"
 ASR_MAIN = ROOT / "services" / "asr-service" / "main.py"
 HARNESS = ROOT / "scripts" / "web_audio_final_transcript_harness.js"
 SAMPLE_AUDIO = ROOT / "data" / "derived" / "audio_16k_mono" / "NoXI" / "001_2016-03-17_Paris" / "Expert_video" / "3.wav"
@@ -30,10 +31,17 @@ def parse_env_file(path: Path) -> dict[str, str]:
         return values
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" in line:
+            key, value = line.split("=", 1)
+        elif ":" in line:
+            key, value = line.split(":", 1)
+        else:
+            continue
+        values[key.strip()] = value.strip().strip("'").strip('"')
     return values
 
 
@@ -66,20 +74,37 @@ def wait_for_health(url: str, label: str) -> None:
     raise RuntimeError(f"{label} health check did not become ready")
 
 
+def stop_process(process: subprocess.Popen[bytes] | subprocess.Popen[str]) -> None:
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
 def main() -> None:
     env = {**parse_env_file(ROOT / ".env.example"), **parse_env_file(ROOT / ".env"), **os.environ}
+    dialogue_port = reserve_local_port()
     orchestrator_port = reserve_local_port()
     asr_port = reserve_local_port()
     gateway_port = reserve_local_port()
+    dialogue_base_url = f"http://127.0.0.1:{dialogue_port}"
     orchestrator_base_url = f"http://127.0.0.1:{orchestrator_port}"
     asr_base_url = f"http://127.0.0.1:{asr_port}"
     gateway_base_url = f"http://127.0.0.1:{gateway_port}"
     gateway_ws_url = f"ws://127.0.0.1:{gateway_port}/ws"
 
+    dialogue_env = dict(env)
+    dialogue_env["PYTHONPATH"] = str(DIALOGUE_MAIN.parent)
+    dialogue_env["DIALOGUE_SERVICE_PORT"] = str(dialogue_port)
+    dialogue_env["DIALOGUE_SERVICE_BASE_URL"] = dialogue_base_url
+
     orchestrator_env = dict(env)
     orchestrator_env["PYTHONPATH"] = str(ORCHESTRATOR_MAIN.parent)
     orchestrator_env["ORCHESTRATOR_PORT"] = str(orchestrator_port)
     orchestrator_env["ORCHESTRATOR_BASE_URL"] = orchestrator_base_url
+    orchestrator_env["DIALOGUE_SERVICE_BASE_URL"] = dialogue_base_url
 
     asr_env = dict(env)
     asr_env["PYTHONPATH"] = str(ASR_MAIN.parent)
@@ -92,6 +117,25 @@ def main() -> None:
     gateway_env["ORCHESTRATOR_BASE_URL"] = orchestrator_base_url
     gateway_env["ASR_SERVICE_HOST"] = "127.0.0.1"
     gateway_env["ASR_SERVICE_PORT"] = str(asr_port)
+
+    dialogue_service = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "--app-dir",
+            str(DIALOGUE_MAIN.parent),
+            "main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(dialogue_port),
+        ],
+        cwd=ROOT,
+        env=dialogue_env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
     orchestrator = subprocess.Popen(
         [
@@ -151,6 +195,7 @@ def main() -> None:
     )
 
     try:
+        wait_for_health(f"{dialogue_base_url}/health", "dialogue-service")
         wait_for_health(f"{orchestrator_base_url}/health", "orchestrator")
         wait_for_health(f"{asr_base_url}/health", "asr-service")
         wait_for_health(f"{gateway_base_url}/health", "gateway")
@@ -181,12 +226,10 @@ def main() -> None:
                 f"audio final transcript harness failed: stdout={stdout} stderr={stderr}"
             ) from exc
     finally:
-        gateway.terminate()
-        gateway.wait(timeout=5)
-        asr_service.terminate()
-        asr_service.wait(timeout=5)
-        orchestrator.terminate()
-        orchestrator.wait(timeout=5)
+        stop_process(gateway)
+        stop_process(asr_service)
+        stop_process(orchestrator)
+        stop_process(dialogue_service)
 
     payload = json.loads(result.stdout)
     session_id = payload["afterReply"]["sessionId"]

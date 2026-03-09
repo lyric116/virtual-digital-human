@@ -115,6 +115,27 @@ def test_audio_chunk_record_rejects_empty_body():
     assert payload["error_code"] == "audio_chunk_empty"
 
 
+def test_audio_chunk_record_normalizes_content_type_parameters():
+    module = load_gateway_module()
+    repository = FakeAudioChunkRepository()
+
+    body = module.create_audio_chunk_record(
+        repository,
+        "sess_fake_001",
+        content=b"fake audio bytes",
+        chunk_seq=2,
+        chunk_started_at_ms=250,
+        duration_ms=250,
+        is_final=False,
+        mime_type="audio/webm;codecs=opus",
+        metadata={"source": "web-shell"},
+    )
+
+    assert isinstance(body, dict)
+    assert body["mime_type"] == "audio/webm"
+    assert repository.calls[0]["mime_type"] == "audio/webm"
+
+
 def test_audio_chunk_route_and_readme_are_present():
     module = load_gateway_module()
 

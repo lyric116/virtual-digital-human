@@ -116,6 +116,45 @@ def test_audio_preview_record_rejects_empty_audio_body():
     assert payload["error_code"] == "audio_preview_empty"
 
 
+def test_audio_preview_record_normalizes_webm_content_type_parameters():
+    module = load_gateway_module()
+    repository = FakeAudioPreviewRepository()
+    settings = build_settings(module)
+
+    def fake_request_asr_transcription(settings_obj, *, body: bytes, mime_type: str):
+        assert mime_type == "audio/webm"
+        return module.ASRServiceTranscriptionResponse(
+            request_id="req_asr_preview_002",
+            record_id=None,
+            provider="dashscope",
+            model="qwen3-asr-flash",
+            transcript_text="测试预览",
+            transcript_language="zh-CN",
+            duration_ms=260,
+            confidence_mean=None,
+            confidence_available=False,
+            transcript_segments=[],
+            audio={"filename": "recording.webm", "content_type": mime_type, "byte_size": 11},
+            generated_at=datetime(2026, 3, 8, 20, 0, 1, tzinfo=timezone.utc),
+        )
+
+    module.request_asr_transcription = fake_request_asr_transcription
+
+    result = module.create_audio_preview_record(
+        repository,
+        settings,
+        "sess_fake_001",
+        content=b"webm-preview",
+        duration_ms=260,
+        mime_type="audio/webm;codecs=opus",
+        preview_seq=3,
+        recording_id="rec_002",
+    )
+
+    assert isinstance(result, dict)
+    assert result["transcript"]["text"] == "测试预览"
+
+
 def test_audio_preview_route_and_readme_are_present():
     module = load_gateway_module()
 

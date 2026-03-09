@@ -28,10 +28,17 @@ def parse_env_file(path: Path) -> dict[str, str]:
         return values
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" in line:
+            key, value = line.split("=", 1)
+        elif ":" in line:
+            key, value = line.split(":", 1)
+        else:
+            continue
+        values[key.strip()] = value.strip().strip("'").strip('"')
     return values
 
 
@@ -106,6 +113,15 @@ def ensure_database_ready(env: dict[str, str]) -> None:
             "or run `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_infra_stack.py "
             "--compose-file infra/compose/docker-compose.yml`"
         ) from exc
+
+
+def stop_process(process: subprocess.Popen[bytes] | subprocess.Popen[str]) -> None:
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
 
 
 def main() -> None:
@@ -243,12 +259,9 @@ def main() -> None:
             )
         )
     finally:
-        gateway.terminate()
-        gateway.wait(timeout=5)
-        orchestrator.terminate()
-        orchestrator.wait(timeout=5)
-        dialogue_service.terminate()
-        dialogue_service.wait(timeout=5)
+        stop_process(gateway)
+        stop_process(orchestrator)
+        stop_process(dialogue_service)
 
 
 if __name__ == "__main__":

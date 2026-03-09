@@ -9,7 +9,7 @@ from typing import Any, Literal
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 
@@ -23,10 +23,19 @@ def parse_env_file(path: Path) -> dict[str, str]:
 
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+
+        if "=" in line:
+            key, value = line.split("=", 1)
+        elif ":" in line:
+            key, value = line.split(":", 1)
+        else:
+            continue
+
+        values[key.strip()] = value.strip().strip("'").strip('"')
     return values
 
 
@@ -41,6 +50,7 @@ class OrchestratorSettings:
     orchestrator_host: str
     orchestrator_port: int
     dialogue_service_base_url: str
+    dialogue_service_timeout_seconds: float
 
     @classmethod
     def from_env(cls) -> "OrchestratorSettings":
@@ -48,6 +58,9 @@ class OrchestratorSettings:
             orchestrator_host=os.getenv("ORCHESTRATOR_HOST", "0.0.0.0"),
             orchestrator_port=int(os.getenv("ORCHESTRATOR_PORT", "8010")),
             dialogue_service_base_url=os.getenv("DIALOGUE_SERVICE_BASE_URL", "http://127.0.0.1:8030"),
+            dialogue_service_timeout_seconds=float(
+                os.getenv("ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS", "60")
+            ),
         )
 
 
@@ -105,7 +118,7 @@ def request_dialogue_reply(
     opener = urllib_request.build_opener(urllib_request.ProxyHandler({}))
 
     try:
-        with opener.open(request, timeout=30) as response:
+        with opener.open(request, timeout=settings.dialogue_service_timeout_seconds) as response:
             raw_payload = json.loads(response.read().decode("utf-8"))
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
@@ -134,7 +147,7 @@ def request_dialogue_summary(
     opener = urllib_request.build_opener(urllib_request.ProxyHandler({}))
 
     try:
-        with opener.open(request, timeout=30) as response:
+        with opener.open(request, timeout=settings.dialogue_service_timeout_seconds) as response:
             raw_payload = json.loads(response.read().decode("utf-8"))
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
@@ -163,11 +176,17 @@ def create_app() -> FastAPI:
 
     @app.post("/internal/dialogue/respond", response_model=DialogueReplyResponse)
     def respond(payload: DialogueReplyRequest) -> DialogueReplyResponse:
-        return request_dialogue_reply(settings, payload)
+        try:
+            return request_dialogue_reply(settings, payload)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @app.post("/internal/dialogue/summarize", response_model=DialogueSummaryResponse)
     def summarize(payload: DialogueSummaryRequest) -> DialogueSummaryResponse:
-        return request_dialogue_summary(settings, payload)
+        try:
+            return request_dialogue_summary(settings, payload)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return app
 

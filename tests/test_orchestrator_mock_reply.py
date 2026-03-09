@@ -152,6 +152,78 @@ def test_orchestrator_parses_valid_dialogue_summary(monkeypatch):
     assert "睡眠" in response.summary_text
 
 
+def test_orchestrator_uses_configured_dialogue_service_timeout(monkeypatch):
+    module = load_orchestrator_module()
+    captured: dict[str, float] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return (
+                b'{"session_id":"sess_fake_001","trace_id":"trace_fake_001","message_id":"msg_assistant_001",'
+                b'"reply":"ok","emotion":"neutral","risk_level":"low","stage":"engage",'
+                b'"next_action":"ask_followup","knowledge_refs":[],"avatar_style":"warm_support",'
+                b'"safety_flags":[]}'
+            )
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+    monkeypatch.setattr(module.urllib_request, "build_opener", lambda *args: FakeOpener())
+    settings = module.OrchestratorSettings(
+        orchestrator_host="127.0.0.1",
+        orchestrator_port=8010,
+        dialogue_service_base_url="http://127.0.0.1:8030",
+        dialogue_service_timeout_seconds=45.0,
+    )
+
+    module.request_dialogue_reply(
+        settings,
+        build_request(module, content_text="普通文本"),
+    )
+
+    assert captured["timeout"] == 45.0
+
+
+def test_orchestrator_routes_translate_downstream_runtime_errors(monkeypatch):
+    module = load_orchestrator_module()
+    app = module.create_app()
+    respond_route = next(route for route in app.routes if route.path == "/internal/dialogue/respond")
+    summarize_route = next(route for route in app.routes if route.path == "/internal/dialogue/summarize")
+
+    def boom_reply(settings, payload):
+        raise RuntimeError("dialogue-service unavailable: timed out")
+
+    def boom_summary(settings, payload):
+        raise RuntimeError("dialogue-service http 502: bad gateway")
+
+    monkeypatch.setattr(module, "request_dialogue_reply", boom_reply)
+    monkeypatch.setattr(module, "request_dialogue_summary", boom_summary)
+
+    try:
+        respond_route.endpoint(build_request(module, content_text="普通文本"))
+    except module.HTTPException as exc:
+        assert exc.status_code == 502
+        assert "dialogue-service unavailable" in exc.detail
+    else:
+        raise AssertionError("expected respond route to translate runtime error")
+
+    try:
+        summarize_route.endpoint(build_summary_request(module))
+    except module.HTTPException as exc:
+        assert exc.status_code == 502
+        assert "dialogue-service http 502" in exc.detail
+    else:
+        raise AssertionError("expected summarize route to translate runtime error")
+
+
 def test_orchestrator_app_and_readme_document_mock_reply_endpoint():
     module = load_orchestrator_module()
     app = module.create_app()

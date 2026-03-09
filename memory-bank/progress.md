@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - Fix gateway async IO and verifier regressions
+
+### Scope
+
+Resolved blocking gateway routes, websocket delivery edge cases, MIME normalization, upstream error translation, orphan audio cleanup, and stale live verifiers after the real dialogue-service cutover.
+
+### Outputs
+
+- Moved gateway text/audio routes and message pipeline blocking work onto asyncio.to_thread plus background dispatch.
+- Fixed ConnectionRegistry enqueue/flush semantics to avoid duplicate delivery and preserve queued events on send failure.
+- Normalized parameterized MIME types across gateway and asr-service and added orphan final-audio cleanup on ASR failure.
+- Unified env parsing in gateway, orchestrator, dialogue-service, and refreshed live verifier scripts to start dialogue-service where orchestrator now depends on it.
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 122 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_infra_stack.py --compose-file infra/compose/docker-compose.yml
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_short_term_memory.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py
+
+### Next
+
+- Continue implementation_plan from step 28 after this stability pass.
+
 ## 2026-03-09 - switch dialogue llm baseline to gpt-5.4
 
 ### Scope

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -37,6 +38,13 @@ MIME_EXTENSION_MAP = {
 }
 
 
+def normalize_mime_type(value: str | None) -> str:
+    if not value:
+        return "application/octet-stream"
+    normalized = value.split(";", 1)[0].strip().lower()
+    return normalized or "application/octet-stream"
+
+
 def parse_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     if not path.exists():
@@ -44,10 +52,19 @@ def parse_env_file(path: Path) -> dict[str, str]:
 
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+
+        if "=" in line:
+            key, value = line.split("=", 1)
+        elif ":" in line:
+            key, value = line.split(":", 1)
+        else:
+            continue
+
+        values[key.strip()] = value.strip().strip("'").strip('"')
     return values
 
 
@@ -417,6 +434,9 @@ class SessionRepository(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def delete_media_asset(self, media_id: str) -> None:
+        ...
+
     def record_system_event(self, envelope: dict[str, Any]) -> None:
         ...
 
@@ -452,7 +472,7 @@ class ConnectionRegistry:
                     stale.append(websocket)
             for websocket in stale:
                 await self.remove(session_id, websocket)
-            if delivered and not stale:
+            if delivered:
                 return
 
         queue = self._pending_events.setdefault(session_id, [])
@@ -464,8 +484,9 @@ class ConnectionRegistry:
             return
 
         while queue:
-            envelope = queue.pop(0)
+            envelope = queue[0]
             await websocket.send_json(envelope)
+            queue.pop(0)
 
         if session_id in self._pending_events and not self._pending_events[session_id]:
             del self._pending_events[session_id]
@@ -562,6 +583,7 @@ class PostgresSessionRepository:
         chunk_seq: int,
         mime_type: str,
     ) -> tuple[Path, str]:
+        resolved_mime_type = normalize_mime_type(mime_type)
         configured_root = Path(self.media_storage_root)
         if configured_root.is_absolute():
             storage_root = configured_root
@@ -570,7 +592,7 @@ class PostgresSessionRepository:
             storage_root = ROOT / configured_root
             storage_prefix = ROOT
 
-        extension = MIME_EXTENSION_MAP.get(mime_type, ".bin")
+        extension = MIME_EXTENSION_MAP.get(resolved_mime_type, ".bin")
         absolute_path = storage_root / "audio_chunks" / session_id / f"{chunk_seq:06d}_{media_id}{extension}"
         absolute_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -585,6 +607,7 @@ class PostgresSessionRepository:
         media_id: str,
         mime_type: str,
     ) -> tuple[Path, str]:
+        resolved_mime_type = normalize_mime_type(mime_type)
         configured_root = Path(self.media_storage_root)
         if configured_root.is_absolute():
             storage_root = configured_root
@@ -593,7 +616,7 @@ class PostgresSessionRepository:
             storage_root = ROOT / configured_root
             storage_prefix = ROOT
 
-        extension = MIME_EXTENSION_MAP.get(mime_type, ".bin")
+        extension = MIME_EXTENSION_MAP.get(resolved_mime_type, ".bin")
         absolute_path = storage_root / "audio_final" / session_id / f"{media_id}{extension}"
         absolute_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -601,6 +624,12 @@ class PostgresSessionRepository:
         except ValueError:
             storage_path = str(absolute_path)
         return absolute_path, storage_path
+
+    def _resolve_storage_path(self, storage_path: str) -> Path:
+        candidate = Path(storage_path)
+        if candidate.is_absolute():
+            return candidate
+        return ROOT / candidate
 
     def _create_user_message(
         self,
@@ -1249,6 +1278,7 @@ class PostgresSessionRepository:
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         media_id = f"media_{uuid4().hex[:24]}"
+        resolved_mime_type = normalize_mime_type(mime_type)
 
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
@@ -1268,7 +1298,7 @@ class PostgresSessionRepository:
                     session_id=session_id,
                     media_id=media_id,
                     chunk_seq=chunk_seq,
-                    mime_type=mime_type,
+                    mime_type=resolved_mime_type,
                 )
                 absolute_path.write_bytes(content)
 
@@ -1328,7 +1358,7 @@ class PostgresSessionRepository:
                         "trace_id": session_row["trace_id"],
                         "message_id": None,
                         "storage_path": storage_path,
-                        "mime_type": mime_type,
+                        "mime_type": resolved_mime_type,
                         "duration_ms": duration_ms,
                         "byte_size": len(content),
                         "metadata": Jsonb(row_metadata),
@@ -1358,6 +1388,7 @@ class PostgresSessionRepository:
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         media_id = f"media_{uuid4().hex[:24]}"
+        resolved_mime_type = normalize_mime_type(mime_type)
 
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
@@ -1376,7 +1407,7 @@ class PostgresSessionRepository:
                 absolute_path, storage_path = self._resolve_audio_final_path(
                     session_id=session_id,
                     media_id=media_id,
-                    mime_type=mime_type,
+                    mime_type=resolved_mime_type,
                 )
                 absolute_path.write_bytes(content)
 
@@ -1427,7 +1458,7 @@ class PostgresSessionRepository:
                         "trace_id": session_row["trace_id"],
                         "message_id": None,
                         "storage_path": storage_path,
-                        "mime_type": mime_type,
+                        "mime_type": resolved_mime_type,
                         "duration_ms": duration_ms,
                         "byte_size": len(content),
                         "metadata": Jsonb(metadata or {}),
@@ -1439,6 +1470,39 @@ class PostgresSessionRepository:
         if row is None:
             raise RuntimeError("audio final insert returned no row")
         return dict(row)
+
+    def delete_media_asset(self, media_id: str) -> None:
+        storage_path: str | None = None
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT storage_path
+                    FROM media_indexes
+                    WHERE media_id = %s
+                    """,
+                    (media_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return
+                storage_path = row["storage_path"]
+                cur.execute(
+                    """
+                    DELETE FROM media_indexes
+                    WHERE media_id = %s
+                    """,
+                    (media_id,),
+                )
+
+        if not storage_path:
+            return
+        try:
+            absolute_path = self._resolve_storage_path(storage_path)
+            if absolute_path.exists():
+                absolute_path.unlink()
+        except OSError:
+            return
 
     def record_system_event(self, envelope: dict[str, Any]) -> None:
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
@@ -1616,6 +1680,7 @@ def create_audio_chunk_record(
     mime_type: str,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any] | JSONResponse:
+    normalized_mime_type = normalize_mime_type(mime_type)
     if not content:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1634,7 +1699,7 @@ def create_audio_chunk_record(
             chunk_started_at_ms=chunk_started_at_ms,
             duration_ms=duration_ms,
             is_final=is_final,
-            mime_type=mime_type,
+            mime_type=normalized_mime_type,
             metadata=metadata,
         )
     except KeyError:
@@ -1666,6 +1731,7 @@ def create_audio_finalize_asset_record(
     mime_type: str,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any] | JSONResponse:
+    normalized_mime_type = normalize_mime_type(mime_type)
     if not content:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1681,7 +1747,7 @@ def create_audio_finalize_asset_record(
             session_id,
             content=content,
             duration_ms=duration_ms,
-            mime_type=mime_type,
+            mime_type=normalized_mime_type,
             metadata=metadata,
         )
     except KeyError:
@@ -1831,14 +1897,15 @@ def request_asr_transcription(
     body: bytes,
     mime_type: str,
 ) -> ASRServiceTranscriptionResponse:
-    extension = MIME_EXTENSION_MAP.get(mime_type, ".bin")
+    normalized_mime_type = normalize_mime_type(mime_type)
+    extension = MIME_EXTENSION_MAP.get(normalized_mime_type, ".bin")
     request = urllib_request.Request(
         url=(
             f"{settings.asr_service_base_url.rstrip('/')}/api/asr/transcribe?"
             f"{urllib_parse.urlencode({'filename': f'recording{extension}'})}"
         ),
         data=body,
-        headers={"Content-Type": mime_type},
+        headers={"Content-Type": normalized_mime_type},
         method="POST",
     )
 
@@ -1868,12 +1935,13 @@ def create_audio_message_record(
     duration_ms: int | None,
     mime_type: str,
 ) -> dict[str, Any] | JSONResponse:
+    normalized_mime_type = normalize_mime_type(mime_type)
     audio_asset = create_audio_finalize_asset_record(
         repository,
         session_id,
         content=content,
         duration_ms=duration_ms,
-        mime_type=mime_type,
+        mime_type=normalized_mime_type,
         metadata={"source": "web-shell"},
     )
     if isinstance(audio_asset, JSONResponse):
@@ -1883,9 +1951,10 @@ def create_audio_message_record(
         transcription = request_asr_transcription(
             settings,
             body=content,
-            mime_type=mime_type,
+            mime_type=normalized_mime_type,
         )
     except RuntimeError as exc:
+        cleanup_media_asset(repository, audio_asset["media_id"])
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content=error_payload(
@@ -1898,6 +1967,7 @@ def create_audio_message_record(
 
     transcript_text = transcription.transcript_text.strip()
     if not transcript_text:
+        cleanup_media_asset(repository, audio_asset["media_id"])
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content=error_payload(
@@ -1915,7 +1985,7 @@ def create_audio_message_record(
             metadata={
                 "source": "audio_finalize",
                 "audio_media_id": audio_asset["media_id"],
-                "audio_mime_type": mime_type,
+                "audio_mime_type": normalized_mime_type,
                 "audio_duration_ms": duration_ms,
                 "asr_provider": transcription.provider,
                 "asr_model": transcription.model,
@@ -1925,6 +1995,7 @@ def create_audio_message_record(
             },
         )
     except KeyError:
+        cleanup_media_asset(repository, audio_asset["media_id"])
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content=error_payload(
@@ -1934,6 +2005,7 @@ def create_audio_message_record(
             ),
         )
     except psycopg.Error:
+        cleanup_media_asset(repository, audio_asset["media_id"])
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=error_payload(
@@ -1959,6 +2031,7 @@ def create_audio_preview_record(
     preview_seq: int,
     recording_id: str,
 ) -> dict[str, Any] | JSONResponse:
+    normalized_mime_type = normalize_mime_type(mime_type)
     if not content:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1984,7 +2057,7 @@ def create_audio_preview_record(
         transcription = request_asr_transcription(
             settings,
             body=content,
-            mime_type=mime_type,
+            mime_type=normalized_mime_type,
         )
     except RuntimeError as exc:
         return JSONResponse(
@@ -2076,13 +2149,19 @@ def maybe_refresh_dialogue_summary(
     }
 
 
-async def dispatch_message_pipeline(
-    request: Request,
+def cleanup_media_asset(repository: SessionRepository, media_id: str) -> None:
+    try:
+        repository.delete_media_asset(media_id)
+    except Exception:
+        return
+
+
+def build_message_pipeline_events(
+    repository: SessionRepository,
+    settings: GatewaySettings,
     session_id: str,
     result: dict[str, Any],
-) -> None:
-    repository = request.app.state.session_repository
-    settings: GatewaySettings = request.app.state.settings
+) -> list[dict[str, Any]]:
     persisted_session = repository.get_session_summary(session_id) or result["session"]
     request_session = {
         **result["session"],
@@ -2093,15 +2172,16 @@ async def dispatch_message_pipeline(
         "metadata": persisted_session.get("metadata", {}),
     }
 
-    accepted_event = build_event_envelope(
-        session=result["session"],
-        event_type="message.accepted",
-        payload=result["message"],
-        message_id=result["message"]["message_id"],
+    accepted_event = jsonable_encoder(
+        build_event_envelope(
+            session=result["session"],
+            event_type="message.accepted",
+            payload=result["message"],
+            message_id=result["message"]["message_id"],
+        )
     )
-    accepted_event = jsonable_encoder(accepted_event)
     repository.record_system_event(accepted_event)
-    await request.app.state.connection_registry.enqueue_event(session_id, accepted_event)
+    events = [accepted_event]
 
     try:
         dialogue_reply = request_dialogue_reply(
@@ -2117,28 +2197,30 @@ async def dispatch_message_pipeline(
         )
         assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
         assistant_metadata = assistant_result["message"].get("metadata", {})
-        dialogue_event = build_event_envelope(
-            session=assistant_result["session"],
-            event_type="dialogue.reply",
-            payload={
-                **dialogue_reply.model_dump(mode="json"),
-                "stage": assistant_result["session"]["stage"],
-                "next_action": assistant_metadata.get("next_action", dialogue_reply.next_action),
-                "submitted_at": assistant_result["message"]["submitted_at"],
-                "stage_before": assistant_metadata.get("stage_before"),
-                "stage_requested": assistant_metadata.get("model_stage"),
-                "stage_machine_reason": assistant_metadata.get("stage_machine_reason"),
-                "next_action_requested": assistant_metadata.get("model_next_action"),
-                "next_action_machine_reason": assistant_metadata.get(
-                    "next_action_machine_reason"
-                ),
-            },
-            message_id=dialogue_reply.message_id,
-            source_service="orchestrator",
+        dialogue_event = jsonable_encoder(
+            build_event_envelope(
+                session=assistant_result["session"],
+                event_type="dialogue.reply",
+                payload={
+                    **dialogue_reply.model_dump(mode="json"),
+                    "stage": assistant_result["session"]["stage"],
+                    "next_action": assistant_metadata.get("next_action", dialogue_reply.next_action),
+                    "submitted_at": assistant_result["message"]["submitted_at"],
+                    "stage_before": assistant_metadata.get("stage_before"),
+                    "stage_requested": assistant_metadata.get("model_stage"),
+                    "stage_machine_reason": assistant_metadata.get("stage_machine_reason"),
+                    "next_action_requested": assistant_metadata.get("model_next_action"),
+                    "next_action_machine_reason": assistant_metadata.get(
+                        "next_action_machine_reason"
+                    ),
+                },
+                message_id=dialogue_reply.message_id,
+                source_service="orchestrator",
+            )
         )
-        dialogue_event = jsonable_encoder(dialogue_event)
         repository.record_system_event(dialogue_event)
-        await request.app.state.connection_registry.enqueue_event(session_id, dialogue_event)
+        events.append(dialogue_event)
+
         try:
             summary_result = maybe_refresh_dialogue_summary(
                 repository,
@@ -2147,34 +2229,77 @@ async def dispatch_message_pipeline(
                 assistant_result,
             )
             if summary_result is not None:
-                summary_event = build_event_envelope(
-                    session=summary_result["session"],
-                    event_type="dialogue.summary.updated",
-                    payload=summary_result["summary"],
-                    message_id=summary_result["summary"]["generated_from_message_id"],
-                    source_service="orchestrator",
+                summary_event = jsonable_encoder(
+                    build_event_envelope(
+                        session=summary_result["session"],
+                        event_type="dialogue.summary.updated",
+                        payload=summary_result["summary"],
+                        message_id=summary_result["summary"]["generated_from_message_id"],
+                        source_service="orchestrator",
+                    )
                 )
-                summary_event = jsonable_encoder(summary_event)
                 repository.record_system_event(summary_event)
-                await request.app.state.connection_registry.enqueue_event(session_id, summary_event)
+                events.append(summary_event)
         except (KeyError, psycopg.Error, RuntimeError):
             pass
     except (KeyError, psycopg.Error, RuntimeError) as exc:
-        error_event = build_event_envelope(
-            session=result["session"],
-            event_type="session.error",
-            payload=error_payload(
-                error_code="dialogue_reply_failed",
-                message=str(exc),
-                trace_id=result["session"]["trace_id"],
-                session_id=session_id,
-                retryable=True,
-            ),
-            source_service="api_gateway",
+        error_event = jsonable_encoder(
+            build_event_envelope(
+                session=result["session"],
+                event_type="session.error",
+                payload=error_payload(
+                    error_code="dialogue_reply_failed",
+                    message=str(exc),
+                    trace_id=result["session"]["trace_id"],
+                    session_id=session_id,
+                    retryable=True,
+                ),
+                source_service="api_gateway",
+            )
         )
-        error_event = jsonable_encoder(error_event)
         repository.record_system_event(error_event)
-        await request.app.state.connection_registry.enqueue_event(session_id, error_event)
+        events.append(error_event)
+
+    return events
+
+
+async def dispatch_message_pipeline(
+    request_or_app: Request | FastAPI | Any,
+    session_id: str,
+    result: dict[str, Any],
+) -> None:
+    app = request_or_app.app if hasattr(request_or_app, "app") else request_or_app
+    repository = app.state.session_repository
+    settings: GatewaySettings = app.state.settings
+    try:
+        events = await asyncio.to_thread(
+            build_message_pipeline_events,
+            repository,
+            settings,
+            session_id,
+            result,
+        )
+    except Exception as exc:
+        events = [
+            jsonable_encoder(
+                build_event_envelope(
+                    session=result["session"],
+                    event_type="session.error",
+                    payload=error_payload(
+                        error_code="dialogue_pipeline_failed",
+                        message=str(exc),
+                        trace_id=result["session"]["trace_id"],
+                        session_id=session_id,
+                        retryable=True,
+                    ),
+                    source_service="api_gateway",
+                )
+            )
+        ]
+        await asyncio.to_thread(repository.record_system_event, events[0])
+
+    for envelope in events:
+        await app.state.connection_registry.enqueue_event(session_id, envelope)
 
 
 def create_app(repository: SessionRepository | None = None) -> FastAPI:
@@ -2230,11 +2355,10 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         request: Request,
     ) -> Any:
         repository = request.app.state.session_repository
-        settings: GatewaySettings = request.app.state.settings
-        result = create_text_message_record(repository, session_id, payload)
+        result = await asyncio.to_thread(create_text_message_record, repository, session_id, payload)
         if isinstance(result, JSONResponse):
             return result
-        await dispatch_message_pipeline(request, session_id, result)
+        asyncio.create_task(dispatch_message_pipeline(request.app, session_id, result))
         return result["message"]
 
     @app.post(
@@ -2252,7 +2376,8 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
     ) -> Any:
         repository = request.app.state.session_repository
         body = await request.body()
-        result = create_audio_chunk_record(
+        result = await asyncio.to_thread(
+            create_audio_chunk_record,
             repository,
             session_id,
             content=body,
@@ -2260,7 +2385,9 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             chunk_started_at_ms=chunk_started_at_ms,
             duration_ms=duration_ms,
             is_final=is_final,
-            mime_type=request.headers.get("content-type", "application/octet-stream"),
+            mime_type=normalize_mime_type(
+                request.headers.get("content-type", "application/octet-stream")
+            ),
             metadata={"source": "web-shell"},
         )
         return result
@@ -2280,8 +2407,9 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         repository = request.app.state.session_repository
         settings: GatewaySettings = request.app.state.settings
         body = await request.body()
-        mime_type = request.headers.get("content-type", "application/octet-stream")
-        result = create_audio_preview_record(
+        mime_type = normalize_mime_type(request.headers.get("content-type", "application/octet-stream"))
+        result = await asyncio.to_thread(
+            create_audio_preview_record,
             repository,
             settings,
             session_id,
@@ -2317,8 +2445,9 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         repository = request.app.state.session_repository
         settings: GatewaySettings = request.app.state.settings
         body = await request.body()
-        mime_type = request.headers.get("content-type", "application/octet-stream")
-        result = create_audio_message_record(
+        mime_type = normalize_mime_type(request.headers.get("content-type", "application/octet-stream"))
+        result = await asyncio.to_thread(
+            create_audio_message_record,
             repository,
             settings,
             session_id,
@@ -2329,11 +2458,11 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         if isinstance(result, JSONResponse):
             return result
 
-        await dispatch_message_pipeline(request, session_id, result)
+        asyncio.create_task(dispatch_message_pipeline(request.app, session_id, result))
         return {
             **result["message"],
             "media_id": result["audio"]["media_id"],
-            "mime_type": mime_type,
+            "mime_type": result["audio"]["mime_type"],
             "duration_ms": duration_ms,
         }
 

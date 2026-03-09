@@ -33,6 +33,13 @@ CJK_PUNCTUATION = "，。！？；："
 LATIN_TERMINAL_PUNCTUATION = ".!?"
 
 
+def normalize_mime_type(value: str | None) -> str:
+    if not value:
+        return "application/octet-stream"
+    normalized = value.split(";", 1)[0].strip().lower()
+    return normalized or "application/octet-stream"
+
+
 def parse_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     if not path.exists():
@@ -697,11 +704,12 @@ def postprocess_transcript(
 
 
 def inspect_audio_file(path: Path, filename: str, content_type: str) -> AudioMetadata:
+    normalized_content_type = normalize_mime_type(content_type)
     byte_size = path.stat().st_size
-    if content_type not in WAVE_MIME_TYPES and path.suffix.lower() != ".wav":
+    if normalized_content_type not in WAVE_MIME_TYPES and path.suffix.lower() != ".wav":
         return AudioMetadata(
             filename=filename,
-            content_type=content_type,
+            content_type=normalized_content_type,
             byte_size=byte_size,
         )
 
@@ -714,7 +722,7 @@ def inspect_audio_file(path: Path, filename: str, content_type: str) -> AudioMet
     duration_ms = int(round(frame_count / sample_rate_hz * 1000)) if sample_rate_hz else None
     return AudioMetadata(
         filename=filename,
-        content_type=content_type,
+        content_type=normalized_content_type,
         byte_size=byte_size,
         sample_rate_hz=sample_rate_hz,
         channels=channels,
@@ -748,6 +756,7 @@ def create_transcription_record(
     content_type: str,
     record_id: str | None = None,
 ) -> dict[str, Any] | JSONResponse:
+    normalized_content_type = normalize_mime_type(content_type)
     if not body:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -762,7 +771,11 @@ def create_transcription_record(
     with tempfile.TemporaryDirectory(prefix="vdh_asr_") as temp_dir:
         temp_audio_path = Path(temp_dir) / f"input{suffix}"
         temp_audio_path.write_bytes(body)
-        audio_metadata = inspect_audio_file(temp_audio_path, filename=filename, content_type=content_type)
+        audio_metadata = inspect_audio_file(
+            temp_audio_path,
+            filename=filename,
+            content_type=normalized_content_type,
+        )
 
         try:
             engine_result = engine.transcribe_file(
@@ -844,7 +857,9 @@ def create_app(engine: ASREngine | None = None) -> FastAPI:
             request.app.state.settings,
             body=body,
             filename=filename,
-            content_type=request.headers.get("content-type", "application/octet-stream"),
+            content_type=normalize_mime_type(
+                request.headers.get("content-type", "application/octet-stream")
+            ),
             record_id=record_id,
         )
 

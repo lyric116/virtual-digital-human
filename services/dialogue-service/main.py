@@ -22,10 +22,19 @@ def parse_env_file(path: Path) -> dict[str, str]:
 
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+
+        if "=" in line:
+            key, value = line.split("=", 1)
+        elif ":" in line:
+            key, value = line.split(":", 1)
+        else:
+            continue
+
+        values[key.strip()] = value.strip().strip("'").strip('"')
     return values
 
 
@@ -344,6 +353,18 @@ def build_dialogue_summary(
     )
 
 
+def translate_llm_exception(exc: Exception) -> HTTPException:
+    if isinstance(exc, HTTPException):
+        return exc
+
+    message = str(exc).strip() or type(exc).__name__
+    if "not configured" in message:
+        return HTTPException(status_code=503, detail=message)
+    if isinstance(exc, RuntimeError):
+        return HTTPException(status_code=502, detail=message)
+    return HTTPException(status_code=502, detail=f"{type(exc).__name__}: {message}")
+
+
 def create_app() -> FastAPI:
     bootstrap_runtime_env()
     settings = DialogueServiceSettings.from_env()
@@ -360,10 +381,8 @@ def create_app() -> FastAPI:
         try:
             llm_fields = generate_dialogue_fields(settings, payload)
             return build_dialogue_reply(payload, llm_fields)
-        except RuntimeError as exc:
-            if "not configured" in str(exc):
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise translate_llm_exception(exc) from exc
 
     @app.post("/internal/dialogue/validate", response_model=DialogueReplyResponse)
     def validate(payload: DialogueReplyResponse) -> DialogueReplyResponse:
@@ -374,10 +393,8 @@ def create_app() -> FastAPI:
         try:
             llm_fields = generate_dialogue_summary_fields(settings, payload)
             return build_dialogue_summary(payload, llm_fields)
-        except RuntimeError as exc:
-            if "not configured" in str(exc):
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise translate_llm_exception(exc) from exc
 
     return app
 

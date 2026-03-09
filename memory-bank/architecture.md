@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - Gateway pipeline and live verifiers after real dialogue-service
+
+- Gateway HTTP handlers must return quickly and move DB plus upstream network work into background thread execution; otherwise websocket heartbeats and concurrent UI flows are vulnerable to event-loop stalls.
+- Any live verifier that boots orchestrator for dialogue-bearing flows must also boot dialogue-service and wire DIALOGUE_SERVICE_BASE_URL, because orchestrator is no longer a self-contained mock reply provider.
+
 ## 2026-03-09 - dialogue llm switched to gpt-5.4
 
 - The dialogue path is now explicitly separated from ASR model configuration: ASR stays on ASR_* and qwen3-asr-flash, while dialogue and summary generation must only use LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL with gpt-5.4 as the current baseline.
