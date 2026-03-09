@@ -34,6 +34,7 @@ def build_settings(module):
         tts_voice_b="coach_male_01",
         tts_audio_format="wav",
         tts_storage_root="data/derived/test_tts_audio",
+        tts_cors_origins=("http://127.0.0.1:4173",),
     )
 
 

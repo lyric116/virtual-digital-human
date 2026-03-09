@@ -223,6 +223,13 @@ body::before {
   height: 100%;
 }
 
+.avatar-playback-grid {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .avatar-card {
   display: flex;
   flex-direction: column;
@@ -282,6 +289,18 @@ body::before {
 
 .subtitle-bar strong {
   font-size: 0.98rem;
+}
+
+.avatar-action-row {
+  grid-column: span 2;
+}
+
+.avatar-action-row button {
+  background: var(--accent);
+}
+
+#avatar-audio-player {
+  display: none;
 }
 
 .transcript-lines,
@@ -531,6 +550,15 @@ body::before {
     grid-column: span 1;
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .avatar-playback-grid {
+    grid-column: span 1;
+    grid-template-columns: 1fr;
+  }
+
+  .avatar-action-row {
+    grid-column: span 1;
   }
 
   .signal-grid {

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, and 20:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, and 31:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -30,6 +30,9 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, a
 - step 20: while recording is still running, the page now sends periodic preview blobs,
   waits for `transcript.partial`, and shows partial transcript text before the final
   accepted transcript arrives after stop
+- step 31: after `dialogue.reply`, the page now calls `services/tts-service`, updates
+  avatar subtitle text, auto-plays the generated audio when possible, and exposes a
+  replay button plus playback state labels
 
 ## Files
 
@@ -41,7 +44,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, a
   - panel readiness check, session bootstrap flow, realtime connection, text submit
     ack handling, mock dialogue reply handling, chat timeline rendering, and session
     history restore plus session export, microphone recording, audio chunk upload, and
-    finalized audio submission plus partial transcript preview back into the text dialogue loop
+    finalized audio submission plus partial transcript preview back into the text dialogue loop,
+    followed by frontend TTS synthesis, avatar audio playback, and subtitle sync
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -53,6 +57,10 @@ From repository root:
   - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/api-gateway main:app --host 0.0.0.0 --port 8000`
 - start the orchestrator:
   - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/orchestrator main:app --host 0.0.0.0 --port 8010`
+- start the dialogue service:
+  - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/dialogue-service main:app --host 0.0.0.0 --port 8030`
+- start the TTS service:
+  - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/tts-service main:app --host 0.0.0.0 --port 8040`
 - `python3 -m http.server 4173 --directory apps/web`
 
 Then open:
@@ -63,7 +71,9 @@ Then open:
 
 - `window.__APP_CONFIG__.apiBaseUrl` defaults to `http://127.0.0.1:8000`
 - `window.__APP_CONFIG__.wsUrl` defaults to `ws://127.0.0.1:8000/ws`
-- `.env.example` exposes `WEB_PUBLIC_API_BASE_URL`, `WEB_PUBLIC_WS_URL`, and `GATEWAY_CORS_ORIGINS` for local browser preview
+- `window.__APP_CONFIG__.ttsBaseUrl` defaults to `http://127.0.0.1:8040`
+- `.env.example` exposes `WEB_PUBLIC_API_BASE_URL`, `WEB_PUBLIC_WS_URL`,
+  `WEB_PUBLIC_TTS_BASE_URL`, `GATEWAY_CORS_ORIGINS`, and `TTS_CORS_ORIGINS` for local browser preview
 - only `Start Session` and `Export` are live in this step; pause and reset remain disabled
 - `Send Text` is live only after session bootstrap and a connected realtime channel
 - microphone controls can now upload temporary audio chunks to the gateway after a
@@ -76,6 +86,9 @@ Then open:
   display partial transcript text before stop
 - the latest assistant reply shown in transcript, avatar, and fusion cards is derived
   from the same live events that feed the timeline
+- after one valid assistant reply, the frontend requests one TTS asset, attempts
+  autoplay, and still keeps subtitle text visible even if TTS synthesis or playback fails
+- `Replay Voice` reuses the latest successful `audio_url` without re-running dialogue generation
 - the current active `sessionId` is stored in browser storage and used to restore
   history through `GET /api/session/{session_id}/state`
 - `Export` calls `GET /api/session/{session_id}/export` and downloads the returned JSON
@@ -96,3 +109,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_partial_transcript.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py`

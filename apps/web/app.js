@@ -5,6 +5,7 @@
   const defaultSessionIdLabel = "未创建";
   const defaultApiBaseUrl = "http://127.0.0.1:8000";
   const defaultWsUrl = "ws://127.0.0.1:8000/ws";
+  const defaultTtsBaseUrl = "http://127.0.0.1:8040";
 
   function findMissingPanels(rootDocument) {
     return panelIds.filter(
@@ -17,6 +18,7 @@
     return {
       apiBaseUrl: config.apiBaseUrl || config.gatewayBaseUrl || defaultApiBaseUrl,
       wsUrl: config.wsUrl || defaultWsUrl,
+      ttsBaseUrl: config.ttsBaseUrl || defaultTtsBaseUrl,
       defaultAvatarId: config.defaultAvatarId || "companion_female_01",
       activeSessionStorageKey: config.activeSessionStorageKey || "virtual-human-active-session-id",
       heartbeatIntervalMs: config.heartbeatIntervalMs || 5000,
@@ -24,6 +26,7 @@
       enableAudioFinalize: config.enableAudioFinalize !== false,
       enableAudioPreview: config.enableAudioPreview !== false,
       audioPreviewChunkThreshold: config.audioPreviewChunkThreshold || 2,
+      autoplayAssistantAudio: config.autoplayAssistantAudio !== false,
     };
   }
 
@@ -76,6 +79,13 @@
       lastReplyRiskLevel: "pending",
       lastReplyNextAction: "pending",
       lastStageTransition: "idle → idle",
+      ttsPlaybackState: "idle",
+      ttsPlaybackMessage: "等待系统回复并合成语音。",
+      ttsAudioUrl: null,
+      ttsAudioFormat: "pending",
+      ttsVoiceId: "pending",
+      ttsDurationMs: 0,
+      ttsGeneratedAt: null,
       exportState: "idle",
       exportMessage: "创建或恢复会话后可导出当前 JSON。",
       lastExportedAt: null,
@@ -119,6 +129,12 @@
       transcriptUserFinalText: findRequiredElement(rootDocument, "transcript-user-final-text"),
       transcriptAssistantReplyText: findRequiredElement(rootDocument, "transcript-assistant-reply-text"),
       avatarLatestReplyText: findRequiredElement(rootDocument, "avatar-latest-reply-text"),
+      avatarSpeechStateValue: findOptionalElement(rootDocument, "avatar-speech-state-value"),
+      avatarSpeechDetailValue: findOptionalElement(rootDocument, "avatar-speech-detail-value"),
+      avatarVoiceValue: findOptionalElement(rootDocument, "avatar-voice-value"),
+      avatarDurationValue: findOptionalElement(rootDocument, "avatar-duration-value"),
+      avatarReplayButton: findOptionalElement(rootDocument, "avatar-replay-button"),
+      avatarAudioPlayer: findOptionalElement(rootDocument, "avatar-audio-player"),
       fusionRiskValue: findRequiredElement(rootDocument, "fusion-risk-value"),
       fusionStageValue: findRequiredElement(rootDocument, "fusion-stage-value"),
       timelineUserText: findRequiredElement(rootDocument, "timeline-user-text"),
@@ -322,6 +338,25 @@
     return "Send Text";
   }
 
+  function getAvatarSpeechStatusMessage(state) {
+    if (state.ttsPlaybackState === "synthesizing") {
+      return state.ttsPlaybackMessage || "正在合成语音。";
+    }
+    if (state.ttsPlaybackState === "ready") {
+      return state.ttsPlaybackMessage || "语音已生成，可播放。";
+    }
+    if (state.ttsPlaybackState === "playing") {
+      return state.ttsPlaybackMessage || "数字人语音播放中。";
+    }
+    if (state.ttsPlaybackState === "completed") {
+      return state.ttsPlaybackMessage || "本轮语音播放完成。";
+    }
+    if (state.ttsPlaybackState === "error") {
+      return state.ttsPlaybackMessage || "语音播放失败。";
+    }
+    return state.ttsPlaybackMessage || "等待系统回复并合成语音。";
+  }
+
   function getExportStatusMessage(state) {
     if (!state.sessionId) {
       return "创建或恢复会话后可导出当前 JSON。";
@@ -497,6 +532,23 @@
     elements.transcriptUserFinalText.textContent = state.lastAcceptedText || "等待用户提交文本...";
     elements.transcriptAssistantReplyText.textContent = state.lastReplyText || "等待 mock orchestrator reply...";
     elements.avatarLatestReplyText.textContent = state.lastReplyText || "等待 mock reply...";
+    if (elements.avatarSpeechStateValue) {
+      elements.avatarSpeechStateValue.textContent = state.ttsPlaybackState;
+    }
+    if (elements.avatarSpeechDetailValue) {
+      elements.avatarSpeechDetailValue.textContent = getAvatarSpeechStatusMessage(state);
+    }
+    if (elements.avatarVoiceValue) {
+      elements.avatarVoiceValue.textContent = state.ttsVoiceId || "pending";
+    }
+    if (elements.avatarDurationValue) {
+      elements.avatarDurationValue.textContent = state.ttsDurationMs
+        ? `${formatDurationMs(state.ttsDurationMs)} / ${state.ttsAudioFormat}`
+        : `0.0s / ${state.ttsAudioFormat}`;
+    }
+    if (elements.avatarReplayButton) {
+      elements.avatarReplayButton.disabled = !state.ttsAudioUrl || state.ttsPlaybackState === "synthesizing";
+    }
     elements.fusionRiskValue.textContent = state.lastReplyRiskLevel;
     elements.fusionStageValue.textContent = `stage: ${state.stage} / next: ${state.lastReplyNextAction}`;
     elements.timelineUserText.textContent = (
@@ -519,6 +571,7 @@
     rootDocument.body.dataset.recordingState = state.recordingState;
     rootDocument.body.dataset.audioUploadState = state.audioUploadState;
     rootDocument.body.dataset.partialTranscriptState = state.partialTranscriptState;
+    rootDocument.body.dataset.ttsPlaybackState = state.ttsPlaybackState;
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -808,6 +861,35 @@
     return payload;
   }
 
+  async function requestTTSSynthesis(fetchImpl, appConfig, payload) {
+    const response = await fetchImpl(
+      `${appConfig.ttsBaseUrl}/internal/tts/synthesize`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    let responsePayload = null;
+    try {
+      responsePayload = await response.json();
+    } catch (error) {
+      responsePayload = null;
+    }
+
+    if (!response.ok) {
+      const message = responsePayload && typeof responsePayload.detail === "string"
+        ? responsePayload.detail
+        : `TTS synthesize failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return responsePayload;
+  }
+
   function buildRealtimeSocketUrl(appConfig, state) {
     const base = appConfig.wsUrl.replace(/\/+$/, "");
     return `${base}/session/${encodeURIComponent(state.sessionId)}?trace_id=${encodeURIComponent(state.traceId || "")}`;
@@ -1068,6 +1150,7 @@
       lastPreviewChunkCount: 0,
       nextPreviewSeq: 1,
       currentRecordingId: null,
+      ttsRequestToken: 0,
     };
 
     function clearHeartbeatTimer() {
@@ -1103,6 +1186,109 @@
       });
     }
 
+    function stopAvatarAudioPlayback() {
+      if (!elements.avatarAudioPlayer) {
+        return;
+      }
+      try {
+        if (typeof elements.avatarAudioPlayer.pause === "function") {
+          elements.avatarAudioPlayer.pause();
+        }
+      } catch (error) {
+        console.warn("Failed to pause avatar audio cleanly", error);
+      }
+      if ("currentTime" in elements.avatarAudioPlayer) {
+        try {
+          elements.avatarAudioPlayer.currentTime = 0;
+        } catch (error) {
+          console.warn("Failed to reset avatar audio currentTime", error);
+        }
+      }
+    }
+
+    async function replayAssistantAudio() {
+      if (!state.ttsAudioUrl || !elements.avatarAudioPlayer || typeof elements.avatarAudioPlayer.play !== "function") {
+        state.ttsPlaybackState = "error";
+        state.ttsPlaybackMessage = "当前环境不支持语音播放。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      try {
+        if (elements.avatarAudioPlayer.src !== state.ttsAudioUrl) {
+          elements.avatarAudioPlayer.src = state.ttsAudioUrl;
+          if (typeof elements.avatarAudioPlayer.load === "function") {
+            elements.avatarAudioPlayer.load();
+          }
+        }
+        const playResult = elements.avatarAudioPlayer.play();
+        if (playResult && typeof playResult.then === "function") {
+          await playResult;
+        }
+      } catch (error) {
+        state.ttsPlaybackState = "error";
+        state.ttsPlaybackMessage = error instanceof Error ? error.message : String(error);
+        pushConnectionLog(state, "avatar audio playback failed");
+        renderSessionState(rootDocument, elements, state, appConfig);
+      }
+      return { ...state };
+    }
+
+    async function synthesizeAssistantAudio(replyPayload) {
+      const requestToken = runtime.ttsRequestToken + 1;
+      runtime.ttsRequestToken = requestToken;
+      stopAvatarAudioPlayback();
+      state.ttsPlaybackState = "synthesizing";
+      state.ttsPlaybackMessage = "正在合成语音。";
+      state.ttsAudioUrl = null;
+      state.ttsAudioFormat = "pending";
+      state.ttsVoiceId = "pending";
+      state.ttsDurationMs = 0;
+      state.ttsGeneratedAt = null;
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        const payload = await requestTTSSynthesis(resolvedFetch, appConfig, {
+          text: replyPayload.reply,
+          voice_id: appConfig.defaultAvatarId,
+          session_id: state.sessionId,
+          trace_id: replyPayload.trace_id || state.traceId,
+          message_id: replyPayload.message_id,
+          subtitle: replyPayload.reply,
+        });
+
+        if (requestToken !== runtime.ttsRequestToken) {
+          return;
+        }
+
+        state.ttsAudioUrl = payload.audio_url;
+        state.ttsAudioFormat = payload.audio_format || "pending";
+        state.ttsVoiceId = payload.voice_id || "pending";
+        state.ttsDurationMs = typeof payload.duration_ms === "number" ? payload.duration_ms : 0;
+        state.ttsGeneratedAt = payload.generated_at || new Date().toISOString();
+        state.ttsPlaybackState = "ready";
+        state.ttsPlaybackMessage = "语音已生成，准备播放。";
+        pushConnectionLog(state, `tts asset ready: ${payload.tts_id || "unknown"}`);
+        renderSessionState(rootDocument, elements, state, appConfig);
+
+        if (elements.avatarAudioPlayer && appConfig.autoplayAssistantAudio) {
+          elements.avatarAudioPlayer.src = payload.audio_url;
+          if (typeof elements.avatarAudioPlayer.load === "function") {
+            elements.avatarAudioPlayer.load();
+          }
+          await replayAssistantAudio();
+        }
+      } catch (error) {
+        if (requestToken !== runtime.ttsRequestToken) {
+          return;
+        }
+        state.ttsPlaybackState = "error";
+        state.ttsPlaybackMessage = error instanceof Error ? error.message : String(error);
+        pushConnectionLog(state, "tts synthesize failed");
+        renderSessionState(rootDocument, elements, state, appConfig);
+      }
+    }
+
     function teardownMicrophone() {
       clearRecordingTimer();
       runtime.stopRequested = true;
@@ -1113,6 +1299,7 @@
       runtime.lastPreviewChunkCount = 0;
       runtime.nextPreviewSeq = 1;
       runtime.currentRecordingId = null;
+      stopAvatarAudioPlayback();
       if (runtime.mediaRecorder && runtime.mediaRecorder.state === "recording") {
         try {
           runtime.mediaRecorder.stop();
@@ -1308,6 +1495,7 @@
         state.dialogueReplyState = "received";
         pushConnectionLog(state, `dialogue reply received: ${payload.message_id}`);
         renderSessionState(rootDocument, elements, state, appConfig);
+        void synthesizeAssistantAudio(payload);
         return;
       }
 
@@ -1462,6 +1650,13 @@
       state.lastReplyRiskLevel = "pending";
       state.lastReplyNextAction = "pending";
       state.lastStageTransition = "idle → idle";
+      state.ttsPlaybackState = "idle";
+      state.ttsPlaybackMessage = "等待系统回复并合成语音。";
+      state.ttsAudioUrl = null;
+      state.ttsAudioFormat = "pending";
+      state.ttsVoiceId = "pending";
+      state.ttsDurationMs = 0;
+      state.ttsGeneratedAt = null;
       state.exportState = "idle";
       state.exportMessage = "创建或恢复会话后可导出当前 JSON。";
       state.lastExportedAt = null;
@@ -1482,6 +1677,8 @@
       runtime.lastPreviewChunkCount = 0;
       runtime.nextPreviewSeq = 1;
       runtime.currentRecordingId = null;
+      runtime.ttsRequestToken += 1;
+      stopAvatarAudioPlayback();
       renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
@@ -1568,6 +1765,15 @@
       state.lastReplyRiskLevel = "pending";
       state.lastReplyNextAction = "pending";
       state.lastStageTransition = `${state.stage} → ${state.stage}`;
+      state.ttsPlaybackState = "idle";
+      state.ttsPlaybackMessage = "等待系统回复并合成语音。";
+      state.ttsAudioUrl = null;
+      state.ttsAudioFormat = "pending";
+      state.ttsVoiceId = "pending";
+      state.ttsDurationMs = 0;
+      state.ttsGeneratedAt = null;
+      runtime.ttsRequestToken += 1;
+      stopAvatarAudioPlayback();
       renderSessionState(rootDocument, elements, state, appConfig);
 
       const clientSeq = state.nextClientSeq;
@@ -1786,6 +1992,15 @@
       state.lastReplyRiskLevel = "pending";
       state.lastReplyNextAction = "pending";
       state.lastStageTransition = `${state.stage} → ${state.stage}`;
+      state.ttsPlaybackState = "idle";
+      state.ttsPlaybackMessage = "等待系统回复并合成语音。";
+      state.ttsAudioUrl = null;
+      state.ttsAudioFormat = "pending";
+      state.ttsVoiceId = "pending";
+      state.ttsDurationMs = 0;
+      state.ttsGeneratedAt = null;
+      runtime.ttsRequestToken += 1;
+      stopAvatarAudioPlayback();
       state.audioUploadState = "processing_final";
       state.audioUploadMessage = "录音结束，正在提交完整音频并等待 ASR 结果。";
       renderSessionState(rootDocument, elements, state, appConfig);
@@ -2021,6 +2236,28 @@
         return exportSession();
       });
     }
+    if (elements.avatarReplayButton) {
+      elements.avatarReplayButton.addEventListener("click", function () {
+        return replayAssistantAudio();
+      });
+    }
+    if (elements.avatarAudioPlayer) {
+      elements.avatarAudioPlayer.addEventListener("play", function () {
+        state.ttsPlaybackState = "playing";
+        state.ttsPlaybackMessage = "数字人语音播放中。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+      });
+      elements.avatarAudioPlayer.addEventListener("ended", function () {
+        state.ttsPlaybackState = "completed";
+        state.ttsPlaybackMessage = "本轮语音播放完成。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+      });
+      elements.avatarAudioPlayer.addEventListener("error", function () {
+        state.ttsPlaybackState = "error";
+        state.ttsPlaybackMessage = "语音播放失败。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+      });
+    }
     elements.textInputField.addEventListener("input", function (event) {
       state.draftText = event.currentTarget.value;
       if (state.textSubmitState === "error") {
@@ -2041,6 +2278,7 @@
       startRecording,
       stopRecording,
       submitText,
+      replayAssistantAudio,
       exportSession,
       restoreSessionFromStorage,
       forceRealtimeDropForTest,

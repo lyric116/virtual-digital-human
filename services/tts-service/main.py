@@ -9,6 +9,7 @@ from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -63,6 +64,7 @@ class TTSServiceSettings:
     tts_voice_b: str
     tts_audio_format: str
     tts_storage_root: str
+    tts_cors_origins: tuple[str, ...]
 
     @classmethod
     def from_env(cls) -> "TTSServiceSettings":
@@ -85,6 +87,14 @@ class TTSServiceSettings:
             tts_voice_b=os.getenv("TTS_VOICE_B", "coach_male_01"),
             tts_audio_format=os.getenv("TTS_AUDIO_FORMAT", "mp3"),
             tts_storage_root=os.getenv("TTS_STORAGE_ROOT", DEFAULT_TTS_STORAGE_ROOT),
+            tts_cors_origins=tuple(
+                value.strip()
+                for value in os.getenv(
+                    "TTS_CORS_ORIGINS",
+                    "http://127.0.0.1:4173,http://localhost:4173",
+                ).split(",")
+                if value.strip()
+            ),
         )
 
 
@@ -216,6 +226,13 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="virtual-huamn-tts-service", version="0.1.0")
     app.state.settings = settings
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.tts_cors_origins),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:

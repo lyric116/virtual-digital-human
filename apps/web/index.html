@@ -107,6 +107,22 @@
               <span>Latest reply</span>
               <strong id="avatar-latest-reply-text">等待 mock reply...</strong>
             </div>
+            <div class="avatar-playback-grid">
+              <div class="capture-meta">
+                <span>Speech state</span>
+                <strong id="avatar-speech-state-value">idle</strong>
+                <small id="avatar-speech-detail-value">等待系统回复并合成语音。</small>
+              </div>
+              <div class="capture-meta">
+                <span>Voice asset</span>
+                <strong id="avatar-voice-value">pending</strong>
+                <small id="avatar-duration-value">0.0s / pending</small>
+              </div>
+            </div>
+            <div class="button-row avatar-action-row">
+              <button type="button" id="avatar-replay-button" disabled>Replay Voice</button>
+            </div>
+            <audio id="avatar-audio-player" preload="auto"></audio>
           </div>
         </section>
 
@@ -254,7 +270,9 @@
       window.__APP_CONFIG__ = window.__APP_CONFIG__ || {
         apiBaseUrl: "http://127.0.0.1:8000",
         wsUrl: "ws://127.0.0.1:8000/ws",
-        defaultAvatarId: "companion_female_01"
+        ttsBaseUrl: "http://127.0.0.1:8040",
+        defaultAvatarId: "companion_female_01",
+        autoplayAssistantAudio: true
       };
     </script>
     <script src="./app.js"></script>

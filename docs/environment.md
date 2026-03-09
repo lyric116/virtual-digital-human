@@ -30,6 +30,7 @@ code or deployment files.
 | --- | --- | --- | --- |
 | `WEB_PUBLIC_API_BASE_URL` | Yes | `http://localhost:8000` | Browser-side API entrypoint. |
 | `WEB_PUBLIC_WS_URL` | Yes | `ws://localhost:8000/ws` | Browser-side realtime endpoint. |
+| `WEB_PUBLIC_TTS_BASE_URL` | Yes | `http://localhost:8040` | Browser-side TTS entrypoint used by avatar playback to request synthesized audio. |
 | `WEB_DEFAULT_AVATAR_ID` | No | `companion_female_01` | Default avatar shown before session state loads. |
 
 ## Gateway
@@ -134,6 +135,7 @@ code or deployment files.
 | `TTS_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for the standalone TTS service. |
 | `TTS_SERVICE_PORT` | Yes | `8040` | HTTP port for the standalone TTS service. |
 | `TTS_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8040` | Public base URL used when the TTS service returns `audio_url`. |
+| `TTS_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173` | Browser origins allowed to call the TTS service directly during frontend preview. |
 | `TTS_PROVIDER` | Yes | `set-your-tts-provider` | Logical provider name for TTS. |
 | `TTS_BASE_URL` | No | empty | API endpoint for TTS if a remote provider is used. |
 | `TTS_API_KEY` | No | empty | API key for the TTS provider. |

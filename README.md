@@ -45,6 +45,8 @@ Current repository state:
   hotword cleanup before returning the final transcript text
 - `services/tts-service` now synthesizes one assistant reply into one playable Chinese
   single-voice speech asset and returns a local `audio_url`
+- the frontend now consumes `services/tts-service` directly so one assistant reply can be
+  spoken with synced subtitle text and replay controls in the avatar panel
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -120,6 +122,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_baseline_eval.py`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/tts-service main:app --host 0.0.0.0 --port 8040`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_tts_service.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

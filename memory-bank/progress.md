@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - Step 31 frontend TTS playback
+
+### Scope
+
+Connected apps/web to services/tts-service so one dialogue reply now becomes one playable avatar speech asset with subtitle sync and replay controls.
+
+### Outputs
+
+- Added frontend TTS request path in apps/web/app.js with playback state, replay, and non-fatal failure handling
+- Extended avatar panel markup and styling for speech state, voice asset metadata, replay control, and hidden audio element
+- Added browser-facing TTS CORS support in services/tts-service and created web_tts_playback harness plus live verifier
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 132 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_tts_service.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py -> passed
+
+### Next
+
+- Step 32: add one static 2D avatar baseline with speaking/idle state switching
+
 ## 2026-03-09 - step 30 single-voice tts baseline
 
 ### Scope

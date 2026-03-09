@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - Frontend TTS playback boundary
+
+- The browser now calls services/tts-service directly after dialogue.reply, so TTS_CORS_ORIGINS and WEB_PUBLIC_TTS_BASE_URL are part of the stable local preview contract.
+- Avatar playback is intentionally non-blocking: subtitle text updates from dialogue.reply immediately, while TTS synthesis or playback failure only downgrades speech state and must not break the text dialogue chain.
+
 ## 2026-03-09 - tts-service now owns speech asset generation
 
 - services/tts-service is now the single boundary that turns assistant text into a playable speech asset, stores it under TTS_STORAGE_ROOT, and returns audio_url plus duration metadata without involving avatar logic yet.
