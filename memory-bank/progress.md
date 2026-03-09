@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - Step 23 Dialogue Service Schema Gate
+
+### Scope
+
+Completed implementation plan step 23 by introducing a standalone dialogue-service that owns mock reply generation plus strict schema validation, then rewiring orchestrator to proxy through that service instead of constructing dialogue payloads locally.
+
+### Outputs
+
+- services/dialogue-service/main.py and services/dialogue-service/README.md now provide GET /health, POST /internal/dialogue/respond, and POST /internal/dialogue/validate as the stable dialogue schema boundary.
+- apps/orchestrator/main.py and apps/orchestrator/README.md now route dialogue requests to DIALOGUE_SERVICE_BASE_URL and validate the returned payload before handing it back to the gateway.
+- scripts/verify_dialogue_schema_validation.py now starts dialogue-service and orchestrator locally, proves valid payloads pass, invalid payloads fail with HTTP 422, and confirms orchestrator returns the validated assess-stage reply for a sleep-pressure sample.
+- tests/test_dialogue_service.py, tests/test_orchestrator_mock_reply.py, tests/test_environment_inventory.py, and README.md now lock the new dialogue-service contract and required environment inventory.
+
+### Checks
+
+- Ran UV_CACHE_DIR=.uv-cache uv run python -m py_compile services/dialogue-service/main.py apps/orchestrator/main.py scripts/verify_dialogue_schema_validation.py scripts/verify_web_mock_reply.py tests/test_dialogue_service.py tests/test_orchestrator_mock_reply.py tests/test_environment_inventory.py.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest tests/test_dialogue_service.py tests/test_orchestrator_mock_reply.py tests/test_environment_inventory.py tests/test_web_mock_reply.py and confirmed 14 tests passed.
+- Ran UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_schema_validation.py and confirmed valid dialogue payloads returned 200, invalid stage payloads returned 422, and orchestrator forwarded one validated assess-stage reply.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest and confirmed 97 tests passed.
+
+### Next
+
+- Proceed to implementation plan step 24 by swapping dialogue-service mock generation for a real LLM while preserving the current response contract.
+- Keep orchestrator as a proxy and control layer; do not move dialogue reply construction back into apps/orchestrator.
+
 ## 2026-03-09 - Expanded MAGICDATA Baseline And Added ASR Regression Gate
 
 ### Scope

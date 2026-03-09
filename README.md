@@ -8,6 +8,8 @@ Current repository state:
 - `16kHz mono` ASR input audio has been generated under `data/derived/audio_16k_mono`
 - external ASR draft generation has been verified with `qwen3-asr-flash`
 - the monorepo engineering skeleton from `implementation_plan` step 1 is now in place
+- `services/dialogue-service` now owns the mock dialogue schema boundary, and
+  `apps/orchestrator` forwards dialogue requests through that validated service
 - the text loop now reaches a mock structured assistant reply through `apps/orchestrator`
 - the frontend now renders a recoverable chat timeline and restores session history from
   the gateway session state endpoint
@@ -78,10 +80,12 @@ Frontend shell preview:
 - `python3 -m http.server 4173 --directory apps/web`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/api-gateway main:app --host 0.0.0.0 --port 8000`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/orchestrator main:app --host 0.0.0.0 --port 8010`
+- `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/dialogue-service main:app --host 0.0.0.0 --port 8030`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_schema_validation.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`

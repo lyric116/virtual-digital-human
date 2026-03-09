@@ -52,6 +52,14 @@ code or deployment files.
 | `ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS` | Yes | `60` | Upper bound for one orchestration request. |
 | `ORCHESTRATOR_SESSION_TTL_SECONDS` | Yes | `1800` | Idle session retention window in cache. |
 
+## Dialogue Service
+
+| Variable | Required | Default / Example | Purpose |
+| --- | --- | --- | --- |
+| `DIALOGUE_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for dialogue schema and generation service. |
+| `DIALOGUE_SERVICE_PORT` | Yes | `8030` | Internal HTTP port for dialogue-service APIs. |
+| `DIALOGUE_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8030` | Orchestrator-facing base URL used for validated dialogue reply calls. |
+
 ## PostgreSQL
 
 | Variable | Required | Default / Example | Purpose |

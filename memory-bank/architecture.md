@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - Dialogue Payload Construction Now Belongs To dialogue-service
+
+- services/dialogue-service is now the only approved place to construct and validate dialogue reply payloads; apps/orchestrator should proxy to it and reject malformed replies rather than generating reply JSON locally.
+- POST /internal/dialogue/validate is now the explicit schema gate for dialogue payloads, which gives step 24 and later LLM work a direct place to prove contract safety before replies hit gateway or frontend code.
+- DIALOGUE_SERVICE_BASE_URL is now part of the core internal topology: gateway calls orchestrator, orchestrator calls dialogue-service, and later dialogue model changes should stay behind that boundary.
+
 ## 2026-03-09 - External ASR Regression Must Use Thresholds, Not Exact Output Matching
 
 - The expanded MAGICDATA frozen core subset is now 36 records by default, selected as 12 records from each available split plus speaker_gender group, which gives a broader Chinese baseline without paying the cost of scoring the full public corpus.

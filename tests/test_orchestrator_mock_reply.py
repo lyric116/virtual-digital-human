@@ -4,9 +4,6 @@ import importlib.util
 from pathlib import Path
 import sys
 
-from pydantic import ValidationError
-
-
 ROOT = Path(__file__).resolve().parents[1]
 ORCHESTRATOR_MAIN = ROOT / "apps" / "orchestrator" / "main.py"
 ORCHESTRATOR_README = ROOT / "apps" / "orchestrator" / "README.md"
@@ -33,50 +30,77 @@ def build_request(module, *, content_text: str, current_stage: str = "engage"):
     )
 
 
-def test_mock_orchestrator_returns_assess_reply_for_sleep_pressure_text():
+def test_orchestrator_parses_valid_dialogue_service_response(monkeypatch):
     module = load_orchestrator_module()
-    response = module.build_mock_dialogue_reply(
-        build_request(module, content_text="我这两天睡不好，晚上脑子停不下来。"),
-    )
+    payload = build_request(module, content_text="我这两天睡不好，晚上脑子停不下来。")
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return (
+                b'{"session_id":"sess_fake_001","trace_id":"trace_fake_001","message_id":"msg_assistant_001",'
+                b'"reply":"\xe8\xb0\xa2\xe8\xb0\xa2\xe4\xbd\xa0\xe6\x84\xbf\xe6\x84\x8f\xe8\xaf\xb4\xe5\x87\xba\xe6\x9d\xa5\xe3\x80\x82",'
+                b'"emotion":"neutral","risk_level":"low","stage":"engage","next_action":"ask_followup",'
+                b'"knowledge_refs":[],"avatar_style":"warm_support","safety_flags":[]}'
+            )
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr(module.urllib_request, "build_opener", lambda *args: FakeOpener())
+    response = module.request_dialogue_reply(module.OrchestratorSettings.from_env(), payload)
 
     assert response.session_id == "sess_fake_001"
     assert response.trace_id == "trace_fake_001"
-    assert response.stage == "assess"
-    assert response.risk_level == "medium"
+    assert response.stage == "engage"
+    assert response.risk_level == "low"
     assert response.next_action == "ask_followup"
-    assert "晚上更明显" in response.reply
+    assert "谢谢你愿意说出来" in response.reply
 
 
-def test_mock_orchestrator_returns_handoff_reply_for_high_risk_text():
+def test_orchestrator_rejects_invalid_dialogue_service_stage(monkeypatch):
     module = load_orchestrator_module()
-    response = module.build_mock_dialogue_reply(
-        build_request(module, content_text="我觉得活着没意义，甚至想伤害自己。"),
-    )
 
-    assert response.stage == "handoff"
-    assert response.risk_level == "high"
-    assert "high_risk_expression" in response.safety_flags
+    class FakeResponse:
+        status = 200
 
+        def __enter__(self):
+            return self
 
-def test_dialogue_reply_contract_rejects_invalid_stage():
-    module = load_orchestrator_module()
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return (
+                b'{"session_id":"sess_fake_001","trace_id":"trace_fake_001","message_id":"msg_assistant_001",'
+                b'"reply":"invalid stage","emotion":"neutral","risk_level":"low","stage":"invalid_stage",'
+                b'"next_action":"ask_followup"}'
+            )
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr(module.urllib_request, "build_opener", lambda *args: FakeOpener())
 
     try:
-        module.DialogueReplyResponse(
-            session_id="sess_fake_001",
-            trace_id="trace_fake_001",
-            message_id="msg_assistant_001",
-            reply="invalid stage",
-            emotion="neutral",
-            risk_level="low",
-            stage="invalid_stage",
-            next_action="ask_followup",
+        module.request_dialogue_reply(
+            module.OrchestratorSettings.from_env(),
+            build_request(module, content_text="普通文本"),
         )
-    except ValidationError:
-        assert True
+    except RuntimeError as exc:
+        assert "invalid dialogue reply" in str(exc)
         return
 
-    raise AssertionError("expected DialogueReplyResponse validation to fail for invalid stage")
+    raise AssertionError("expected orchestrator to reject invalid dialogue reply payload")
 
 
 def test_orchestrator_app_and_readme_document_mock_reply_endpoint():
@@ -89,4 +113,4 @@ def test_orchestrator_app_and_readme_document_mock_reply_endpoint():
 
     content = ORCHESTRATOR_README.read_text(encoding="utf-8")
     assert "POST /internal/dialogue/respond" in content
-    assert "mock structured dialogue reply" in content
+    assert "services/dialogue-service" in content
