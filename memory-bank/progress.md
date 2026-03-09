@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - post-review fixes for steps 23-26
+
+### Scope
+
+Fixed the issues found in the follow-up review by syncing next_action with resolved stage transitions, excluding the current user turn from short-term memory, and making live verifier scripts fail fast when PostgreSQL is not reachable.
+
+### Outputs
+
+- apps/api-gateway/main.py now normalizes next_action whenever the stage machine rewrites the model-proposed stage
+- apps/api-gateway/main.py now excludes the current accepted user message from metadata.short_term_memory
+- scripts/verify_web_mock_reply.py and scripts/verify_dialogue_short_term_memory.py now preflight PostgreSQL and emit a clear infrastructure error if Docker-backed services are not up
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 103 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_short_term_memory.py
+
+### Next
+
+- Continue implementation plan from step 27 with dialogue summaries on top of the corrected stage and short-term-memory baseline
+
 ## 2026-03-09 - step 26 short-term dialogue memory
 
 ### Scope

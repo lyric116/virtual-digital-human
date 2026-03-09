@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 import importlib.util
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 from pydantic import ValidationError
 
@@ -29,6 +31,7 @@ class FakeSessionRepository:
         self.session_calls: list[dict] = []
         self.message_calls: list[dict] = []
         self.event_calls: list[dict] = []
+        self.memory_calls: list[dict] = []
 
     def create_session(self, payload):
         dumped = payload.model_dump()
@@ -171,7 +174,20 @@ class FakeSessionRepository:
             ],
         }
 
-    def get_recent_dialogue_context(self, session_id: str, *, limit: int = 6):
+    def get_recent_dialogue_context(
+        self,
+        session_id: str,
+        *,
+        limit: int = 6,
+        exclude_message_id: str | None = None,
+    ):
+        self.memory_calls.append(
+            {
+                "session_id": session_id,
+                "limit": limit,
+                "exclude_message_id": exclude_message_id,
+            }
+        )
         return [
             {
                 "message_id": "msg_user_000",
@@ -212,6 +228,36 @@ class FakeSessionRepository:
                 "content_text": dumped["content_text"],
                 "submitted_at": "2026-03-07T14:01:00Z",
                 "client_seq": dumped.get("client_seq"),
+            },
+        }
+
+    def create_assistant_dialogue_message(self, session_id: str, payload):
+        return {
+            "session": {
+                "session_id": session_id,
+                "trace_id": "trace_fake_001",
+                "status": "active",
+                "stage": payload.stage,
+                "updated_at": "2026-03-07T14:01:03Z",
+            },
+            "message": {
+                "message_id": payload.message_id,
+                "session_id": session_id,
+                "trace_id": "trace_fake_001",
+                "role": "assistant",
+                "status": "completed",
+                "source_kind": "text",
+                "content_text": payload.reply,
+                "submitted_at": "2026-03-07T14:01:03Z",
+                "metadata": {
+                    "stage": payload.stage,
+                    "next_action": payload.next_action,
+                    "model_stage": payload.stage,
+                    "model_next_action": payload.next_action,
+                    "stage_before": "engage",
+                    "stage_machine_reason": "accept_next_stage",
+                    "next_action_machine_reason": "preserve_model_action",
+                },
             },
         }
 
@@ -284,6 +330,26 @@ def test_stage_machine_allows_reassess_loopback_and_handoff():
     assert handoff_reason == "handoff_requested"
 
 
+def test_next_action_syncs_when_stage_is_rewritten():
+    module = load_gateway_module()
+
+    action, reason = module.resolve_next_action_for_stage(
+        proposed_stage="reassess",
+        resolved_stage="intervene",
+        proposed_next_action="reassess",
+    )
+    handoff_action, handoff_reason = module.resolve_next_action_for_stage(
+        proposed_stage="assess",
+        resolved_stage="handoff",
+        proposed_next_action="ask_open_question",
+    )
+
+    assert action == "intervene"
+    assert reason == "sync_to_resolved_stage"
+    assert handoff_action == "handoff"
+    assert handoff_reason == "sync_to_resolved_stage"
+
+
 def test_text_message_accept_returns_contract_shape():
     module = load_gateway_module()
     repository = FakeSessionRepository()
@@ -349,6 +415,114 @@ def test_request_dialogue_reply_includes_short_term_memory(monkeypatch):
 
     assert response.reply == "你好，小李。"
     assert captured["body"]["metadata"]["short_term_memory"][0]["content_text"] == "我叫小李。"
+
+
+def test_dispatch_pipeline_excludes_current_message_from_memory_and_syncs_next_action(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    connection_registry = module.ConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+
+    def fake_request_dialogue_reply(settings, session, message, *, short_term_memory=None):
+        assert short_term_memory is not None
+        assert all(item["message_id"] != message["message_id"] for item in short_term_memory)
+        return module.DialogueReplyResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            message_id="msg_assistant_002",
+            reply="我们先做一次简单练习。",
+            emotion="supportive",
+            risk_level="medium",
+            stage="reassess",
+            next_action="reassess",
+            knowledge_refs=[],
+            avatar_style="warm_support",
+            safety_flags=[],
+        )
+
+    def fake_create_assistant_dialogue_message(session_id, payload):
+        resolved_stage, stage_reason = module.resolve_session_stage_transition(
+            current_stage="assess",
+            proposed_stage=payload.stage,
+            risk_level=payload.risk_level,
+        )
+        resolved_action, action_reason = module.resolve_next_action_for_stage(
+            proposed_stage=payload.stage,
+            resolved_stage=resolved_stage,
+            proposed_next_action=payload.next_action,
+        )
+        return {
+            "session": {
+                "session_id": session_id,
+                "trace_id": "trace_fake_001",
+                "status": "active",
+                "stage": resolved_stage,
+                "updated_at": "2026-03-07T14:01:03Z",
+            },
+            "message": {
+                "message_id": payload.message_id,
+                "session_id": session_id,
+                "trace_id": "trace_fake_001",
+                "role": "assistant",
+                "status": "completed",
+                "source_kind": "text",
+                "content_text": payload.reply,
+                "submitted_at": "2026-03-07T14:01:03Z",
+                "metadata": {
+                    "stage": resolved_stage,
+                    "next_action": resolved_action,
+                    "model_stage": payload.stage,
+                    "model_next_action": payload.next_action,
+                    "stage_before": "assess",
+                    "stage_machine_reason": stage_reason,
+                    "next_action_machine_reason": action_reason,
+                },
+            },
+        }
+
+    monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
+    repository.create_assistant_dialogue_message = fake_create_assistant_dialogue_message
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "assess",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_fake_001",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "我还是很紧绷。",
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                },
+            },
+        )
+    )
+
+    assert repository.memory_calls[-1]["exclude_message_id"] == "msg_fake_001"
+    dialogue_event = repository.event_calls[-1]
+    assert dialogue_event["event_type"] == "dialogue.reply"
+    assert dialogue_event["payload"]["stage"] == "intervene"
+    assert dialogue_event["payload"]["next_action"] == "intervene"
+    assert dialogue_event["payload"]["next_action_requested"] == "reassess"
 
 
 def test_text_message_rejects_blank_content():

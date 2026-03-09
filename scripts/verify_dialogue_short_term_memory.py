@@ -12,6 +12,8 @@ import sys
 import time
 import urllib.request
 
+import psycopg
+
 
 ROOT = Path(__file__).resolve().parents[1]
 GATEWAY_MAIN = ROOT / "apps" / "api-gateway" / "main.py"
@@ -78,8 +80,36 @@ def wait_for_message_count(base_url: str, session_id: str, count: int) -> dict:
     raise RuntimeError(f"session {session_id} did not reach {count} messages in time")
 
 
+def resolve_database_url(env: dict[str, str]) -> str:
+    database_url = env.get("DATABASE_URL") or env.get("POSTGRES_URL")
+    if database_url:
+        return database_url
+    return (
+        f"postgresql://{env.get('POSTGRES_USER', 'app')}:{env.get('POSTGRES_PASSWORD', 'change_me')}"
+        f"@{env.get('POSTGRES_HOST', 'localhost')}:{env.get('POSTGRES_PORT', '5432')}"
+        f"/{env.get('POSTGRES_DB', 'virtual_human')}"
+    )
+
+
+def ensure_database_ready(env: dict[str, str]) -> None:
+    database_url = resolve_database_url(env)
+    try:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+    except psycopg.Error as exc:
+        raise RuntimeError(
+            "postgres is not reachable; start the foundation stack first with "
+            "`docker compose -f infra/compose/docker-compose.yml up -d` "
+            "or run `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_infra_stack.py "
+            "--compose-file infra/compose/docker-compose.yml`"
+        ) from exc
+
+
 def main() -> None:
     env = {**parse_env_file(ROOT / ".env.example"), **parse_env_file(ROOT / ".env"), **os.environ}
+    ensure_database_ready(env)
     dialogue_port = reserve_local_port()
     orchestrator_port = reserve_local_port()
     gateway_port = reserve_local_port()

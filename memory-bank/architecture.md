@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - dialogue verifier scripts require database preflight
+
+- Live verifier scripts that exercise the gateway text path now perform an explicit PostgreSQL readiness check before starting local services, so missing Docker foundation services fail with a direct infrastructure error instead of secondary websocket or session-create symptoms.
+- The gateway stage machine now owns both the final stage and the final next_action whenever it clamps model output, which keeps persisted assistant metadata and dialogue.reply events internally consistent.
+
 ## 2026-03-09 - short-term memory is gateway-computed context
 
 - After step 26, short-term dialogue memory is computed from the persisted messages table inside apps/api-gateway and forwarded as metadata.short_term_memory; dialogue-service does not query storage directly.

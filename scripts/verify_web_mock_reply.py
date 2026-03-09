@@ -47,6 +47,22 @@ def resolve_database_url(env: dict[str, str]) -> str:
     )
 
 
+def ensure_database_ready(env: dict[str, str]) -> None:
+    database_url = resolve_database_url(env)
+    try:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+    except psycopg.Error as exc:
+        raise RuntimeError(
+            "postgres is not reachable; start the foundation stack first with "
+            "`docker compose -f infra/compose/docker-compose.yml up -d` "
+            "or run `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_infra_stack.py "
+            "--compose-file infra/compose/docker-compose.yml`"
+        ) from exc
+
+
 def reserve_local_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -67,6 +83,7 @@ def wait_for_health(url: str, label: str) -> None:
 
 def main() -> None:
     env = {**parse_env_file(ROOT / ".env.example"), **parse_env_file(ROOT / ".env"), **os.environ}
+    ensure_database_ready(env)
     dialogue_port = reserve_local_port()
     orchestrator_port = reserve_local_port()
     gateway_port = reserve_local_port()

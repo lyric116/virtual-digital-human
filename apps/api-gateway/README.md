@@ -85,6 +85,10 @@ From repository root:
 - The gateway treats the LLM stage as a proposal, not ground truth. It records
   `stage_before`, `model_stage`, and `stage_machine_reason` in assistant message metadata,
   then emits the resolved stage in `dialogue.reply`.
+- When the gateway rewrites a proposed stage, it also rewrites `next_action` to match the
+  resolved stage and keeps both requested values in metadata as
+  `model_stage` / `model_next_action`.
 - Before each dialogue request, the gateway reads the latest few messages from PostgreSQL
-  and forwards them as `metadata.short_term_memory`, which is the only memory layer used
-  before step 27 adds summaries.
+  and forwards them as `metadata.short_term_memory`, excluding the just-accepted current
+  user turn so the prompt does not duplicate the same message twice before step 27 adds
+  summaries.

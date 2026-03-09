@@ -291,6 +291,13 @@ class DialogueReplyResponse(BaseModel):
 
 
 SEQUENTIAL_DIALOGUE_STAGES = ["engage", "assess", "intervene", "reassess"]
+DEFAULT_STAGE_NEXT_ACTION = {
+    "engage": "ask_followup",
+    "assess": "ask_followup",
+    "intervene": "intervene",
+    "reassess": "reassess",
+    "handoff": "handoff",
+}
 
 
 class ASRServiceTranscriptionResponse(BaseModel):
@@ -326,6 +333,7 @@ class SessionRepository(Protocol):
         session_id: str,
         *,
         limit: int = 6,
+        exclude_message_id: str | None = None,
     ) -> list[dict[str, Any]]:
         ...
 
@@ -468,6 +476,17 @@ def resolve_session_stage_transition(
         return SEQUENTIAL_DIALOGUE_STAGES[current_index + 1], "prevent_forward_skip"
 
     return current_stage, "preserve_current_stage"
+
+
+def resolve_next_action_for_stage(
+    *,
+    proposed_stage: str,
+    resolved_stage: str,
+    proposed_next_action: str,
+) -> tuple[str, str]:
+    if resolved_stage == proposed_stage:
+        return proposed_next_action, "preserve_model_action"
+    return DEFAULT_STAGE_NEXT_ACTION.get(resolved_stage, "ask_followup"), "sync_to_resolved_stage"
 
 
 class PostgresSessionRepository:
@@ -745,26 +764,45 @@ class PostgresSessionRepository:
         session_id: str,
         *,
         limit: int = 6,
+        exclude_message_id: str | None = None,
     ) -> list[dict[str, Any]]:
         safe_limit = min(max(limit, 1), 10)
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT
-                        message_id,
-                        role,
-                        source_kind,
-                        content_text,
-                        metadata,
-                        submitted_at
-                    FROM messages
-                    WHERE session_id = %s
-                    ORDER BY submitted_at DESC, created_at DESC
-                    LIMIT %s
-                    """,
-                    (session_id, safe_limit),
-                )
+                if exclude_message_id:
+                    cur.execute(
+                        """
+                        SELECT
+                            message_id,
+                            role,
+                            source_kind,
+                            content_text,
+                            metadata,
+                            submitted_at
+                        FROM messages
+                        WHERE session_id = %s AND message_id <> %s
+                        ORDER BY submitted_at DESC, created_at DESC
+                        LIMIT %s
+                        """,
+                        (session_id, exclude_message_id, safe_limit),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT
+                            message_id,
+                            role,
+                            source_kind,
+                            content_text,
+                            metadata,
+                            submitted_at
+                        FROM messages
+                        WHERE session_id = %s
+                        ORDER BY submitted_at DESC, created_at DESC
+                        LIMIT %s
+                        """,
+                        (session_id, safe_limit),
+                    )
                 rows = cur.fetchall()
 
         history: list[dict[str, Any]] = []
@@ -983,17 +1021,24 @@ class PostgresSessionRepository:
                     proposed_stage=payload.stage,
                     risk_level=payload.risk_level,
                 )
+                resolved_next_action, next_action_machine_reason = resolve_next_action_for_stage(
+                    proposed_stage=payload.stage,
+                    resolved_stage=resolved_stage,
+                    proposed_next_action=payload.next_action,
+                )
                 assistant_metadata = {
                     "emotion": payload.emotion,
                     "risk_level": payload.risk_level,
                     "stage": resolved_stage,
-                    "next_action": payload.next_action,
+                    "next_action": resolved_next_action,
                     "knowledge_refs": payload.knowledge_refs,
                     "avatar_style": payload.avatar_style,
                     "safety_flags": payload.safety_flags,
                     "model_stage": payload.stage,
+                    "model_next_action": payload.next_action,
                     "stage_before": session_row["stage"],
                     "stage_machine_reason": stage_machine_reason,
+                    "next_action_machine_reason": next_action_machine_reason,
                 }
 
                 cur.execute(
@@ -1847,12 +1892,15 @@ async def dispatch_message_pipeline(
     await request.app.state.connection_registry.enqueue_event(session_id, accepted_event)
 
     try:
-        short_term_memory = repository.get_recent_dialogue_context(session_id, limit=6)
         dialogue_reply = request_dialogue_reply(
             settings,
             result["session"],
             result["message"],
-            short_term_memory=short_term_memory,
+            short_term_memory=repository.get_recent_dialogue_context(
+                session_id,
+                limit=6,
+                exclude_message_id=result["message"]["message_id"],
+            ),
         )
         assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
         assistant_metadata = assistant_result["message"].get("metadata", {})
@@ -1862,10 +1910,15 @@ async def dispatch_message_pipeline(
             payload={
                 **dialogue_reply.model_dump(mode="json"),
                 "stage": assistant_result["session"]["stage"],
+                "next_action": assistant_metadata.get("next_action", dialogue_reply.next_action),
                 "submitted_at": assistant_result["message"]["submitted_at"],
                 "stage_before": assistant_metadata.get("stage_before"),
                 "stage_requested": assistant_metadata.get("model_stage"),
                 "stage_machine_reason": assistant_metadata.get("stage_machine_reason"),
+                "next_action_requested": assistant_metadata.get("model_next_action"),
+                "next_action_machine_reason": assistant_metadata.get(
+                    "next_action_machine_reason"
+                ),
             },
             message_id=dialogue_reply.message_id,
             source_service="orchestrator",
