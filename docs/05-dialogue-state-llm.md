@@ -103,6 +103,16 @@ LLM 只负责“怎么说”，不独占“是否高风险”的判断权。
 - 使用边界：只用于最近几轮事实回忆和上下文衔接，不做长期画像
 - 当前验证：要求系统能在隔两轮后回忆出用户刚刚提供的姓名等事实
 
+当前仓库在步骤 27 已加上第二层阶段性摘要：
+
+- 触发条件：每累计 `3` 个用户回合生成一次摘要
+- 生成边界：摘要请求仍然走 `apps/orchestrator -> services/dialogue-service`，不把 LLM 调用塞回网关
+- 存储位置：`sessions.metadata.dialogue_summary`
+- 结构要点：`summary_text`、`current_stage`、`user_turn_count`、`generated_at`、`generated_from_message_id`
+- 复用方式：网关在后续调用对话服务时把该摘要作为 `metadata.dialogue_summary` 一并注入
+- 事件留痕：每次摘要更新都会记录 `dialogue.summary.updated` 到 `system_events`
+- 当前验证：连续 3 轮文本对话后必须能在 `/api/session/{session_id}/state` 和导出 JSON 中看到同一份摘要
+
 摘要内容至少包括：
 
 - 当前主要情绪

@@ -141,6 +141,7 @@ class SessionCreatedResponse(BaseModel):
     stage: str
     input_modes: list[str]
     avatar_id: str | None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     started_at: datetime
     updated_at: datetime
 
@@ -259,6 +260,7 @@ class SessionExportResponse(BaseModel):
     stage: str
     input_modes: list[str]
     avatar_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     started_at: datetime
     updated_at: datetime
     exported_at: datetime
@@ -290,6 +292,24 @@ class DialogueReplyResponse(BaseModel):
     safety_flags: list[str] = Field(default_factory=list)
 
 
+class DialogueSummaryRequest(BaseModel):
+    session_id: str
+    trace_id: str
+    current_stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    user_turn_count: int = Field(ge=1)
+    previous_summary: str | None = None
+    recent_messages: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DialogueSummaryResponse(BaseModel):
+    session_id: str
+    trace_id: str
+    summary_text: str
+    current_stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    user_turn_count: int = Field(ge=1)
+    generated_at: datetime
+
+
 SEQUENTIAL_DIALOGUE_STAGES = ["engage", "assess", "intervene", "reassess"]
 DEFAULT_STAGE_NEXT_ACTION = {
     "engage": "ask_followup",
@@ -298,6 +318,8 @@ DEFAULT_STAGE_NEXT_ACTION = {
     "reassess": "reassess",
     "handoff": "handoff",
 }
+SUMMARY_TRIGGER_TURN_INTERVAL = 3
+SUMMARY_CONTEXT_LIMIT = 8
 
 
 class ASRServiceTranscriptionResponse(BaseModel):
@@ -335,6 +357,16 @@ class SessionRepository(Protocol):
         limit: int = 6,
         exclude_message_id: str | None = None,
     ) -> list[dict[str, Any]]:
+        ...
+
+    def count_user_turns(self, session_id: str) -> int:
+        ...
+
+    def update_dialogue_summary(
+        self,
+        session_id: str,
+        summary_payload: dict[str, Any],
+    ) -> dict[str, Any]:
         ...
 
     def create_user_text_message(
@@ -487,6 +519,34 @@ def resolve_next_action_for_stage(
     if resolved_stage == proposed_stage:
         return proposed_next_action, "preserve_model_action"
     return DEFAULT_STAGE_NEXT_ACTION.get(resolved_stage, "ask_followup"), "sync_to_resolved_stage"
+
+
+def extract_dialogue_summary(session: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(session, dict):
+        return None
+    metadata = session.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    summary = metadata.get("dialogue_summary")
+    if not isinstance(summary, dict):
+        return None
+    if not str(summary.get("summary_text", "")).strip():
+        return None
+    return summary
+
+
+def should_refresh_dialogue_summary(
+    *,
+    user_turn_count: int,
+    existing_summary: dict[str, Any] | None,
+) -> bool:
+    if user_turn_count < SUMMARY_TRIGGER_TURN_INTERVAL:
+        return False
+    if user_turn_count % SUMMARY_TRIGGER_TURN_INTERVAL != 0:
+        return False
+    if not existing_summary:
+        return True
+    return existing_summary.get("user_turn_count") != user_turn_count
 
 
 class PostgresSessionRepository:
@@ -691,6 +751,7 @@ class PostgresSessionRepository:
                         stage,
                         input_modes,
                         avatar_id,
+                        metadata,
                         started_at,
                         updated_at
                     """,
@@ -825,7 +886,7 @@ class PostgresSessionRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT session_id, trace_id, status, stage, updated_at
+                    SELECT session_id, trace_id, status, stage, metadata, updated_at
                     FROM sessions
                     WHERE session_id = %s
                     """,
@@ -846,6 +907,7 @@ class PostgresSessionRepository:
                         stage,
                         input_modes,
                         avatar_id,
+                        metadata,
                         started_at,
                         updated_at
                     FROM sessions
@@ -894,6 +956,7 @@ class PostgresSessionRepository:
                         stage,
                         input_modes,
                         avatar_id,
+                        metadata,
                         started_at,
                         updated_at
                     FROM sessions
@@ -954,6 +1017,7 @@ class PostgresSessionRepository:
             "stage": session_row["stage"],
             "input_modes": session_row["input_modes"],
             "avatar_id": session_row["avatar_id"],
+            "metadata": session_row["metadata"] or {},
             "started_at": session_row["started_at"],
             "updated_at": session_row["updated_at"],
             "exported_at": datetime.now(timezone.utc),
@@ -965,6 +1029,62 @@ class PostgresSessionRepository:
             ),
             "events": events,
         }
+
+    def count_user_turns(self, session_id: str) -> int:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT COUNT(*) AS total
+                    FROM messages
+                    WHERE session_id = %s AND role = 'user'
+                    """,
+                    (session_id,),
+                )
+                row = cur.fetchone()
+        return int(row["total"]) if row is not None else 0
+
+    def update_dialogue_summary(
+        self,
+        session_id: str,
+        summary_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT metadata
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise KeyError(session_id)
+
+                session_metadata = dict(row["metadata"] or {})
+                session_metadata["dialogue_summary"] = summary_payload
+
+                cur.execute(
+                    """
+                    UPDATE sessions
+                    SET metadata = %(metadata)s, updated_at = %(updated_at)s
+                    WHERE session_id = %(session_id)s
+                    RETURNING session_id, trace_id, status, stage, metadata, updated_at
+                    """,
+                    {
+                        "session_id": session_id,
+                        "metadata": Jsonb(session_metadata),
+                        "updated_at": now,
+                    },
+                )
+                updated_row = cur.fetchone()
+
+        if updated_row is None:
+            raise RuntimeError("dialogue summary update returned no row")
+        return dict(updated_row)
 
     def create_user_text_message(
         self,
@@ -1625,6 +1745,7 @@ def request_dialogue_reply(
     message: dict[str, Any],
     *,
     short_term_memory: list[dict[str, Any]] | None = None,
+    dialogue_summary: dict[str, Any] | None = None,
 ) -> DialogueReplyResponse:
     request_payload = DialogueReplyRequest(
         session_id=session["session_id"],
@@ -1635,6 +1756,7 @@ def request_dialogue_reply(
         metadata={
             "source_service": "api_gateway",
             "short_term_memory": short_term_memory or [],
+            "dialogue_summary": dialogue_summary,
         },
     )
     body = json.dumps(request_payload.model_dump(mode="json")).encode("utf-8")
@@ -1660,6 +1782,47 @@ def request_dialogue_reply(
         return DialogueReplyResponse.model_validate(raw_payload)
     except ValidationError as exc:
         raise RuntimeError(f"invalid dialogue reply: {exc}") from exc
+
+
+def request_dialogue_summary(
+    settings: GatewaySettings,
+    session: dict[str, Any],
+    *,
+    user_turn_count: int,
+    previous_summary: str | None,
+    recent_messages: list[dict[str, Any]],
+) -> DialogueSummaryResponse:
+    request_payload = DialogueSummaryRequest(
+        session_id=session["session_id"],
+        trace_id=session["trace_id"],
+        current_stage=session["stage"],
+        user_turn_count=user_turn_count,
+        previous_summary=previous_summary,
+        recent_messages=recent_messages,
+    )
+    body = json.dumps(request_payload.model_dump(mode="json")).encode("utf-8")
+    request = urllib_request.Request(
+        url=f"{settings.orchestrator_base_url.rstrip('/')}/internal/dialogue/summarize",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib_request.urlopen(request, timeout=settings.orchestrator_timeout_seconds) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"orchestrator http {exc.code}: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError(f"orchestrator unavailable: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("orchestrator returned invalid json") from exc
+
+    try:
+        return DialogueSummaryResponse.model_validate(raw_payload)
+    except ValidationError as exc:
+        raise RuntimeError(f"invalid dialogue summary: {exc}") from exc
 
 
 def request_asr_transcription(
@@ -1873,6 +2036,46 @@ def create_audio_preview_record(
     }
 
 
+def maybe_refresh_dialogue_summary(
+    repository: SessionRepository,
+    settings: GatewaySettings,
+    session_id: str,
+    assistant_result: dict[str, Any],
+) -> dict[str, Any] | None:
+    user_turn_count = repository.count_user_turns(session_id)
+    existing_summary = extract_dialogue_summary(repository.get_session_summary(session_id))
+    if not should_refresh_dialogue_summary(
+        user_turn_count=user_turn_count,
+        existing_summary=existing_summary,
+    ):
+        return None
+
+    summary_response = request_dialogue_summary(
+        settings,
+        assistant_result["session"],
+        user_turn_count=user_turn_count,
+        previous_summary=(
+            str(existing_summary.get("summary_text")).strip()
+            if isinstance(existing_summary, dict) and existing_summary.get("summary_text")
+            else None
+        ),
+        recent_messages=repository.get_recent_dialogue_context(
+            session_id,
+            limit=SUMMARY_CONTEXT_LIMIT,
+        ),
+    )
+    summary_payload = {
+        **summary_response.model_dump(mode="json"),
+        "summary_version": 1,
+        "generated_from_message_id": assistant_result["message"]["message_id"],
+    }
+    updated_session = repository.update_dialogue_summary(session_id, summary_payload)
+    return {
+        "session": updated_session,
+        "summary": summary_payload,
+    }
+
+
 async def dispatch_message_pipeline(
     request: Request,
     session_id: str,
@@ -1880,6 +2083,15 @@ async def dispatch_message_pipeline(
 ) -> None:
     repository = request.app.state.session_repository
     settings: GatewaySettings = request.app.state.settings
+    persisted_session = repository.get_session_summary(session_id) or result["session"]
+    request_session = {
+        **result["session"],
+        "trace_id": persisted_session.get("trace_id", result["session"]["trace_id"]),
+        "status": persisted_session.get("status", result["session"]["status"]),
+        "stage": persisted_session.get("stage", result["session"]["stage"]),
+        "updated_at": persisted_session.get("updated_at", result["session"]["updated_at"]),
+        "metadata": persisted_session.get("metadata", {}),
+    }
 
     accepted_event = build_event_envelope(
         session=result["session"],
@@ -1894,13 +2106,14 @@ async def dispatch_message_pipeline(
     try:
         dialogue_reply = request_dialogue_reply(
             settings,
-            result["session"],
+            request_session,
             result["message"],
             short_term_memory=repository.get_recent_dialogue_context(
                 session_id,
                 limit=6,
                 exclude_message_id=result["message"]["message_id"],
             ),
+            dialogue_summary=extract_dialogue_summary(request_session),
         )
         assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
         assistant_metadata = assistant_result["message"].get("metadata", {})
@@ -1926,6 +2139,26 @@ async def dispatch_message_pipeline(
         dialogue_event = jsonable_encoder(dialogue_event)
         repository.record_system_event(dialogue_event)
         await request.app.state.connection_registry.enqueue_event(session_id, dialogue_event)
+        try:
+            summary_result = maybe_refresh_dialogue_summary(
+                repository,
+                settings,
+                session_id,
+                assistant_result,
+            )
+            if summary_result is not None:
+                summary_event = build_event_envelope(
+                    session=summary_result["session"],
+                    event_type="dialogue.summary.updated",
+                    payload=summary_result["summary"],
+                    message_id=summary_result["summary"]["generated_from_message_id"],
+                    source_service="orchestrator",
+                )
+                summary_event = jsonable_encoder(summary_event)
+                repository.record_system_event(summary_event)
+                await request.app.state.connection_registry.enqueue_event(session_id, summary_event)
+        except (KeyError, psycopg.Error, RuntimeError):
+            pass
     except (KeyError, psycopg.Error, RuntimeError) as exc:
         error_event = build_event_envelope(
             session=result["session"],

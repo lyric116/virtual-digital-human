@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -82,6 +83,24 @@ class DialogueReplyResponse(BaseModel):
     safety_flags: list[str] = Field(default_factory=list)
 
 
+class DialogueSummaryRequest(BaseModel):
+    session_id: str
+    trace_id: str
+    current_stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    user_turn_count: int = Field(ge=1)
+    previous_summary: str | None = None
+    recent_messages: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DialogueSummaryResponse(BaseModel):
+    session_id: str
+    trace_id: str
+    summary_text: str
+    current_stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    user_turn_count: int = Field(ge=1)
+    generated_at: datetime
+
+
 class LLMDialogueFields(BaseModel):
     reply: str
     emotion: str
@@ -111,6 +130,18 @@ class LLMDialogueFields(BaseModel):
             return None
         text = str(value).strip()
         return text or None
+
+
+class LLMSummaryFields(BaseModel):
+    summary_text: str
+
+    @field_validator("summary_text")
+    @classmethod
+    def normalize_summary_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("summary_text must not be empty")
+        return normalized
 
 
 def build_llm_client(settings: DialogueServiceSettings):
@@ -152,12 +183,35 @@ def build_dialogue_system_prompt() -> str:
     )
 
 
+def build_summary_system_prompt() -> str:
+    return (
+        "You are the structured dialogue summarizer for a mental-support virtual human. "
+        "Return one JSON object only with key: summary_text. "
+        "Write summary_text in Simplified Chinese, 1-2 short sentences, concise, "
+        "grounded in the provided previous_summary and recent_messages only. "
+        "Capture current concerns, key user facts, latest intervention direction, and "
+        "current_stage. Do not diagnose, do not invent facts, and do not use markdown."
+    )
+
+
 def build_dialogue_user_prompt(payload: DialogueReplyRequest) -> str:
     return json.dumps(
         {
             "current_stage": payload.current_stage,
             "user_text": payload.content_text,
             "metadata": payload.metadata,
+        },
+        ensure_ascii=False,
+    )
+
+
+def build_summary_user_prompt(payload: DialogueSummaryRequest) -> str:
+    return json.dumps(
+        {
+            "current_stage": payload.current_stage,
+            "user_turn_count": payload.user_turn_count,
+            "previous_summary": payload.previous_summary,
+            "recent_messages": payload.recent_messages,
         },
         ensure_ascii=False,
     )
@@ -228,6 +282,35 @@ def generate_dialogue_fields(
         raise RuntimeError(f"llm returned invalid dialogue fields: {exc}") from exc
 
 
+def generate_dialogue_summary_fields(
+    settings: DialogueServiceSettings,
+    payload: DialogueSummaryRequest,
+) -> LLMSummaryFields:
+    ensure_llm_configured(settings)
+    client = build_llm_client(settings)
+    completion = client.chat.completions.create(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": build_summary_system_prompt()},
+            {"role": "user", "content": build_summary_user_prompt(payload)},
+        ],
+        temperature=0,
+        max_tokens=180,
+        response_format={"type": "json_object"},
+    )
+    choices = getattr(completion, "choices", None) or []
+    if not choices:
+        raise RuntimeError("llm returned no choices")
+    content = extract_text_content(choices[0].message.content)
+    if not content:
+        raise RuntimeError("llm returned empty content")
+    parsed = extract_json_object(content)
+    try:
+        return LLMSummaryFields.model_validate(parsed)
+    except ValidationError as exc:
+        raise RuntimeError(f"llm returned invalid summary fields: {exc}") from exc
+
+
 def build_dialogue_reply(
     payload: DialogueReplyRequest,
     llm_fields: LLMDialogueFields,
@@ -244,6 +327,20 @@ def build_dialogue_reply(
         knowledge_refs=llm_fields.knowledge_refs,
         avatar_style=llm_fields.avatar_style,
         safety_flags=llm_fields.safety_flags,
+    )
+
+
+def build_dialogue_summary(
+    payload: DialogueSummaryRequest,
+    llm_fields: LLMSummaryFields,
+) -> DialogueSummaryResponse:
+    return DialogueSummaryResponse(
+        session_id=payload.session_id,
+        trace_id=payload.trace_id,
+        summary_text=llm_fields.summary_text,
+        current_stage=payload.current_stage,
+        user_turn_count=payload.user_turn_count,
+        generated_at=datetime.now(timezone.utc),
     )
 
 
@@ -271,6 +368,16 @@ def create_app() -> FastAPI:
     @app.post("/internal/dialogue/validate", response_model=DialogueReplyResponse)
     def validate(payload: DialogueReplyResponse) -> DialogueReplyResponse:
         return payload
+
+    @app.post("/internal/dialogue/summarize", response_model=DialogueSummaryResponse)
+    def summarize(payload: DialogueSummaryRequest) -> DialogueSummaryResponse:
+        try:
+            llm_fields = generate_dialogue_summary_fields(settings, payload)
+            return build_dialogue_summary(payload, llm_fields)
+        except RuntimeError as exc:
+            if "not configured" in str(exc):
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return app
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -73,6 +74,24 @@ class DialogueReplyResponse(BaseModel):
     safety_flags: list[str] = Field(default_factory=list)
 
 
+class DialogueSummaryRequest(BaseModel):
+    session_id: str
+    trace_id: str
+    current_stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    user_turn_count: int = Field(ge=1)
+    previous_summary: str | None = None
+    recent_messages: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DialogueSummaryResponse(BaseModel):
+    session_id: str
+    trace_id: str
+    summary_text: str
+    current_stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    user_turn_count: int = Field(ge=1)
+    generated_at: datetime
+
+
 def request_dialogue_reply(
     settings: OrchestratorSettings,
     payload: DialogueReplyRequest,
@@ -102,6 +121,35 @@ def request_dialogue_reply(
         raise RuntimeError(f"invalid dialogue reply: {exc}") from exc
 
 
+def request_dialogue_summary(
+    settings: OrchestratorSettings,
+    payload: DialogueSummaryRequest,
+) -> DialogueSummaryResponse:
+    request = urllib_request.Request(
+        url=f"{settings.dialogue_service_base_url.rstrip('/')}/internal/dialogue/summarize",
+        data=json.dumps(payload.model_dump(mode="json")).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    opener = urllib_request.build_opener(urllib_request.ProxyHandler({}))
+
+    try:
+        with opener.open(request, timeout=30) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"dialogue-service http {exc.code}: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError(f"dialogue-service unavailable: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("dialogue-service returned invalid json") from exc
+
+    try:
+        return DialogueSummaryResponse.model_validate(raw_payload)
+    except ValidationError as exc:
+        raise RuntimeError(f"invalid dialogue summary: {exc}") from exc
+
+
 def create_app() -> FastAPI:
     bootstrap_runtime_env()
     settings = OrchestratorSettings.from_env()
@@ -116,6 +164,10 @@ def create_app() -> FastAPI:
     @app.post("/internal/dialogue/respond", response_model=DialogueReplyResponse)
     def respond(payload: DialogueReplyRequest) -> DialogueReplyResponse:
         return request_dialogue_reply(settings, payload)
+
+    @app.post("/internal/dialogue/summarize", response_model=DialogueSummaryResponse)
+    def summarize(payload: DialogueSummaryRequest) -> DialogueSummaryResponse:
+        return request_dialogue_summary(settings, payload)
 
     return app
 

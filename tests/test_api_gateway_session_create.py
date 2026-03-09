@@ -32,6 +32,9 @@ class FakeSessionRepository:
         self.message_calls: list[dict] = []
         self.event_calls: list[dict] = []
         self.memory_calls: list[dict] = []
+        self.summary_update_calls: list[dict] = []
+        self.user_turn_count = 1
+        self.session_metadata: dict = {}
 
     def create_session(self, payload):
         dumped = payload.model_dump()
@@ -43,6 +46,7 @@ class FakeSessionRepository:
             "stage": "engage",
             "input_modes": dumped["input_modes"],
             "avatar_id": dumped.get("avatar_id") or "companion_female_01",
+            "metadata": dumped.get("metadata") or {},
             "started_at": "2026-03-07T14:00:00Z",
             "updated_at": "2026-03-07T14:00:00Z",
         }
@@ -53,6 +57,7 @@ class FakeSessionRepository:
             "trace_id": "trace_fake_001",
             "status": "active",
             "stage": "engage",
+            "metadata": self.session_metadata,
             "updated_at": "2026-03-07T14:01:00Z",
         }
 
@@ -65,6 +70,7 @@ class FakeSessionRepository:
                 "stage": "assess",
                 "input_modes": ["text", "audio"],
                 "avatar_id": "companion_female_01",
+                "metadata": self.session_metadata,
                 "started_at": "2026-03-07T14:00:00Z",
                 "updated_at": "2026-03-07T14:02:00Z",
             },
@@ -102,6 +108,7 @@ class FakeSessionRepository:
             "stage": "assess",
             "input_modes": ["text", "audio"],
             "avatar_id": "companion_female_01",
+            "metadata": self.session_metadata,
             "started_at": "2026-03-07T14:00:00Z",
             "updated_at": "2026-03-07T14:02:00Z",
             "exported_at": "2026-03-07T14:03:00Z",
@@ -206,6 +213,29 @@ class FakeSessionRepository:
                 "submitted_at": "2026-03-07T14:00:40Z",
             },
         ][:limit]
+
+    def count_user_turns(self, session_id: str):
+        return self.user_turn_count
+
+    def update_dialogue_summary(self, session_id: str, summary_payload: dict):
+        self.summary_update_calls.append(
+            {
+                "session_id": session_id,
+                "summary_payload": summary_payload,
+            }
+        )
+        self.session_metadata = {
+            **self.session_metadata,
+            "dialogue_summary": summary_payload,
+        }
+        return {
+            "session_id": session_id,
+            "trace_id": "trace_fake_001",
+            "status": "active",
+            "stage": "intervene",
+            "metadata": self.session_metadata,
+            "updated_at": "2026-03-07T14:01:05Z",
+        }
 
     def create_user_text_message(self, session_id: str, payload):
         dumped = payload.model_dump()
@@ -411,10 +441,30 @@ def test_request_dialogue_reply_includes_short_term_memory(monkeypatch):
                 "submitted_at": "2026-03-07T14:00:30Z",
             }
         ],
+        dialogue_summary={
+            "summary_text": "用户自述最近烦躁，并说明自己叫小李。",
+            "user_turn_count": 3,
+        },
     )
 
     assert response.reply == "你好，小李。"
     assert captured["body"]["metadata"]["short_term_memory"][0]["content_text"] == "我叫小李。"
+    assert captured["body"]["metadata"]["dialogue_summary"]["user_turn_count"] == 3
+
+
+def test_dialogue_summary_refresh_rule_respects_turn_interval():
+    module = load_gateway_module()
+
+    assert not module.should_refresh_dialogue_summary(user_turn_count=2, existing_summary=None)
+    assert module.should_refresh_dialogue_summary(user_turn_count=3, existing_summary=None)
+    assert not module.should_refresh_dialogue_summary(
+        user_turn_count=3,
+        existing_summary={"summary_text": "已有摘要", "user_turn_count": 3},
+    )
+    assert module.should_refresh_dialogue_summary(
+        user_turn_count=6,
+        existing_summary={"summary_text": "旧摘要", "user_turn_count": 3},
+    )
 
 
 def test_dispatch_pipeline_excludes_current_message_from_memory_and_syncs_next_action(monkeypatch):
@@ -431,9 +481,17 @@ def test_dispatch_pipeline_excludes_current_message_from_memory_and_syncs_next_a
         )
     )
 
-    def fake_request_dialogue_reply(settings, session, message, *, short_term_memory=None):
+    def fake_request_dialogue_reply(
+        settings,
+        session,
+        message,
+        *,
+        short_term_memory=None,
+        dialogue_summary=None,
+    ):
         assert short_term_memory is not None
         assert all(item["message_id"] != message["message_id"] for item in short_term_memory)
+        assert dialogue_summary is None
         return module.DialogueReplyResponse(
             session_id=session["session_id"],
             trace_id=session["trace_id"],
@@ -523,6 +581,100 @@ def test_dispatch_pipeline_excludes_current_message_from_memory_and_syncs_next_a
     assert dialogue_event["payload"]["stage"] == "intervene"
     assert dialogue_event["payload"]["next_action"] == "intervene"
     assert dialogue_event["payload"]["next_action_requested"] == "reassess"
+
+
+def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    repository.user_turn_count = 3
+    connection_registry = module.ConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+
+    def fake_request_dialogue_reply(
+        settings,
+        session,
+        message,
+        *,
+        short_term_memory=None,
+        dialogue_summary=None,
+    ):
+        assert short_term_memory is not None
+        assert dialogue_summary is None
+        return module.DialogueReplyResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            message_id="msg_assistant_003",
+            reply="我们先把主要压力点整理一下。",
+            emotion="anxious",
+            risk_level="medium",
+            stage="intervene",
+            next_action="intervene",
+            knowledge_refs=["breathing_478"],
+            avatar_style="warm_support",
+            safety_flags=[],
+        )
+
+    def fake_request_dialogue_summary(
+        settings,
+        session,
+        *,
+        user_turn_count,
+        previous_summary,
+        recent_messages,
+    ):
+        assert user_turn_count == 3
+        assert previous_summary is None
+        assert len(recent_messages) >= 2
+        return module.DialogueSummaryResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            summary_text="用户反复提到睡眠和课堂分心，当前进入 intervene 阶段。",
+            current_stage=session["stage"],
+            user_turn_count=user_turn_count,
+            generated_at="2026-03-07T14:01:05Z",
+        )
+
+    monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
+    monkeypatch.setattr(module, "request_dialogue_summary", fake_request_dialogue_summary)
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "assess",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_fake_001",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "我还是有点乱，先帮我总结一下。",
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                },
+            },
+        )
+    )
+
+    assert repository.summary_update_calls[0]["summary_payload"]["summary_text"].startswith("用户反复提到")
+    assert repository.session_metadata["dialogue_summary"]["generated_from_message_id"] == "msg_assistant_003"
+    assert repository.event_calls[-1]["event_type"] == "dialogue.summary.updated"
+    assert repository.event_calls[-1]["payload"]["user_turn_count"] == 3
 
 
 def test_text_message_rejects_blank_content():

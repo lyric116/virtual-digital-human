@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, and 26:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 26, and 27:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -28,6 +28,8 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, a
   invalid jumps
 - step 26: package the recent dialogue turns as short-term memory and forward them to
   the dialogue service without adding any long-term profile layer
+- step 27: generate and persist a compact dialogue summary every three user turns so
+  longer sessions stop relying only on raw recent turns
 
 ## Files
 
@@ -90,5 +92,7 @@ From repository root:
   `model_stage` / `model_next_action`.
 - Before each dialogue request, the gateway reads the latest few messages from PostgreSQL
   and forwards them as `metadata.short_term_memory`, excluding the just-accepted current
-  user turn so the prompt does not duplicate the same message twice before step 27 adds
-  summaries.
+  user turn so the prompt does not duplicate the same message twice.
+- Every third user turn, the gateway asks orchestrator for a compact summary, stores it in
+  `sessions.metadata.dialogue_summary`, and records a `dialogue.summary.updated` event so
+  exports and reconnects keep one stable summary snapshot.

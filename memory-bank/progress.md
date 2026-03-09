@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - step 27 dialogue summaries
+
+### Scope
+
+Added staged dialogue summaries that are generated every three user turns, persisted into session metadata, and reused on later dialogue requests without changing the frontend shell.
+
+### Outputs
+
+- services/dialogue-service/main.py now exposes /internal/dialogue/summarize and generates structured Chinese summary_text payloads through the real LLM boundary
+- apps/orchestrator/main.py now proxies /internal/dialogue/summarize so the gateway still talks only to orchestrator for dialogue capabilities
+- apps/api-gateway/main.py now persists sessions.metadata.dialogue_summary, emits dialogue.summary.updated, and forwards existing summaries back into metadata.dialogue_summary on later turns
+- scripts/verify_dialogue_summary_memory.py now proves summary generation after three turns plus persistence across state reload and export
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 107 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_short_term_memory.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_summary_memory.py
+
+### Next
+
+- Continue implementation plan with step 28 high-risk rule precheck on top of the now-persisted summary context
+
 ## 2026-03-09 - post-review fixes for steps 23-26
 
 ### Scope

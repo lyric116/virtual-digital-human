@@ -34,6 +34,20 @@ def build_request(module, *, content_text: str, current_stage: str = "engage"):
     )
 
 
+def build_summary_request(module):
+    return module.DialogueSummaryRequest(
+        session_id="sess_fake_001",
+        trace_id="trace_fake_001",
+        current_stage="intervene",
+        user_turn_count=3,
+        previous_summary="用户最近反复提到睡眠受影响。",
+        recent_messages=[
+            {"role": "user", "content_text": "我白天上课也有点分心。"},
+            {"role": "assistant", "content_text": "我们先做一个缓和练习。"},
+        ],
+    )
+
+
 def make_fake_client(response_content: str):
     class FakeCompletions:
         def __init__(self):
@@ -114,6 +128,22 @@ def test_dialogue_service_extracts_json_from_fenced_response(monkeypatch):
     assert "high_risk_expression" in response.safety_flags
 
 
+def test_dialogue_service_generates_structured_summary(monkeypatch):
+    module = load_dialogue_module()
+    fake_client, fake_completions = make_fake_client(
+        '{"summary_text":"用户持续提到睡眠受影响和上课分心，当前已进入 intervene 并开始缓和建议。"}'
+    )
+    monkeypatch.setattr(module, "build_llm_client", lambda settings: fake_client)
+
+    response = module.generate_dialogue_summary_fields(
+        build_settings(module),
+        build_summary_request(module),
+    )
+
+    assert "睡眠受影响" in response.summary_text
+    assert fake_completions.calls[0]["response_format"] == {"type": "json_object"}
+
+
 def test_dialogue_service_rejects_invalid_llm_stage(monkeypatch):
     module = load_dialogue_module()
     fake_client, _ = make_fake_client(
@@ -164,4 +194,6 @@ def test_dialogue_service_app_and_readme_document_validation_endpoint():
     assert "/health" in paths
     assert "/internal/dialogue/respond" in paths
     assert "/internal/dialogue/validate" in paths
+    assert "/internal/dialogue/summarize" in paths
     assert "POST /internal/dialogue/validate" in content
+    assert "POST /internal/dialogue/summarize" in content

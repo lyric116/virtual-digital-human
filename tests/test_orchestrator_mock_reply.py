@@ -30,6 +30,20 @@ def build_request(module, *, content_text: str, current_stage: str = "engage"):
     )
 
 
+def build_summary_request(module):
+    return module.DialogueSummaryRequest(
+        session_id="sess_fake_001",
+        trace_id="trace_fake_001",
+        current_stage="intervene",
+        user_turn_count=3,
+        previous_summary="用户提到睡眠和实习压力。",
+        recent_messages=[
+            {"role": "user", "content_text": "上课时有点分心。"},
+            {"role": "assistant", "content_text": "先做一次呼吸练习。"},
+        ],
+    )
+
+
 def test_orchestrator_parses_valid_dialogue_service_response(monkeypatch):
     module = load_orchestrator_module()
     payload = build_request(module, content_text="我这两天睡不好，晚上脑子停不下来。")
@@ -103,6 +117,41 @@ def test_orchestrator_rejects_invalid_dialogue_service_stage(monkeypatch):
     raise AssertionError("expected orchestrator to reject invalid dialogue reply payload")
 
 
+def test_orchestrator_parses_valid_dialogue_summary(monkeypatch):
+    module = load_orchestrator_module()
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return (
+                b'{"session_id":"sess_fake_001","trace_id":"trace_fake_001",'
+                b'"summary_text":"\xe7\x94\xa8\xe6\x88\xb7\xe6\x8c\x81\xe7\xbb\xad\xe6\x8f\x90\xe5\x88\xb0\xe7\x9d\xa1\xe7\x9c\xa0\xe5\x92\x8c\xe5\x88\x86\xe5\xbf\x83\xef\xbc\x8c\xe5\xbd\x93\xe5\x89\x8d\xe5\xb7\xb2\xe8\xbf\x9b\xe5\x85\xa5 intervene \xe9\x98\xb6\xe6\xae\xb5\xe3\x80\x82",'
+                b'"current_stage":"intervene","user_turn_count":3,'
+                b'"generated_at":"2026-03-09T09:30:00Z"}'
+            )
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr(module.urllib_request, "build_opener", lambda *args: FakeOpener())
+    response = module.request_dialogue_summary(
+        module.OrchestratorSettings.from_env(),
+        build_summary_request(module),
+    )
+
+    assert response.user_turn_count == 3
+    assert response.current_stage == "intervene"
+    assert "睡眠" in response.summary_text
+
+
 def test_orchestrator_app_and_readme_document_mock_reply_endpoint():
     module = load_orchestrator_module()
     app = module.create_app()
@@ -110,7 +159,9 @@ def test_orchestrator_app_and_readme_document_mock_reply_endpoint():
 
     assert "/health" in paths
     assert "/internal/dialogue/respond" in paths
+    assert "/internal/dialogue/summarize" in paths
 
     content = ORCHESTRATOR_README.read_text(encoding="utf-8")
     assert "POST /internal/dialogue/respond" in content
+    assert "POST /internal/dialogue/summarize" in content
     assert "services/dialogue-service" in content

@@ -41,6 +41,7 @@ validation data.
 | `stage` | string | Yes | `engage`, `assess`, `intervene`, `reassess`, or `handoff`. |
 | `input_modes` | array[string] | Yes | Enabled inputs, for example `["text", "audio"]`. |
 | `avatar_id` | string | No | Current selected avatar id. |
+| `metadata` | object | No | Session-scoped runtime data such as persisted `dialogue_summary`. |
 | `started_at` | string | Yes | Session creation time. |
 | `updated_at` | string | Yes | Last mutation time. |
 
@@ -72,6 +73,7 @@ envelope.
 - `transcript.final`
 - `affect.snapshot`
 - `dialogue.reply`
+- `dialogue.summary.updated`
 - `avatar.command`
 - `session.error`
 
@@ -194,6 +196,23 @@ avatar selection.
 | `knowledge_refs` | array[string] | No | Retrieved KB ids used for grounding. |
 | `avatar_style` | string | No | Style hint used by TTS and avatar layers. |
 | `safety_flags` | array[string] | No | Triggered policy or risk flags. |
+
+## Dialogue Summary
+
+This payload is produced after every configured summary interval and stored in
+`sessions.metadata.dialogue_summary`. It is also emitted as `dialogue.summary.updated`
+for export and reconnect observability.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `session_id` | string | Yes | Current session id. |
+| `trace_id` | string | Yes | Session trace id. |
+| `summary_text` | string | Yes | Compact Chinese summary of recent dialogue state. |
+| `current_stage` | string | Yes | Stage captured when the summary was generated. |
+| `user_turn_count` | integer | Yes | User-turn count covered by the summary snapshot. |
+| `generated_at` | string | Yes | Summary generation time. |
+| `summary_version` | integer | No | Internal summary shape version. |
+| `generated_from_message_id` | string | No | Assistant message id that triggered the summary refresh. |
 
 ## Avatar Command
 

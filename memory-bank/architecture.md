@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - step 27 dialogue summary layer
+
+- The dialogue stack now has two bounded context layers: metadata.short_term_memory carries the last few raw turns, while sessions.metadata.dialogue_summary carries one persisted compressed summary every three user turns for longer-session continuity.
+- The gateway owns summary persistence and eventing, not summary generation: it requests summaries through orchestrator, stores them in sessions.metadata.dialogue_summary, and records dialogue.summary.updated in system_events so reconnect and export both see the same summary snapshot.
+
 ## 2026-03-09 - dialogue verifier scripts require database preflight
 
 - Live verifier scripts that exercise the gateway text path now perform an explicit PostgreSQL readiness check before starting local services, so missing Docker foundation services fail with a direct infrastructure error instead of secondary websocket or session-create symptoms.
