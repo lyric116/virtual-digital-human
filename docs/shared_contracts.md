@@ -195,7 +195,7 @@ avatar selection.
 | `next_action` | string | Yes | Action selected by orchestrator. |
 | `knowledge_refs` | array[string] | No | Retrieved KB ids used for grounding. |
 | `avatar_style` | string | No | Style hint used by TTS and avatar layers. |
-| `safety_flags` | array[string] | No | Triggered policy or risk flags. Gateway high-risk precheck may emit `high_risk_rule_precheck` and `rule_hit:*`. |
+| `safety_flags` | array[string] | No | Triggered policy or risk flags. Gateway high-risk precheck may emit `high_risk_rule_precheck` and `rule_hit:*`; dialogue fallback may emit `dialogue_fallback_response` and `dialogue_fallback_reason:*`. |
 
 ## Dialogue Summary
 

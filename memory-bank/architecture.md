@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - dialogue-service now owns main-chain fallback
+
+- When the upstream LLM path times out, returns empty content, or produces invalid JSON/fields, services/dialogue-service/respond must return a contract-valid fallback reply instead of surfacing a transport error to gateway and frontend.
+- The fallback path is observable through safety_flags using dialogue_fallback_response plus dialogue_fallback_reason:*, which lets replay, export, and future evaluation distinguish real model output from degraded-safe replies without breaking the shared dialogue contract.
+- DIALOGUE_FORCE_FAILURE_MODE is now a verifier-only switch used to simulate timeout or malformed-output cases in live integration tests; it should remain unset in normal runtime.
+
 ## 2026-03-09 - gateway now owns pre-llm high-risk short-circuit
 
 - Obvious self-harm or suicide language is now intercepted in apps/api-gateway before any orchestrator or dialogue-service call; the gateway itself generates a fixed handoff reply, forces risk_level=high and stage=handoff, and records high_risk_rule_precheck in safety_flags.

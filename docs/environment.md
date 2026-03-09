@@ -106,6 +106,7 @@ code or deployment files.
 | `LLM_MODEL` | Yes | `gpt-5.4` | Model identifier for structured dialogue generation and summary generation. |
 | `LLM_TIMEOUT_SECONDS` | Yes | `60` | End-to-end timeout per LLM request. |
 | `LLM_CONTEXT_WINDOW` | Yes | `8192` | Minimum supported context budget for prompts and history. |
+| `DIALOGUE_FORCE_FAILURE_MODE` | No | empty | Verifier-only fault injection switch for step 29. Supported values: `timeout`, `empty`, `invalid_json`, `invalid_fields`. |
 
 ## ASR
 

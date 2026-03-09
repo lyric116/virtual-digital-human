@@ -21,6 +21,30 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - step 29 dialogue fallback recovery
+
+### Scope
+
+Completed implementation plan step 29 by teaching dialogue-service to return a safe fallback DialogueReplyResponse when the upstream LLM path times out, returns empty content, or produces invalid output, and added a live verifier that proves the web flow still reaches dialogue.reply under forced failure.
+
+### Outputs
+
+- services/dialogue-service/main.py
+- scripts/verify_dialogue_fallback_reply.py
+- docs/05-dialogue-state-llm.md
+- docs/environment.md
+- .env.example
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 126 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_fallback_reply.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py
+
+### Next
+
+- Continue implementation plan with step 30 single-voice TTS on top of the now-stable dialogue fallback path
+
 ## 2026-03-09 - step 28 high-risk precheck and immediate message ack
 
 ### Scope

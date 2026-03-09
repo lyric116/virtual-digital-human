@@ -54,6 +54,7 @@ class DialogueServiceSettings:
     llm_model: str
     llm_timeout_seconds: float
     llm_context_window: int
+    dialogue_force_failure_mode: str
 
     @classmethod
     def from_env(cls) -> "DialogueServiceSettings":
@@ -66,6 +67,7 @@ class DialogueServiceSettings:
             llm_model=os.getenv("LLM_MODEL", "set-your-llm-model"),
             llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "60")),
             llm_context_window=int(os.getenv("LLM_CONTEXT_WINDOW", "8192")),
+            dialogue_force_failure_mode=os.getenv("DIALOGUE_FORCE_FAILURE_MODE", "").strip(),
         )
 
 
@@ -151,6 +153,15 @@ class LLMSummaryFields(BaseModel):
         if not normalized:
             raise ValueError("summary_text must not be empty")
         return normalized
+
+
+FALLBACK_NEXT_ACTION = {
+    "engage": "ask_followup",
+    "assess": "ask_followup",
+    "intervene": "intervene",
+    "reassess": "reassess",
+    "handoff": "handoff",
+}
 
 
 def build_llm_client(settings: DialogueServiceSettings):
@@ -266,6 +277,15 @@ def generate_dialogue_fields(
     settings: DialogueServiceSettings,
     payload: DialogueReplyRequest,
 ) -> LLMDialogueFields:
+    if settings.dialogue_force_failure_mode == "timeout":
+        raise TimeoutError("forced timeout for verifier")
+    if settings.dialogue_force_failure_mode == "empty":
+        raise RuntimeError("llm returned empty content")
+    if settings.dialogue_force_failure_mode == "invalid_json":
+        raise RuntimeError("llm response did not contain valid json")
+    if settings.dialogue_force_failure_mode == "invalid_fields":
+        raise RuntimeError("llm returned invalid dialogue fields: forced invalid fields")
+
     ensure_llm_configured(settings)
     client = build_llm_client(settings)
     completion = client.chat.completions.create(
@@ -353,6 +373,73 @@ def build_dialogue_summary(
     )
 
 
+def classify_dialogue_fallback_reason(exc: Exception) -> str:
+    message = str(exc).strip().lower()
+    if "not configured" in message:
+        return "not_configured"
+    if isinstance(exc, TimeoutError) or "timed out" in message or "timeout" in message:
+        return "timeout"
+    if "empty content" in message:
+        return "empty_output"
+    if "invalid dialogue fields" in message or "valid json" in message or "json object" in message:
+        return "invalid_output"
+    return "upstream_error"
+
+
+def build_dialogue_fallback_reply(
+    payload: DialogueReplyRequest,
+    exc: Exception,
+) -> DialogueReplyResponse:
+    reason = classify_dialogue_fallback_reason(exc)
+    fallback_stage = "assess" if payload.current_stage == "engage" else payload.current_stage
+    if fallback_stage == "handoff":
+        reply = (
+            "我先用安全回退模式继续陪你。"
+            "如果你现在有伤害自己或他人的打算，请立刻联系身边可信任的人，并尽快联系辅导员、家人、校医院或当地急救资源。"
+        )
+        risk_level = "high"
+        emotion = "guarded"
+        avatar_style = "calm_guarded"
+    elif fallback_stage == "intervene":
+        reply = (
+            "我先用基础回退模式继续陪你，不让这次对话中断。"
+            "先把呼吸放慢一点，再告诉我此刻身体或情绪最明显的不适是什么。"
+        )
+        risk_level = "medium"
+        emotion = "supportive"
+        avatar_style = "warm_support"
+    elif fallback_stage == "reassess":
+        reply = (
+            "我先用基础回退模式继续接住你。"
+            "和刚才相比，现在有没有哪一点稍微缓下来，或者最难受的部分还停留在哪里？"
+        )
+        risk_level = "medium"
+        emotion = "supportive"
+        avatar_style = "warm_support"
+    else:
+        reply = (
+            "我先用基础回退模式继续陪你，不让这次对话中断。"
+            "如果你现在有伤害自己或他人的打算，请立刻联系身边可信任的人并尽快寻求线下帮助；除此之外，先告诉我此刻最困扰你的那一件事。"
+        )
+        risk_level = "medium"
+        emotion = "supportive"
+        avatar_style = "warm_support"
+
+    return DialogueReplyResponse(
+        session_id=payload.session_id,
+        trace_id=payload.trace_id,
+        message_id=f"msg_assistant_{uuid4().hex[:16]}",
+        reply=reply,
+        emotion=emotion,
+        risk_level=risk_level,
+        stage=fallback_stage,
+        next_action=FALLBACK_NEXT_ACTION.get(fallback_stage, "ask_followup"),
+        knowledge_refs=[],
+        avatar_style=avatar_style,
+        safety_flags=["dialogue_fallback_response", f"dialogue_fallback_reason:{reason}"],
+    )
+
+
 def translate_llm_exception(exc: Exception) -> HTTPException:
     if isinstance(exc, HTTPException):
         return exc
@@ -382,7 +469,9 @@ def create_app() -> FastAPI:
             llm_fields = generate_dialogue_fields(settings, payload)
             return build_dialogue_reply(payload, llm_fields)
         except Exception as exc:
-            raise translate_llm_exception(exc) from exc
+            if isinstance(exc, HTTPException):
+                raise exc
+            return build_dialogue_fallback_reply(payload, exc)
 
     @app.post("/internal/dialogue/validate", response_model=DialogueReplyResponse)
     def validate(payload: DialogueReplyResponse) -> DialogueReplyResponse:

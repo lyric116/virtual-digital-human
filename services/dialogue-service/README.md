@@ -2,12 +2,13 @@
 
 ## Purpose
 
-This service now covers implementation plan steps 23, 24, and 27:
+This service now covers implementation plan steps 23, 24, 27, and 29:
 
 - own the dialogue reply schema
 - validate all dialogue payloads against that schema
 - call the configured real LLM while preserving the same response contract
 - generate compact staged dialogue summaries for longer sessions
+- return a safe fallback dialogue reply when the upstream LLM path fails
 
 ## Files
 
@@ -36,6 +37,7 @@ Required environment variables:
 - `LLM_API_KEY`
 - `LLM_MODEL`
 - `LLM_TIMEOUT_SECONDS`
+- `DIALOGUE_FORCE_FAILURE_MODE` (optional, verifier only)
 
 ## Notes
 
@@ -45,6 +47,9 @@ Required environment variables:
   answer simple factual recall questions over the last few turns.
 - `POST /internal/dialogue/summarize` uses the same LLM boundary to compress recent turns
   plus any prior summary into one short Chinese summary string.
+- If the upstream LLM times out, returns empty content, or produces invalid JSON/fields,
+  the `respond` route now returns a safe fallback `DialogueReplyResponse` instead of
+  failing the main dialogue chain.
 - `POST /internal/dialogue/validate` is the strict schema gate used to reject malformed
   response payloads before they can leak into orchestrator or gateway code.
 - Obvious self-harm or suicide expressions are now intercepted earlier by the gateway
@@ -52,3 +57,5 @@ Required environment variables:
   this service.
 - `scripts/verify_dialogue_llm_samples.py` runs five fixed text samples against the real
   provider and reports latency statistics plus high-risk routing behavior.
+- `scripts/verify_dialogue_fallback_reply.py` forces a timeout failure mode and proves the
+  frontend still receives a persisted fallback assistant reply.

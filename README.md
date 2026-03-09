@@ -22,6 +22,8 @@ Current repository state:
 - the gateway now applies a deterministic high-risk text precheck before any dialogue
   service call and short-circuits obvious self-harm or suicide expressions directly to
   `handoff`
+- `services/dialogue-service` now returns a safe fallback reply instead of breaking the
+  main chain when the upstream LLM path times out or returns invalid output
 - the frontend now renders a recoverable chat timeline and restores session history from
   the gateway session state endpoint
 - the current text session can now be exported as JSON with messages, stage history, and
@@ -102,6 +104,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_short_term_memory.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_summary_memory.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_high_risk_precheck.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_fallback_reply.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`

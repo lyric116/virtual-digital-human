@@ -80,6 +80,7 @@ def build_settings(module):
         llm_model="test-model",
         llm_timeout_seconds=12.0,
         llm_context_window=8192,
+        dialogue_force_failure_mode="",
     )
 
 
@@ -213,7 +214,22 @@ def test_dialogue_service_translate_llm_exception_handles_runtime_and_generic_er
     assert generic_error.detail == "ValueError: invalid auth"
 
 
-def test_dialogue_service_routes_translate_generic_sdk_errors(monkeypatch):
+def test_dialogue_service_builds_fallback_reply_for_timeout():
+    module = load_dialogue_module()
+
+    response = module.build_dialogue_fallback_reply(
+        build_request(module, content_text="普通文本", current_stage="engage"),
+        TimeoutError("request timed out"),
+    )
+
+    assert response.stage == "assess"
+    assert response.risk_level == "medium"
+    assert "dialogue_fallback_response" in response.safety_flags
+    assert "dialogue_fallback_reason:timeout" in response.safety_flags
+    assert "基础回退模式" in response.reply
+
+
+def test_dialogue_service_routes_fallback_on_reply_error_and_keep_summary_errors(monkeypatch):
     module = load_dialogue_module()
     app = module.create_app()
     respond_route = next(route for route in app.routes if route.path == "/internal/dialogue/respond")
@@ -228,13 +244,11 @@ def test_dialogue_service_routes_translate_generic_sdk_errors(monkeypatch):
     monkeypatch.setattr(module, "generate_dialogue_fields", boom_reply)
     monkeypatch.setattr(module, "generate_dialogue_summary_fields", boom_summary)
 
-    try:
-        respond_route.endpoint(build_request(module, content_text="普通文本"))
-    except module.HTTPException as exc:
-        assert exc.status_code == 502
-        assert exc.detail == "TimeoutError: request timed out"
-    else:
-        raise AssertionError("expected respond route to translate generic error")
+    response = respond_route.endpoint(build_request(module, content_text="普通文本"))
+    assert response.stage == "assess"
+    assert response.risk_level == "medium"
+    assert "dialogue_fallback_response" in response.safety_flags
+    assert "dialogue_fallback_reason:timeout" in response.safety_flags
 
     try:
         summarize_route.endpoint(build_summary_request(module))

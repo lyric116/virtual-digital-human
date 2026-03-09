@@ -68,6 +68,15 @@ LLM 只负责“怎么说”，不独占“是否高风险”的判断权。
 - 留痕方式：`safety_flags` 增加 `high_risk_rule_precheck`，导出事件增加 `rule_precheck_triggered=true`
 - 当前验证：即使把 `ORCHESTRATOR_BASE_URL` 指向不可用地址，高风险样例也必须完成 `message.accepted -> dialogue.reply`
 
+当前仓库在步骤 29 已增加对话失败回退层：
+
+- 规则位置：`services/dialogue-service`
+- 触发条件：LLM 超时、空输出、非法 JSON、非法字段
+- 处理动作：返回固定安全基础回复，而不是抛出错误中断主链路
+- 当前落点：`respond` 路由回退；`summarize` 路由仍保持失败即报错，由网关静默跳过摘要更新
+- 留痕方式：`safety_flags` 增加 `dialogue_fallback_response` 与 `dialogue_fallback_reason:*`
+- 当前验证：强制 `DIALOGUE_FORCE_FAILURE_MODE=timeout` 时，前端仍必须收到 `dialogue.reply`，且数据库中不能出现同轮 `session.error`
+
 ## 6. Prompt 结构
 
 建议拆成 5 段：
@@ -137,6 +146,7 @@ LLM 只负责“怎么说”，不独占“是否高风险”的判断权。
 - 明确禁止提供危险行为指导。
 - 在 `handoff` 阶段固定插入求助资源模板。
 - 对明显高风险表达，优先走规则层短路，不等待 LLM 再决定是否升级。
+- 对普通对话中的模型故障，优先走安全回退模板，不让主链路卡死在错误页或长时间等待中。
 
 ## 10. 工具调用建议
 
