@@ -90,18 +90,35 @@
             <h2>Avatar Stage</h2>
           </div>
           <p class="panel-summary">
-            Dedicated space for avatar playback, subtitle overlay, and speaking state.
+            One static 2D avatar baseline now switches between idle and speaking states with the
+            current reply playback.
           </p>
           <div class="avatar-stage">
-            <div class="avatar-card">
-              <p class="avatar-label">Avatar A</p>
-              <div class="avatar-portrait portrait-a"></div>
-              <p class="avatar-meta">Warm support / soft expression / low motion</p>
-            </div>
-            <div class="avatar-card">
-              <p class="avatar-label">Avatar B</p>
-              <div class="avatar-portrait portrait-b"></div>
-              <p class="avatar-meta">Structured guidance / stronger pacing / clearer cues</p>
+            <div class="avatar-baseline-card" id="avatar-baseline-card" data-avatar-state="idle">
+              <div class="avatar-baseline-header">
+                <div>
+                  <p class="avatar-label">Companion Avatar A</p>
+                  <p class="avatar-meta">Warm support / static 2D baseline / low motion</p>
+                </div>
+                <span class="avatar-state-pill" id="avatar-character-state-value">idle</span>
+              </div>
+              <div class="avatar-baseline-canvas" aria-hidden="true">
+                <div class="avatar-halo"></div>
+                <div class="avatar-figure">
+                  <div class="avatar-head">
+                    <span class="avatar-hair"></span>
+                    <span class="avatar-eye avatar-eye-left"></span>
+                    <span class="avatar-eye avatar-eye-right"></span>
+                    <span class="avatar-mouth" id="avatar-mouth-shape"></span>
+                  </div>
+                  <div class="avatar-neck"></div>
+                  <div class="avatar-body"></div>
+                </div>
+              </div>
+              <p class="avatar-character-detail" id="avatar-character-detail-value">
+                静态角色等待中。
+              </p>
+              <p class="avatar-stage-note">Step 34 will add the second avatar and a distinct voice.</p>
             </div>
             <div class="subtitle-bar">
               <span>Latest reply</span>

@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - Static avatar baseline state mapping
+
+- Step 32 keeps the avatar layer intentionally thin: apps/web owns the first visual avatar state machine, and it currently derives idle versus speaking directly from frontend TTS playback rather than from any separate avatar-driver service.
+- The repository now treats the single-avatar static stage as the minimum digital-human baseline; the second avatar, mouth motion, and stage-driven expressions remain separate later steps and should not be backfilled into this baseline implicitly.
+
 ## 2026-03-09 - Frontend TTS playback boundary
 
 - The browser now calls services/tts-service directly after dialogue.reply, so TTS_CORS_ORIGINS and WEB_PUBLIC_TTS_BASE_URL are part of the stable local preview contract.

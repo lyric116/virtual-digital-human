@@ -47,6 +47,8 @@ Current repository state:
   single-voice speech asset and returns a local `audio_url`
 - the frontend now consumes `services/tts-service` directly so one assistant reply can be
   spoken with synced subtitle text and replay controls in the avatar panel
+- the avatar stage now has one static 2D baseline character that switches between idle
+  and speaking while reply audio is playing
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -123,6 +125,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/tts-service main:app --host 0.0.0.0 --port 8040`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_tts_service.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_baseline.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`

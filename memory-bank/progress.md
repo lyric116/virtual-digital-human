@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - Step 32 static avatar baseline
+
+### Scope
+
+Replaced the placeholder avatar cards with one static 2D baseline character and bound its visual state to the current TTS playback lifecycle so the stage visibly switches between idle and speaking.
+
+### Outputs
+
+- Added one single-avatar baseline stage in apps/web/index.html with explicit idle/speaking labels and a static 2D figure
+- Mapped frontend avatar visual state directly from TTS playback in apps/web/app.js without introducing lip sync or a second avatar
+- Added avatar baseline regression coverage through tests/test_web_avatar_baseline.py and scripts/verify_web_avatar_baseline.py
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 134 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_baseline.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py -> passed
+
+### Next
+
+- Step 33: add basic mouth open-close driving while audio is playing
+
 ## 2026-03-09 - Step 31 frontend TTS playback
 
 ### Scope

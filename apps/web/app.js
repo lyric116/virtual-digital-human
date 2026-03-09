@@ -129,6 +129,9 @@
       transcriptUserFinalText: findRequiredElement(rootDocument, "transcript-user-final-text"),
       transcriptAssistantReplyText: findRequiredElement(rootDocument, "transcript-assistant-reply-text"),
       avatarLatestReplyText: findRequiredElement(rootDocument, "avatar-latest-reply-text"),
+      avatarBaselineCard: findOptionalElement(rootDocument, "avatar-baseline-card"),
+      avatarCharacterStateValue: findOptionalElement(rootDocument, "avatar-character-state-value"),
+      avatarCharacterDetailValue: findOptionalElement(rootDocument, "avatar-character-detail-value"),
       avatarSpeechStateValue: findOptionalElement(rootDocument, "avatar-speech-state-value"),
       avatarSpeechDetailValue: findOptionalElement(rootDocument, "avatar-speech-detail-value"),
       avatarVoiceValue: findOptionalElement(rootDocument, "avatar-voice-value"),
@@ -357,6 +360,17 @@
     return state.ttsPlaybackMessage || "等待系统回复并合成语音。";
   }
 
+  function getAvatarVisualState(state) {
+    return state.ttsPlaybackState === "playing" ? "speaking" : "idle";
+  }
+
+  function getAvatarVisualDetail(state) {
+    if (state.ttsPlaybackState === "playing") {
+      return "静态角色说话中。";
+    }
+    return "静态角色等待中。";
+  }
+
   function getExportStatusMessage(state) {
     if (!state.sessionId) {
       return "创建或恢复会话后可导出当前 JSON。";
@@ -532,6 +546,16 @@
     elements.transcriptUserFinalText.textContent = state.lastAcceptedText || "等待用户提交文本...";
     elements.transcriptAssistantReplyText.textContent = state.lastReplyText || "等待 mock orchestrator reply...";
     elements.avatarLatestReplyText.textContent = state.lastReplyText || "等待 mock reply...";
+    const avatarVisualState = getAvatarVisualState(state);
+    if (elements.avatarBaselineCard && typeof elements.avatarBaselineCard.dataset === "object") {
+      elements.avatarBaselineCard.dataset.avatarState = avatarVisualState;
+    }
+    if (elements.avatarCharacterStateValue) {
+      elements.avatarCharacterStateValue.textContent = avatarVisualState;
+    }
+    if (elements.avatarCharacterDetailValue) {
+      elements.avatarCharacterDetailValue.textContent = getAvatarVisualDetail(state);
+    }
     if (elements.avatarSpeechStateValue) {
       elements.avatarSpeechStateValue.textContent = state.ttsPlaybackState;
     }
@@ -572,6 +596,7 @@
     rootDocument.body.dataset.audioUploadState = state.audioUploadState;
     rootDocument.body.dataset.partialTranscriptState = state.partialTranscriptState;
     rootDocument.body.dataset.ttsPlaybackState = state.ttsPlaybackState;
+    rootDocument.body.dataset.avatarVisualState = avatarVisualState;
   }
 
   function validateDialogueReplyPayload(payload) {
