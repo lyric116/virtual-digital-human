@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-09 - handoff summary is now the first resume surface
+
+- memory-bank/handoff-summary.md is now the canonical first-read file when resuming work in a new chat; it summarizes goal, model policy, completed steps, current stable commit, and next planned step before a developer drills into progress.md or architecture.md.
+- memory-bank/handoff-summary.json provides the same repository snapshot in machine-readable form so future automation or agents can recover the current state without scraping long markdown logs.
+
 ## 2026-03-09 - Gateway pipeline and live verifiers after real dialogue-service
 
 - Gateway HTTP handlers must return quickly and move DB plus upstream network work into background thread execution; otherwise websocket heartbeats and concurrent UI flows are vulnerable to event-loop stalls.

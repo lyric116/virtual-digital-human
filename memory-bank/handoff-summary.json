@@ -1,0 +1,92 @@
+{
+  "date": "2026-03-09",
+  "stable_commit": {
+    "sha": "f810599",
+    "title": "fix: harden gateway async pipeline and live verifiers"
+  },
+  "plan_status": {
+    "completed_through_step": 27,
+    "next_step": 28,
+    "next_step_title": "high-risk rule precheck"
+  },
+  "project_goal": "Build a multimodal emotional-support virtual digital human system with text/voice/camera input, ASR, stage-controlled LLM response, avatar output, and replay/evaluation.",
+  "model_policy": {
+    "asr": {
+      "provider": "DashScope",
+      "model": "qwen3-asr-flash",
+      "env_keys": [
+        "ASR_API_KEY",
+        "ASR_BASE_URL",
+        "ASR_MODEL"
+      ],
+      "notes": "Use qwen only for ASR."
+    },
+    "dialogue": {
+      "provider": "OpenAI-compatible",
+      "model": "gpt-5.4",
+      "env_keys": [
+        "LLM_PROVIDER",
+        "LLM_BASE_URL",
+        "LLM_API_KEY",
+        "LLM_MODEL"
+      ],
+      "notes": "Use gpt-5.4 for dialogue and summary generation."
+    }
+  },
+  "major_workstreams": [
+    "Repository guideline and architecture document set",
+    "Detailed implementation plan and data specification",
+    "Enterprise data manifest, transcript workflow, and QC pipeline",
+    "Standalone ASR service with qwen3-asr-flash",
+    "MAGICDATA-based public Chinese ASR evaluation lane",
+    "Frontend shell, gateway, realtime session flow, export, and trace continuity",
+    "Recording controls, audio upload, preview/final ASR transcript flow",
+    "Dialogue-service schema gate, real LLM integration, stage machine, short-term memory, and dialogue summary",
+    "Post-review hardening for async IO, websocket delivery, MIME handling, env parsing, and verifier topology"
+  ],
+  "completed_steps": [
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+    "18B", "18C", 19, 20, 21, 22, "22A", 23, 24, 25, 26, 27
+  ],
+  "enterprise_data": {
+    "manifest_path": "data/manifests/val_manifest.jsonl",
+    "transcript_workflow_path": "data/derived/transcripts/val_transcripts_template.jsonl",
+    "qc_report_path": "data/derived/qc_report.md",
+    "notes": [
+      "Current sampled review subset is mostly French.",
+      "Do not create Chinese gold references from the enterprise subset unless a fluent reviewer is available."
+    ]
+  },
+  "public_chinese_eval": {
+    "dataset": "MAGICDATA dev+test",
+    "catalog_path": "data/derived/transcripts-local/magicdata_eval_all.jsonl",
+    "frozen_subset_path": "data/derived/transcripts-local/magicdata_eval_core.jsonl",
+    "report_path": "data/derived/eval-local/magicdata_asr_baseline_report.md",
+    "details_path": "data/derived/eval-local/magicdata_asr_baseline_details.json"
+  },
+  "runtime": {
+    "infra_compose": "infra/compose/docker-compose.yml",
+    "frontend": "apps/web",
+    "gateway": "apps/api-gateway/main.py",
+    "orchestrator": "apps/orchestrator/main.py",
+    "dialogue_service": "services/dialogue-service/main.py",
+    "asr_service": "services/asr-service/main.py"
+  },
+  "last_verified_state": {
+    "full_test_result": "122 passed",
+    "notes": [
+      "Latest stability pass fixed blocking gateway work inside async routes.",
+      "WebSocket duplicate/loss edge cases were fixed.",
+      "Parameterized MIME types like audio/webm;codecs=opus are now normalized.",
+      "Live verifier scripts now boot dialogue-service when orchestrator depends on it."
+    ]
+  },
+  "resume_rules": [
+    "Read handoff-summary.md, then progress.md and architecture.md.",
+    "Continue from implementation plan step 28 unless redirected.",
+    "Use uv run for Python commands.",
+    "Run tests before every commit.",
+    "Commit and push only after passing checks.",
+    "Do not use rm for rollback; rollback through git."
+  ]
+}

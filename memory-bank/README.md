@@ -11,6 +11,10 @@ first when resuming work after a pause or a handoff.
   - append-only implementation log
 - `architecture.md`
   - stable repository structure and architecture insights
+- `handoff-summary.md`
+  - human-readable cross-chat summary and resume guide
+- `handoff-summary.json`
+  - machine-readable snapshot of current project state
 
 ## Update Rules
 

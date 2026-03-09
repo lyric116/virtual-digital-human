@@ -21,6 +21,27 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-09 - add cross-chat handoff summary
+
+### Scope
+
+Added a durable handoff summary in markdown and json so a new conversation can resume the repository state, decisions, and next step without replaying the full chat history.
+
+### Outputs
+
+- memory-bank/handoff-summary.md
+- memory-bank/handoff-summary.json
+- memory-bank/README.md
+
+### Checks
+
+- Verified the new handoff files were created under memory-bank/
+- Planned JSON parse and markdown heading validation next
+
+### Next
+
+- Use the handoff summary as the first read in a new chat before progress.md and architecture.md
+
 ## 2026-03-09 - Fix gateway async IO and verifier regressions
 
 ### Scope
