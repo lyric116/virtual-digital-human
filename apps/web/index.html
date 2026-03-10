@@ -16,7 +16,7 @@
           <p class="hero-copy">
             Frontend console for the early interaction loop. Session bootstrap is now
             connected to the gateway, while transcript, emotion, and avatar modules
-            remain placeholders.
+            are being wired step by step through stable service contracts.
           </p>
         </div>
         <div class="hero-badges">
@@ -235,29 +235,52 @@
             <h2>Emotion Panel</h2>
           </div>
           <p class="panel-summary">
-            Placeholder cards for text, audio, video, and fused affect state.
+            Step-37 affect snapshot view. Text, audio, video, and fusion stay lightweight
+            for now, but the panel already reserves sample source and conflict fields.
+          </p>
+          <p class="emotion-panel-status" id="emotion-panel-status" aria-live="polite">
+            等待 affect-service 返回第一版占位结果。
           </p>
           <div class="signal-grid">
             <article class="signal-card">
               <span>Text</span>
-              <strong>Anxious</strong>
-              <small>keyword: sleep pressure</small>
+              <strong id="text-signal-value">pending</strong>
+              <small id="text-signal-confidence">confidence: pending</small>
+              <small id="text-signal-detail">文本路尚未接入。</small>
             </article>
             <article class="signal-card">
               <span>Audio</span>
-              <strong>Pending</strong>
-              <small>voice features not connected</small>
+              <strong id="audio-signal-value">pending</strong>
+              <small id="audio-signal-confidence">confidence: pending</small>
+              <small id="audio-signal-detail">音频路尚未接入。</small>
             </article>
             <article class="signal-card">
               <span>Video</span>
-              <strong>Pending</strong>
-              <small>camera analysis not connected</small>
+              <strong id="video-signal-value">pending</strong>
+              <small id="video-signal-confidence">confidence: pending</small>
+              <small id="video-signal-detail">视频路尚未接入。</small>
             </article>
             <article class="signal-card fusion">
               <span>Fusion</span>
+              <strong id="fusion-emotion-value">pending</strong>
               <strong id="fusion-risk-value">pending</strong>
+              <small id="fusion-confidence-value">confidence: pending</small>
+              <small id="fusion-conflict-value">conflict: pending</small>
+              <small id="fusion-detail-value">等待融合结果。</small>
               <small id="fusion-stage-value">stage: idle / next: pending</small>
             </article>
+          </div>
+          <div class="emotion-source-grid">
+            <div class="capture-meta">
+              <span>Source origin</span>
+              <strong id="emotion-source-origin-value">live_web_session</strong>
+              <small id="emotion-source-note-value">enterprise sample pending binding</small>
+            </div>
+            <div class="capture-meta">
+              <span>Sample dataset</span>
+              <strong id="emotion-source-dataset-value">live_web</strong>
+              <small id="emotion-source-record-value">session/pending</small>
+            </div>
           </div>
         </section>
 

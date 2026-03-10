@@ -158,6 +158,14 @@ V2 再升级为轻量 Transformer，用于更细的时序建模。
 - `video_result`
 - `fusion_result`
 
+当前仓库中的 step-37 基线先提供一个更轻的统一服务边界：
+
+- `POST /internal/affect/analyze`
+- 直接输出 `text_result / audio_result / video_result / fusion_result`
+- 同时返回 `source_context.origin / dataset / record_id / note`
+
+这样前端可以先把结果稳定挂载到 Emotion Panel，而后续步骤 38-41 只需要逐步替换内部 lane 逻辑，不必再改展示层契约。
+
 ## 10. 训练与标注建议
 
 - 优先使用公开情绪数据集训练基础分类器。

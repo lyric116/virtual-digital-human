@@ -64,6 +64,9 @@ Current repository state:
 - the frontend capture panel now supports camera permission, local preview, and
   low-frequency `video_frame` uploads to the gateway so the video modality can enter the
   system before affect inference is attached
+- `services/affect-service` now provides a stable step-37 placeholder contract for
+  text/audio/video/fusion snapshots, and the frontend emotion panel renders those lane
+  results plus sample source metadata without blocking the main dialogue chain
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -115,6 +118,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/api-gateway main:app --host 0.0.0.0 --port 8000`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/orchestrator main:app --host 0.0.0.0 --port 8010`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/dialogue-service main:app --host 0.0.0.0 --port 8030`
+- `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/affect-service main:app --host 0.0.0.0 --port 8060`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
@@ -132,6 +136,8 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_camera_capture.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_affect_service.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_emotion_panel.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_partial_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/asr-service main:app --host 0.0.0.0 --port 8020`

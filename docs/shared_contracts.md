@@ -198,6 +198,36 @@ the accepted final user message, not a separate `transcript.final` event, after 
 | `draft_segments` | array[object] | No | Segment-level draft details when available. |
 | `audio_path_16k_mono` | string | No | Standardized offline audio path for evaluation. |
 
+## Affect Snapshot
+
+This payload is used by `POST /internal/affect/analyze` and rendered directly by the
+frontend emotion panel in step 37. The first implementation is deterministic and
+placeholder-driven, but later text, audio, video, and fusion analysis should preserve
+the same outer shape.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `session_id` | string | Yes | Current session id. |
+| `trace_id` | string | No | Trace id associated with the current affect refresh. |
+| `current_stage` | string | Yes | Dialogue stage at the time of this snapshot. |
+| `generated_at` | string | Yes | Snapshot generation time. |
+| `source_context.origin` | string | Yes | Data source such as `web-shell` or `enterprise_validation_manifest`. |
+| `source_context.dataset` | string | Yes | Source dataset such as `live_web`, `noxi`, or `recola`. |
+| `source_context.record_id` | string | Yes | Stable sample identifier for replay or live session binding. |
+| `source_context.note` | string | No | Human-readable binding note shown in the UI. |
+| `text_result.status` | string | Yes | `ready`, `pending`, or `offline`. |
+| `text_result.label` | string | Yes | Coarse text-lane label. |
+| `text_result.confidence` | number | Yes | Placeholder confidence in step 37, real confidence later. |
+| `text_result.detail` | string | Yes | Human-readable explanation shown in the UI. |
+| `audio_result.*` | object | Yes | Same shape as `text_result` for the audio lane. |
+| `video_result.*` | object | Yes | Same shape as `text_result` for the video lane. |
+| `fusion_result.emotion_state` | string | Yes | Unified affect state shown in the panel. |
+| `fusion_result.risk_level` | string | Yes | `low`, `medium`, or `high`. |
+| `fusion_result.confidence` | number | Yes | Fused confidence value. |
+| `fusion_result.conflict` | boolean | Yes | Whether the current lanes disagree strongly enough to require clarification. |
+| `fusion_result.conflict_reason` | string | No | Conflict explanation placeholder. |
+| `fusion_result.detail` | string | Yes | Human-readable fusion summary. |
+
 ## Dialogue Result
 
 This payload is produced by dialogue orchestration and consumed by frontend, logs, and

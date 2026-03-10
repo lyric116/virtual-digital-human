@@ -21,6 +21,41 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 37 Emotion Panel And Affect Service
+
+### Scope
+
+Completed implementation plan step 37 by adding a standalone affect-service placeholder contract, wiring the frontend emotion panel to text/audio/video/fusion snapshot rendering, and reserving enterprise sample source fields in the UI.
+
+### Outputs
+
+- services/affect-service/main.py
+- services/affect-service/README.md
+- apps/web/index.html
+- apps/web/app.js
+- apps/web/styles.css
+- scripts/web_emotion_panel_harness.js
+- scripts/verify_affect_service.py
+- scripts/verify_web_emotion_panel.py
+- tests/test_affect_service.py
+- tests/test_web_emotion_panel.py
+- docs/04-multimodal-affect.md
+- docs/shared_contracts.md
+- docs/environment.md
+
+### Checks
+
+- Ran node --check apps/web/app.js and scripts/web_emotion_panel_harness.js.
+- Ran uv run python -m py_compile on affect-service and verifier scripts.
+- Ran uv run pytest tests/test_affect_service.py tests/test_web_emotion_panel.py tests/test_web_shell.py tests/test_environment_inventory.py and confirmed 13 tests passed.
+- Ran uv run python scripts/verify_affect_service.py and uv run python scripts/verify_web_emotion_panel.py.
+- Ran uv run pytest and confirmed 162 tests passed.
+
+### Next
+
+- Implementation plan step 38: replace text-lane placeholders with a real lightweight text emotion baseline.
+- Keep the affect outer contract stable while later steps replace lane internals.
+
 ## 2026-03-10 - Review fixes for session input modes and media validation
 
 ### Scope

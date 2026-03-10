@@ -31,6 +31,7 @@ code or deployment files.
 | `WEB_PUBLIC_API_BASE_URL` | Yes | `http://localhost:8000` | Browser-side API entrypoint. |
 | `WEB_PUBLIC_WS_URL` | Yes | `ws://localhost:8000/ws` | Browser-side realtime endpoint. |
 | `WEB_PUBLIC_TTS_BASE_URL` | Yes | `http://localhost:8040` | Browser-side TTS entrypoint used by avatar playback to request synthesized audio. |
+| `WEB_PUBLIC_AFFECT_BASE_URL` | Yes | `http://localhost:8060` | Browser-side affect entrypoint used by the emotion panel placeholder analysis. |
 | `WEB_DEFAULT_AVATAR_ID` | No | `companion_female_01` | Default avatar shown before session state loads. |
 
 ## Gateway
@@ -60,6 +61,15 @@ code or deployment files.
 | `DIALOGUE_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for dialogue schema and generation service. |
 | `DIALOGUE_SERVICE_PORT` | Yes | `8030` | Internal HTTP port for dialogue-service APIs. |
 | `DIALOGUE_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8030` | Orchestrator-facing base URL used for validated dialogue reply calls. |
+
+## Affect Service
+
+| Variable | Required | Default / Example | Purpose |
+| --- | --- | --- | --- |
+| `AFFECT_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for the affect placeholder and later multimodal inference service. |
+| `AFFECT_SERVICE_PORT` | Yes | `8060` | HTTP port for the standalone affect service. |
+| `AFFECT_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8060` | Browser-facing base URL used by the step-37 emotion panel. |
+| `AFFECT_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173` | Browser origins allowed to call the affect service directly during frontend preview. |
 
 ## PostgreSQL
 

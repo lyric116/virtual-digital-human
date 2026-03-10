@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - Affect Snapshot Contract Is Now The Multimodal Mount Point
+
+- services/affect-service is now the stable step-37 boundary for text/audio/video/fusion placeholder output, so steps 38-41 should replace lane internals without changing the outer response shape or the frontend panel ids.
+- apps/web/app.js now treats affect refreshes as best-effort side calls: the dialogue, ASR, camera, and TTS main chains continue even when affect-service is unavailable or returns invalid data.
+- Affect sample source display uses source_context.origin, dataset, record_id, and note, which reserves a direct path for enterprise manifest binding without redesigning the Emotion Panel later.
+
 ## 2026-03-10 - media ingestion requires explicit parameter validation
 
 - Session bootstrap from the web shell must now advertise [text, audio, video] so exported session metadata matches the actual capture capabilities. Gateway media helpers must reject invalid sequence numbers, dimensions, and negative durations at the boundary with stable 400 responses; otherwise bad browser input can leak into media_indexes or trigger late response-model failures.

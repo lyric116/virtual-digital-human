@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, 33, 34, 35, and 36:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, 33, 34, 35, 36, and 37:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -45,6 +45,9 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
 - step 36: the capture panel now requests camera permission, starts and stops local
   preview, and uploads low-frequency `video_frame` snapshots to the gateway without
   attaching any visual inference yet
+- step 37: the emotion panel now requests one placeholder snapshot from
+  `services/affect-service` and renders text/audio/video/fusion cards plus sample source
+  metadata without blocking the main dialogue chain
 
 ## Files
 
@@ -60,7 +63,7 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
     followed by frontend TTS synthesis, avatar audio playback, subtitle sync, static
     avatar state switching, basic mouth cue playback, dual-avatar selection, and
     stage-driven expression preset mapping, plus camera preview and low-frequency video
-    frame upload
+    frame upload, followed by affect panel snapshot fetch and rendering
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -76,6 +79,8 @@ From repository root:
   - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/dialogue-service main:app --host 0.0.0.0 --port 8030`
 - start the TTS service:
   - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/tts-service main:app --host 0.0.0.0 --port 8040`
+- start the affect service:
+  - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/affect-service main:app --host 0.0.0.0 --port 8060`
 - `python3 -m http.server 4173 --directory apps/web`
 
 Then open:
@@ -87,8 +92,10 @@ Then open:
 - `window.__APP_CONFIG__.apiBaseUrl` defaults to `http://127.0.0.1:8000`
 - `window.__APP_CONFIG__.wsUrl` defaults to `ws://127.0.0.1:8000/ws`
 - `window.__APP_CONFIG__.ttsBaseUrl` defaults to `http://127.0.0.1:8040`
+- `window.__APP_CONFIG__.affectBaseUrl` defaults to `http://127.0.0.1:8060`
 - `.env.example` exposes `WEB_PUBLIC_API_BASE_URL`, `WEB_PUBLIC_WS_URL`,
-  `WEB_PUBLIC_TTS_BASE_URL`, `GATEWAY_CORS_ORIGINS`, and `TTS_CORS_ORIGINS` for local browser preview
+  `WEB_PUBLIC_TTS_BASE_URL`, `WEB_PUBLIC_AFFECT_BASE_URL`, `GATEWAY_CORS_ORIGINS`,
+  `TTS_CORS_ORIGINS`, and `AFFECT_CORS_ORIGINS` for local browser preview
 - only `Start Session` and `Export` are live in this step; pause and reset remain disabled
 - `Send Text` is live only after session bootstrap and a connected realtime channel
 - microphone controls can now upload temporary audio chunks to the gateway after a
@@ -125,6 +132,9 @@ Then open:
   when browser download APIs are available
 - the control panel also shows the latest user and assistant `trace_id` values observed
   from realtime events
+- the emotion panel now renders a deterministic placeholder snapshot from
+  `POST /internal/affect/analyze`, including sample source fields reserved for later
+  enterprise replay binding
 
 ## Verification
 
@@ -145,3 +155,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_mouth_drive.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_switch.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_expression_presets.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_emotion_panel.py`

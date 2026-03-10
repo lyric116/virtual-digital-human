@@ -721,12 +721,24 @@ body::before {
   gap: 12px;
 }
 
+.emotion-panel-status {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .signal-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 16px;
   border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
 }
 
 .signal-card span {
@@ -744,6 +756,13 @@ body::before {
 
 .signal-card.fusion {
   background: linear-gradient(180deg, rgba(15, 108, 104, 0.16), rgba(255, 250, 242, 0.94));
+}
+
+.emotion-source-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .button-row button {

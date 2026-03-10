@@ -6,6 +6,7 @@
   const defaultApiBaseUrl = "http://127.0.0.1:8000";
   const defaultWsUrl = "ws://127.0.0.1:8000/ws";
   const defaultTtsBaseUrl = "http://127.0.0.1:8040";
+  const defaultAffectBaseUrl = "http://127.0.0.1:8060";
   const defaultAvatarId = "companion_female_01";
   const avatarProfiles = {
     companion_female_01: {
@@ -132,6 +133,7 @@
       apiBaseUrl: config.apiBaseUrl || config.gatewayBaseUrl || defaultApiBaseUrl,
       wsUrl: config.wsUrl || defaultWsUrl,
       ttsBaseUrl: config.ttsBaseUrl || defaultTtsBaseUrl,
+      affectBaseUrl: config.affectBaseUrl || defaultAffectBaseUrl,
       defaultAvatarId: resolveAvatarId(config.defaultAvatarId || defaultAvatarId),
       activeSessionStorageKey: config.activeSessionStorageKey || "virtual-human-active-session-id",
       heartbeatIntervalMs: config.heartbeatIntervalMs || 5000,
@@ -141,6 +143,45 @@
       audioPreviewChunkThreshold: config.audioPreviewChunkThreshold || 2,
       videoFrameUploadIntervalMs: config.videoFrameUploadIntervalMs || 1800,
       autoplayAssistantAudio: config.autoplayAssistantAudio !== false,
+    };
+  }
+
+  function createInitialAffectSnapshot() {
+    return {
+      panelState: "idle",
+      panelMessage: "等待 affect-service 返回第一版占位结果。",
+      sourceContext: {
+        origin: "live_web_session",
+        dataset: "live_web",
+        recordId: "session/pending",
+        note: "enterprise sample pending binding",
+      },
+      text: {
+        status: "pending",
+        label: "pending",
+        confidence: 0,
+        detail: "文本路尚未接入。",
+      },
+      audio: {
+        status: "pending",
+        label: "pending",
+        confidence: 0,
+        detail: "音频路尚未接入。",
+      },
+      video: {
+        status: "pending",
+        label: "pending",
+        confidence: 0,
+        detail: "视频路尚未接入。",
+      },
+      fusion: {
+        emotionState: "pending",
+        riskLevel: "pending",
+        confidence: 0,
+        conflict: false,
+        conflictReason: null,
+        detail: "等待融合结果。",
+      },
     };
   }
 
@@ -205,6 +246,7 @@
       lastReplyRiskLevel: "pending",
       lastReplyNextAction: "pending",
       lastStageTransition: "idle → idle",
+      affectSnapshot: createInitialAffectSnapshot(),
       ttsPlaybackState: "idle",
       ttsPlaybackMessage: "等待系统回复并合成语音。",
       ttsAudioUrl: null,
@@ -285,8 +327,26 @@
       avatarDurationValue: findOptionalElement(rootDocument, "avatar-duration-value"),
       avatarReplayButton: findOptionalElement(rootDocument, "avatar-replay-button"),
       avatarAudioPlayer: findOptionalElement(rootDocument, "avatar-audio-player"),
+      emotionPanelStatus: findOptionalElement(rootDocument, "emotion-panel-status"),
+      textSignalValue: findOptionalElement(rootDocument, "text-signal-value"),
+      textSignalConfidence: findOptionalElement(rootDocument, "text-signal-confidence"),
+      textSignalDetail: findOptionalElement(rootDocument, "text-signal-detail"),
+      audioSignalValue: findOptionalElement(rootDocument, "audio-signal-value"),
+      audioSignalConfidence: findOptionalElement(rootDocument, "audio-signal-confidence"),
+      audioSignalDetail: findOptionalElement(rootDocument, "audio-signal-detail"),
+      videoSignalValue: findOptionalElement(rootDocument, "video-signal-value"),
+      videoSignalConfidence: findOptionalElement(rootDocument, "video-signal-confidence"),
+      videoSignalDetail: findOptionalElement(rootDocument, "video-signal-detail"),
+      fusionEmotionValue: findOptionalElement(rootDocument, "fusion-emotion-value"),
       fusionRiskValue: findRequiredElement(rootDocument, "fusion-risk-value"),
+      fusionConfidenceValue: findOptionalElement(rootDocument, "fusion-confidence-value"),
+      fusionConflictValue: findOptionalElement(rootDocument, "fusion-conflict-value"),
+      fusionDetailValue: findOptionalElement(rootDocument, "fusion-detail-value"),
       fusionStageValue: findRequiredElement(rootDocument, "fusion-stage-value"),
+      emotionSourceOriginValue: findOptionalElement(rootDocument, "emotion-source-origin-value"),
+      emotionSourceDatasetValue: findOptionalElement(rootDocument, "emotion-source-dataset-value"),
+      emotionSourceRecordValue: findOptionalElement(rootDocument, "emotion-source-record-value"),
+      emotionSourceNoteValue: findOptionalElement(rootDocument, "emotion-source-note-value"),
       timelineUserText: findRequiredElement(rootDocument, "timeline-user-text"),
       timelineAssistantText: findRequiredElement(rootDocument, "timeline-assistant-text"),
       timelineStageText: findRequiredElement(rootDocument, "timeline-stage-text"),
@@ -327,6 +387,13 @@
       return "0.0s";
     }
     return `${(value / 1000).toFixed(1)}s`;
+  }
+
+  function formatConfidence(value) {
+    if (typeof value !== "number" || value <= 0) {
+      return "confidence: pending";
+    }
+    return `confidence: ${value.toFixed(2)}`;
   }
 
   function getNavigatorLike(rootWindow) {
@@ -926,8 +993,69 @@
     if (elements.avatarReplayButton) {
       elements.avatarReplayButton.disabled = !state.ttsAudioUrl || state.ttsPlaybackState === "synthesizing";
     }
-    elements.fusionRiskValue.textContent = state.lastReplyRiskLevel;
+    const affectSnapshot = state.affectSnapshot || createInitialAffectSnapshot();
+    if (elements.emotionPanelStatus) {
+      elements.emotionPanelStatus.textContent = affectSnapshot.panelMessage;
+    }
+    if (elements.textSignalValue) {
+      elements.textSignalValue.textContent = affectSnapshot.text.label;
+    }
+    if (elements.textSignalConfidence) {
+      elements.textSignalConfidence.textContent = formatConfidence(affectSnapshot.text.confidence);
+    }
+    if (elements.textSignalDetail) {
+      elements.textSignalDetail.textContent = affectSnapshot.text.detail;
+    }
+    if (elements.audioSignalValue) {
+      elements.audioSignalValue.textContent = affectSnapshot.audio.label;
+    }
+    if (elements.audioSignalConfidence) {
+      elements.audioSignalConfidence.textContent = formatConfidence(affectSnapshot.audio.confidence);
+    }
+    if (elements.audioSignalDetail) {
+      elements.audioSignalDetail.textContent = affectSnapshot.audio.detail;
+    }
+    if (elements.videoSignalValue) {
+      elements.videoSignalValue.textContent = affectSnapshot.video.label;
+    }
+    if (elements.videoSignalConfidence) {
+      elements.videoSignalConfidence.textContent = formatConfidence(affectSnapshot.video.confidence);
+    }
+    if (elements.videoSignalDetail) {
+      elements.videoSignalDetail.textContent = affectSnapshot.video.detail;
+    }
+    if (elements.fusionEmotionValue) {
+      elements.fusionEmotionValue.textContent = affectSnapshot.fusion.emotionState;
+    }
+    elements.fusionRiskValue.textContent = (
+      affectSnapshot.fusion.riskLevel && affectSnapshot.fusion.riskLevel !== "pending"
+        ? affectSnapshot.fusion.riskLevel
+        : state.lastReplyRiskLevel
+    );
+    if (elements.fusionConfidenceValue) {
+      elements.fusionConfidenceValue.textContent = formatConfidence(affectSnapshot.fusion.confidence);
+    }
+    if (elements.fusionConflictValue) {
+      elements.fusionConflictValue.textContent = affectSnapshot.fusion.conflict
+        ? `conflict: ${affectSnapshot.fusion.conflictReason || "true"}`
+        : "conflict: false";
+    }
+    if (elements.fusionDetailValue) {
+      elements.fusionDetailValue.textContent = affectSnapshot.fusion.detail;
+    }
     elements.fusionStageValue.textContent = `stage: ${state.stage} / next: ${state.lastReplyNextAction}`;
+    if (elements.emotionSourceOriginValue) {
+      elements.emotionSourceOriginValue.textContent = affectSnapshot.sourceContext.origin;
+    }
+    if (elements.emotionSourceDatasetValue) {
+      elements.emotionSourceDatasetValue.textContent = affectSnapshot.sourceContext.dataset;
+    }
+    if (elements.emotionSourceRecordValue) {
+      elements.emotionSourceRecordValue.textContent = affectSnapshot.sourceContext.recordId;
+    }
+    if (elements.emotionSourceNoteValue) {
+      elements.emotionSourceNoteValue.textContent = affectSnapshot.sourceContext.note;
+    }
     elements.timelineUserText.textContent = (
       state.lastAcceptedText
         || state.partialTranscriptText
@@ -959,6 +1087,7 @@
     rootDocument.body.dataset.effectiveAvatarId = effectiveAvatar.avatarId;
     rootDocument.body.dataset.effectiveAvatarProfile = effectiveAvatar.profileId;
     rootDocument.body.dataset.avatarExpressionPreset = avatarExpressionPreset.presetId;
+    rootDocument.body.dataset.affectPanelState = affectSnapshot.panelState;
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -1318,6 +1447,104 @@
     return responsePayload;
   }
 
+  async function requestAffectAnalysis(fetchImpl, appConfig, payload) {
+    const response = await fetchImpl(
+      `${appConfig.affectBaseUrl}/internal/affect/analyze`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    let responsePayload = null;
+    try {
+      responsePayload = await response.json();
+    } catch (error) {
+      responsePayload = null;
+    }
+
+    if (!response.ok) {
+      const message = responsePayload && typeof responsePayload.detail === "string"
+        ? responsePayload.detail
+        : `Affect analyze failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return responsePayload;
+  }
+
+  function validateAffectPayload(payload) {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    const sourceContext = payload.source_context;
+    const textResult = payload.text_result;
+    const audioResult = payload.audio_result;
+    const videoResult = payload.video_result;
+    const fusionResult = payload.fusion_result;
+    if (
+      !sourceContext
+      || typeof sourceContext.origin !== "string"
+      || typeof sourceContext.dataset !== "string"
+      || typeof sourceContext.record_id !== "string"
+      || !textResult
+      || typeof textResult.label !== "string"
+      || !audioResult
+      || typeof audioResult.label !== "string"
+      || !videoResult
+      || typeof videoResult.label !== "string"
+      || !fusionResult
+      || typeof fusionResult.emotion_state !== "string"
+      || typeof fusionResult.risk_level !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      panelState: "ready",
+      panelMessage: "多模态占位结果已刷新，可继续挂接真实分析模块。",
+      sourceContext: {
+        origin: sourceContext.origin,
+        dataset: sourceContext.dataset,
+        recordId: sourceContext.record_id,
+        note: typeof sourceContext.note === "string"
+          ? sourceContext.note
+          : "enterprise sample pending binding",
+      },
+      text: {
+        status: textResult.status || "pending",
+        label: textResult.label,
+        confidence: typeof textResult.confidence === "number" ? textResult.confidence : 0,
+        detail: typeof textResult.detail === "string" ? textResult.detail : "text lane pending",
+      },
+      audio: {
+        status: audioResult.status || "pending",
+        label: audioResult.label,
+        confidence: typeof audioResult.confidence === "number" ? audioResult.confidence : 0,
+        detail: typeof audioResult.detail === "string" ? audioResult.detail : "audio lane pending",
+      },
+      video: {
+        status: videoResult.status || "pending",
+        label: videoResult.label,
+        confidence: typeof videoResult.confidence === "number" ? videoResult.confidence : 0,
+        detail: typeof videoResult.detail === "string" ? videoResult.detail : "video lane pending",
+      },
+      fusion: {
+        emotionState: fusionResult.emotion_state,
+        riskLevel: fusionResult.risk_level,
+        confidence: typeof fusionResult.confidence === "number" ? fusionResult.confidence : 0,
+        conflict: fusionResult.conflict === true,
+        conflictReason: typeof fusionResult.conflict_reason === "string"
+          ? fusionResult.conflict_reason
+          : null,
+        detail: typeof fusionResult.detail === "string" ? fusionResult.detail : "fusion pending",
+      },
+    };
+  }
+
   function buildRealtimeSocketUrl(appConfig, state) {
     const base = appConfig.wsUrl.replace(/\/+$/, "");
     return `${base}/session/${encodeURIComponent(state.sessionId)}?trace_id=${encodeURIComponent(state.traceId || "")}`;
@@ -1546,6 +1773,7 @@
     state.lastStageTransition = reconstructed.lastStageTransition;
     state.timelineEntries = reconstructed.timelineEntries;
     state.dialogueReplyState = reconstructed.lastReplyMessageId ? "received" : "idle";
+    state.affectSnapshot = createInitialAffectSnapshot();
   }
 
   function initializeConsole(rootDocument, rootWindow, fetchImpl) {
@@ -1589,6 +1817,8 @@
       avatarMouthTimerId: null,
       avatarMouthCueSequence: [],
       avatarMouthPlaybackStartedAt: null,
+      affectRefreshTimerId: null,
+      affectRequestToken: 0,
     };
 
     function clearHeartbeatTimer() {
@@ -1624,6 +1854,107 @@
         rootWindow.clearInterval(runtime.avatarMouthTimerId);
         runtime.avatarMouthTimerId = null;
       }
+    }
+
+    function clearAffectRefreshTimer() {
+      if (runtime.affectRefreshTimerId) {
+        rootWindow.clearTimeout(runtime.affectRefreshTimerId);
+        runtime.affectRefreshTimerId = null;
+      }
+    }
+
+    function buildAffectRequestPayload(reason) {
+      const currentSourceContext = state.affectSnapshot && state.affectSnapshot.sourceContext
+        ? state.affectSnapshot.sourceContext
+        : null;
+      return {
+        session_id: state.sessionId,
+        trace_id: state.traceId,
+        current_stage: state.stage,
+        text_input: state.lastAcceptedText || state.partialTranscriptText || state.draftText,
+        last_source_kind: state.lastAcceptedSourceKind,
+        metadata: {
+          source: currentSourceContext && currentSourceContext.origin !== "live_web_session"
+            ? currentSourceContext.origin
+            : "web-shell",
+          refresh_reason: reason || "manual_refresh",
+          dataset: currentSourceContext
+            ? currentSourceContext.dataset
+            : "live_web",
+          record_id: currentSourceContext && currentSourceContext.recordId !== "session/pending"
+            ? currentSourceContext.recordId
+            : `session/${state.sessionId || "pending"}`,
+          sample_note: currentSourceContext
+            ? currentSourceContext.note
+            : "enterprise sample pending binding",
+        },
+        capture_state: {
+          camera_state: state.cameraState,
+          video_upload_state: state.videoUploadState,
+          uploaded_video_frame_count: state.uploadedVideoFrameCount,
+          recording_state: state.recordingState,
+          audio_upload_state: state.audioUploadState,
+          uploaded_chunk_count: state.uploadedChunkCount,
+        },
+      };
+    }
+
+    async function refreshAffectPanel(reason) {
+      if (!state.sessionId) {
+        return null;
+      }
+
+      const requestToken = runtime.affectRequestToken + 1;
+      runtime.affectRequestToken = requestToken;
+      state.affectSnapshot.panelState = "loading";
+      state.affectSnapshot.panelMessage = "正在刷新文本、音频、视频和融合占位结果。";
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        const payload = await requestAffectAnalysis(
+          resolvedFetch,
+          appConfig,
+          buildAffectRequestPayload(reason),
+        );
+        if (requestToken !== runtime.affectRequestToken) {
+          return null;
+        }
+        const normalized = validateAffectPayload(payload);
+        if (!normalized) {
+          state.affectSnapshot = {
+            ...state.affectSnapshot,
+            panelState: "error",
+            panelMessage: "affect-service 返回了非法结果，保留上一版展示。",
+          };
+        } else {
+          state.affectSnapshot = normalized;
+        }
+      } catch (error) {
+        if (requestToken !== runtime.affectRequestToken) {
+          return null;
+        }
+        state.affectSnapshot = {
+          ...state.affectSnapshot,
+          panelState: "error",
+          panelMessage: error instanceof Error
+            ? `affect-service unavailable: ${error.message}`
+            : `affect-service unavailable: ${String(error)}`,
+        };
+      }
+
+      renderSessionState(rootDocument, elements, state, appConfig);
+      return state.affectSnapshot;
+    }
+
+    function scheduleAffectRefresh(reason, delayMs) {
+      if (!state.sessionId) {
+        return;
+      }
+      clearAffectRefreshTimer();
+      runtime.affectRefreshTimerId = rootWindow.setTimeout(function () {
+        runtime.affectRefreshTimerId = null;
+        void refreshAffectPanel(reason);
+      }, typeof delayMs === "number" ? delayMs : 180);
     }
 
     function setAvatarMouthState(nextState) {
@@ -1953,6 +2284,7 @@
           pushConnectionLog(state, `message accepted: ${state.lastAcceptedMessageId || "unknown"}`);
         }
         renderSessionState(rootDocument, elements, state, appConfig);
+        scheduleAffectRefresh("message_accepted", 80);
         return;
       }
 
@@ -1994,6 +2326,7 @@
         state.dialogueReplyState = "received";
         pushConnectionLog(state, `dialogue reply received: ${payload.message_id}`);
         renderSessionState(rootDocument, elements, state, appConfig);
+        scheduleAffectRefresh("dialogue_reply", 80);
         void synthesizeAssistantAudio(payload);
         return;
       }
@@ -2105,6 +2438,7 @@
         pushConnectionLog(state, `session restored: ${storedSessionId}`);
         renderSessionState(rootDocument, elements, state, appConfig);
         connectRealtime();
+        scheduleAffectRefresh("session_restored", 40);
         return true;
       } catch (error) {
         clearStoredSessionId(rootWindow, appConfig);
@@ -2119,6 +2453,8 @@
 
     async function startSession() {
       teardownRealtime(true);
+      clearAffectRefreshTimer();
+      runtime.affectRequestToken += 1;
       clearExportCache(rootWindow);
       state.sessionId = null;
       state.sessionAvatarId = null;
@@ -2150,6 +2486,7 @@
       state.lastReplyRiskLevel = "pending";
       state.lastReplyNextAction = "pending";
       state.lastStageTransition = "idle → idle";
+      state.affectSnapshot = createInitialAffectSnapshot();
       state.ttsPlaybackState = "idle";
       state.ttsPlaybackMessage = "等待系统回复并合成语音。";
       state.ttsAudioUrl = null;
@@ -2197,6 +2534,7 @@
         pushConnectionLog(state, `session created: ${state.sessionId}`);
         renderSessionState(rootDocument, elements, state, appConfig);
         connectRealtime();
+        scheduleAffectRefresh("session_created", 40);
       } catch (error) {
         state.requestState = "error";
         state.error = error instanceof Error ? error.message : String(error);
@@ -2254,6 +2592,9 @@
       }
 
       renderSessionState(rootDocument, elements, state, appConfig);
+      if (state.sessionId) {
+        scheduleAffectRefresh("microphone_permission_changed", 120);
+      }
       return { ...state };
     }
 
@@ -2377,6 +2718,9 @@
       }
 
       renderSessionState(rootDocument, elements, state, appConfig);
+      if (state.sessionId) {
+        scheduleAffectRefresh("camera_permission_changed", 120);
+      }
       return { ...state };
     }
 
@@ -2509,6 +2853,9 @@
         state.uploadedVideoFrameCount += 1;
         state.lastUploadedVideoFrameId = responsePayload.media_id || null;
         state.lastVideoUploadedAt = responsePayload.created_at || new Date().toISOString();
+        if (state.uploadedVideoFrameCount <= 2) {
+          scheduleAffectRefresh("video_frame_uploaded", 120);
+        }
         return responsePayload;
       } catch (error) {
         state.videoUploadState = "error";
@@ -2587,6 +2934,7 @@
       state.lastVideoUploadedAt = null;
       state.nextVideoFrameSeq = 1;
       renderSessionState(rootDocument, elements, state, appConfig);
+      scheduleAffectRefresh("camera_preview_started", 80);
 
       void captureAndUploadVideoFrame();
       runtime.cameraFrameTimerId = rootWindow.setInterval(function () {
@@ -2605,6 +2953,7 @@
       state.cameraState = "stopped";
       state.cameraPreviewMessage = "摄像头预览已停止。";
       finalizeVideoUploadState();
+      scheduleAffectRefresh("camera_preview_stopped", 80);
       return { ...state };
     }
 
@@ -2974,6 +3323,7 @@
       }, 100);
 
       renderSessionState(rootDocument, elements, state, appConfig);
+      scheduleAffectRefresh("recording_started", 80);
       return { ...state };
     }
 
@@ -2984,6 +3334,7 @@
       try {
         runtime.stopRequested = true;
         runtime.mediaRecorder.stop();
+        scheduleAffectRefresh("recording_stopped", 80);
       } catch (error) {
         clearRecordingTimer();
         runtime.mediaRecorder = null;
@@ -3005,6 +3356,8 @@
 
     function shutdownForTest() {
       teardownRealtime(true);
+      clearAffectRefreshTimer();
+      runtime.affectRequestToken += 1;
       teardownCamera(true);
       teardownMicrophone();
       state.connectionStatus = "closed";
@@ -3101,6 +3454,9 @@
         state.textSubmitMessage = null;
       }
       renderSessionState(rootDocument, elements, state, appConfig);
+      if (state.sessionId) {
+        scheduleAffectRefresh("draft_changed", 220);
+      }
     });
 
     renderSessionState(rootDocument, elements, state, appConfig);
@@ -3117,6 +3473,7 @@
       startRecording,
       stopRecording,
       submitText,
+      refreshAffectPanel,
       replayAssistantAudio,
       exportSession,
       restoreSessionFromStorage,
