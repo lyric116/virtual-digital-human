@@ -16,7 +16,9 @@ and true fusion logic are replaced in later steps.
 
 - text lane: deterministic coarse labels `distressed`, `anxious`, `low_mood`,
   `guarded`, and `neutral`
-- audio lane: capture-state proxy labels such as `speech_observed` or `low_energy_proxy`
+- audio lane: when a real audio file path is bound, deterministic feature labels such as
+  `fast_high_energy_proxy`, `steady_high_energy_proxy`, `slow_low_energy_proxy`, or
+  `steady_speech_proxy`; otherwise it falls back to live capture placeholders
 - video lane: camera-state proxy labels such as `face_present_proxy` or `camera_offline`
 - fusion lane: deterministic `emotion_state`, `risk_level`, `confidence`, and `conflict`
 - source context: always returns `origin`, `dataset`, `record_id`, and `note` so the UI
@@ -39,6 +41,29 @@ Enterprise transcript verification for step 38 uses:
 
 - one longer NoXI transcript that should remain `neutral`
 - one short NoXI acknowledgement transcript that should be classified as `guarded`
+
+## Step-39 Audio Rules
+
+- real audio analysis only runs when `metadata.audio_path_16k_mono` or `metadata.audio_path`
+  points to an existing local file
+- extracted baseline features:
+  - `mean_rms`
+  - `pause_ratio`
+  - `segment_rate`
+  - derived `energy_band`
+  - derived `tempo_band`
+- current deterministic audio labels:
+  - `fast_high_energy_proxy`
+  - `steady_high_energy_proxy`
+  - `slow_low_energy_proxy`
+  - `steady_speech_proxy`
+- when the browser only reports live capture state without a bound file path, the service
+  intentionally stays in `live_capture_proxy` or `awaiting_audio_features`
+
+Enterprise audio verification for step 39 uses:
+
+- `recola/group-2/speaker_a/1` as a stronger speech-energy sample
+- `noxi/001_2016-03-17_Paris/speaker_b/2` as a weak, pause-heavy sample
 
 ## Local Run
 

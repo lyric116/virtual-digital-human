@@ -70,6 +70,9 @@ Current repository state:
 - `services/affect-service` step 38 now upgrades the text lane to deterministic
   `distressed / anxious / low_mood / guarded / neutral` labels and validates them
   against both authored samples and enterprise transcript records
+- `services/affect-service` step 39 now upgrades the audio lane from a pure capture
+  placeholder into deterministic baseline feature summaries based on energy, pause
+  ratio, and segment rate when a local audio file is bound
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists

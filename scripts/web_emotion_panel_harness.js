@@ -234,6 +234,26 @@ function buildAffectPayload(requestPayload, mode) {
       : guarded
         ? "文本较短或偏回避，系统会优先继续澄清。"
         : "当前三路仍以占位结果为主。";
+  const audioModes = {
+    "audio-high-energy": {
+      label: "steady_high_energy_proxy",
+      confidence: 0.72,
+      evidence: ["energy_band:high", "tempo_band:steady"],
+      detail: "音频路显示较高能量和连续语音活动。",
+    },
+    "audio-low-energy": {
+      label: "slow_low_energy_proxy",
+      confidence: 0.74,
+      evidence: ["energy_band:low", "tempo_band:slow"],
+      detail: "音频路显示较低能量和较高停顿比例。",
+    },
+  };
+  const selectedAudio = audioModes[mode] || {
+    label: "speech_observed",
+    confidence: 0.55,
+    evidence: ["audio_upload_state:idle"],
+    detail: "音频路先显示占位结果，后续再接真实特征。",
+  };
 
   return {
     session_id: requestPayload.session_id,
@@ -250,10 +270,10 @@ function buildAffectPayload(requestPayload, mode) {
     },
     audio_result: {
       status: "ready",
-      label: "speech_observed",
-      confidence: 0.55,
-      evidence: ["audio_upload_state:idle"],
-      detail: "音频路先显示占位结果，后续再接真实特征。",
+      label: selectedAudio.label,
+      confidence: selectedAudio.confidence,
+      evidence: selectedAudio.evidence,
+      detail: selectedAudio.detail,
     },
     video_result: {
       status: "offline",

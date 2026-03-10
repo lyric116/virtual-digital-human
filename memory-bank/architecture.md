@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - Affect Audio Baseline
+
+- Affect-service audio analysis now has a two-tier path: real local audio files go through deterministic feature extraction, while live browser capture without a bound file stays on a non-blocking placeholder path.
+- The current audio baseline uses mean_rms, pause_ratio, and segment_rate to derive energy_band and tempo_band, which then map to stable coarse labels for the Emotion Panel.
+- Enterprise validation audio is now part of affect verification through traced sample paths, but the online frontend path still avoids direct coupling to enterprise media files.
+
 ## 2026-03-10 - Affect Text Labels
 
 - The affect-service text lane is now the first lane with meaningful semantics: it emits deterministic distressed/anxious/low_mood/guarded/neutral labels while audio/video remain proxy lanes.

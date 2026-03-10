@@ -95,6 +95,36 @@ flowchart LR
 - `speech_energy`
 - `prosody_summary`
 
+### 当前 step-39 基线
+
+当前仓库先不上复杂声学情绪模型，而是实现了一个可解释的基础特征分析器：
+
+- 输入条件
+  - 当请求里绑定 `audio_path_16k_mono` 时，直接读取本地音频文件
+  - 只有浏览器实时录音状态、没有文件路径时，保留 `live_capture_proxy` 占位
+- 当前提取的基础特征
+  - `mean_rms`
+  - `pause_ratio`
+  - `segment_rate`
+  - 派生 `energy_band`
+  - 派生 `tempo_band`
+- 当前输出标签
+  - `fast_high_energy_proxy`
+  - `steady_high_energy_proxy`
+  - `slow_low_energy_proxy`
+  - `steady_speech_proxy`
+
+step-39 的回归验证分两部分：
+
+- 合成样本
+  - 1 条快语速高能量样本
+  - 1 条慢语速低能量样本
+- 企业验证集样本
+  - `recola/group-2/speaker_a/1` -> 强能量连续语音
+  - `noxi/001_2016-03-17_Paris/speaker_b/2` -> 低能量高停顿语音
+
+这样可以先把音频路做成“可解释的最小特征层”，后续再替换成真实声学情绪模型，而不用改 Emotion Panel 的契约。
+
 ## 6. 视频路设计
 
 ### 输入

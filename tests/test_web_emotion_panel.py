@@ -58,6 +58,18 @@ def test_web_emotion_panel_can_render_enterprise_sample_placeholders():
     assert "enterprise sample" in after["sourceNote"]
 
 
+def test_web_emotion_panel_can_render_distinct_audio_lane_labels():
+    high_payload = run_harness("audio-high-energy")
+    low_payload = run_harness("audio-low-energy")
+
+    high_after = high_payload["afterAffect"]
+    low_after = low_payload["afterAffect"]
+
+    assert high_after["audioSignal"] == "steady_high_energy_proxy"
+    assert low_after["audioSignal"] == "slow_low_energy_proxy"
+    assert high_after["audioSignal"] != low_after["audioSignal"]
+
+
 def test_web_emotion_panel_docs_are_present():
     web_readme = WEB_README.read_text(encoding="utf-8")
     affect_readme = AFFECT_README.read_text(encoding="utf-8")

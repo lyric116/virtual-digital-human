@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 39 Audio Feature Baseline
+
+### Scope
+
+Implemented step 39 by upgrading affect-service audio-lane analysis from a pure upload-state placeholder into deterministic baseline feature summaries when a bound local audio file is available, while preserving live capture placeholders when only browser recording state exists.
+
+### Outputs
+
+- Added baseline audio features mean_rms, pause_ratio, segment_rate, energy_band, and tempo_band to affect-service audio analysis.
+- Added synthetic fast/high-energy and slow/low-energy audio regression coverage plus two enterprise audio sample checks.
+- Extended the web emotion panel harness so the frontend can render distinct audio lane labels without changing the affect snapshot contract.
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_affect_service.py tests/test_web_emotion_panel.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_affect_service.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_emotion_panel.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+
+### Next
+
+- Implement step 40 visual baseline states without coupling enterprise video files into the online path.
+
 ## 2026-03-10 - Step 38 Text Affect Baseline
 
 ### Scope

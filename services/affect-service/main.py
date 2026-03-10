@@ -6,9 +6,11 @@ import os
 from pathlib import Path
 import re
 from typing import Any, Literal
+import wave
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import numpy as np
 from pydantic import BaseModel, Field
 
 
@@ -202,6 +204,88 @@ def is_brief_acknowledgement(value: str) -> bool:
     return all(token in ACKNOWLEDGEMENT_ONLY_TOKENS for token in tokens)
 
 
+def resolve_audio_analysis_path(payload: AffectAnalyzeRequest) -> Path | None:
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    raw_value = metadata.get("audio_path_16k_mono") or metadata.get("audio_path")
+    if not raw_value:
+        return None
+
+    candidate = Path(str(raw_value))
+    if not candidate.is_absolute():
+        candidate = ROOT / candidate
+    if candidate.exists() and candidate.is_file():
+        return candidate
+    return None
+
+
+def load_audio_samples(path: Path) -> tuple[np.ndarray, int]:
+    with wave.open(str(path), "rb") as wav_file:
+        sample_rate_hz = wav_file.getframerate()
+        frame_count = wav_file.getnframes()
+        channel_count = wav_file.getnchannels()
+        sample_width = wav_file.getsampwidth()
+        raw_bytes = wav_file.readframes(frame_count)
+
+    if sample_width != 2:
+        raise RuntimeError(f"unsupported audio sample width: {sample_width}")
+
+    samples = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32)
+    if channel_count > 1:
+        samples = samples.reshape(-1, channel_count).mean(axis=1)
+    samples /= 32768.0
+    return samples, sample_rate_hz
+
+
+def summarize_audio_features(path: Path) -> dict[str, float | int | str]:
+    samples, sample_rate_hz = load_audio_samples(path)
+    if samples.size == 0:
+        raise RuntimeError("audio sample is empty")
+
+    duration_seconds = samples.size / float(sample_rate_hz)
+    window_size = max(int(sample_rate_hz * 0.02), 1)
+    usable_size = (samples.size // window_size) * window_size
+    if usable_size == 0:
+        raise RuntimeError("audio sample too short for feature windows")
+
+    windows = samples[:usable_size].reshape(-1, window_size)
+    rms_values = np.sqrt(np.mean(np.square(windows), axis=1))
+    overall_rms = float(np.sqrt(np.mean(np.square(samples))))
+    pause_threshold = max(0.01, overall_rms * 0.35)
+    active_mask = rms_values >= pause_threshold
+    pause_ratio = float(np.mean(~active_mask))
+    activity_ratio = float(np.mean(active_mask))
+
+    transitions = np.count_nonzero((~active_mask[:-1]) & active_mask[1:]) if active_mask.size > 1 else 0
+    if active_mask.size and active_mask[0]:
+        transitions += 1
+    segment_rate = transitions / duration_seconds if duration_seconds > 0 else 0.0
+
+    if overall_rms >= 0.045:
+        energy_band = "high"
+    elif overall_rms <= 0.025:
+        energy_band = "low"
+    else:
+        energy_band = "medium"
+
+    if segment_rate >= 4.0 and activity_ratio >= 0.45:
+        tempo_band = "fast"
+    elif segment_rate <= 1.8 or activity_ratio <= 0.22 or pause_ratio >= 0.78:
+        tempo_band = "slow"
+    else:
+        tempo_band = "steady"
+
+    return {
+        "duration_seconds": duration_seconds,
+        "sample_rate_hz": int(sample_rate_hz),
+        "mean_rms": overall_rms,
+        "pause_ratio": pause_ratio,
+        "activity_ratio": activity_ratio,
+        "segment_rate": segment_rate,
+        "energy_band": energy_band,
+        "tempo_band": tempo_band,
+    }
+
+
 def build_default_source_context(payload: AffectAnalyzeRequest) -> AffectSourceContext:
     if payload.source_context is not None:
         return payload.source_context
@@ -292,22 +376,66 @@ def analyze_audio_lane(payload: AffectAnalyzeRequest) -> AffectLaneResult:
     audio_upload_state = str(capture_state.get("audio_upload_state") or "idle")
     uploaded_chunk_count = int(capture_state.get("uploaded_chunk_count") or 0)
     source_kind = str(payload.last_source_kind or "")
+    audio_path = resolve_audio_analysis_path(payload)
+
+    if audio_path is not None:
+        summary = summarize_audio_features(audio_path)
+        energy_band = str(summary["energy_band"])
+        tempo_band = str(summary["tempo_band"])
+        duration_seconds = float(summary["duration_seconds"])
+        mean_rms = float(summary["mean_rms"])
+        pause_ratio = float(summary["pause_ratio"])
+        segment_rate = float(summary["segment_rate"])
+
+        if energy_band == "low" and tempo_band == "slow":
+            label = "slow_low_energy_proxy"
+            confidence = 0.74
+        elif energy_band == "high" and tempo_band == "fast":
+            label = "fast_high_energy_proxy"
+            confidence = 0.79
+        elif energy_band == "high":
+            label = "steady_high_energy_proxy"
+            confidence = 0.72
+        else:
+            label = "steady_speech_proxy"
+            confidence = 0.64
+
+        detail = (
+            "音频路已完成基础能量、停顿和节奏分析。"
+            f" duration={duration_seconds:.1f}s,"
+            f" mean_rms={mean_rms:.4f},"
+            f" pause_ratio={pause_ratio:.2f},"
+            f" segment_rate={segment_rate:.2f}/s。"
+        )
+        return AffectLaneResult(
+            status="ready",
+            label=label,
+            confidence=confidence,
+            evidence=[
+                f"path:{audio_path.name}",
+                f"energy_band:{energy_band}",
+                f"tempo_band:{tempo_band}",
+                f"pause_ratio:{pause_ratio:.2f}",
+                f"mean_rms:{mean_rms:.4f}",
+            ],
+            detail=detail,
+        )
 
     if source_kind == "audio" or audio_upload_state in {"completed", "awaiting_realtime", "processing_final"}:
         return AffectLaneResult(
             status="ready",
-            label="speech_observed",
-            confidence=0.66,
+            label="awaiting_audio_features",
+            confidence=0.52,
             evidence=[f"audio_upload_state:{audio_upload_state}", f"uploaded_chunks:{uploaded_chunk_count}"],
-            detail="音频路已收到真实录音上传，但当前仍使用轻量占位分析。",
+            detail="音频路已收到真实录音上传，但当前刷新没有绑定可分析的音频文件路径。",
         )
     if recording_state == "recording" or uploaded_chunk_count > 0:
         return AffectLaneResult(
             status="ready",
-            label="low_energy_proxy",
+            label="live_capture_proxy",
             confidence=0.54,
             evidence=[f"recording_state:{recording_state}", f"uploaded_chunks:{uploaded_chunk_count}"],
-            detail="音频路检测到实时录音活动，先以低成本代理特征占位。",
+            detail="音频路检测到实时录音活动，等待完整音频后再计算能量、停顿和节奏特征。",
         )
     return AffectLaneResult(
         status="pending",

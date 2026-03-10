@@ -40,9 +40,13 @@ def run_harness(mode: str) -> dict:
 def main() -> None:
     live_payload = run_harness("mock-live")
     enterprise_payload = run_harness("enterprise-sample")
+    audio_high_payload = run_harness("audio-high-energy")
+    audio_low_payload = run_harness("audio-low-energy")
 
     live_after = live_payload["afterAffect"]
     enterprise_after = enterprise_payload["afterAffect"]
+    audio_high_after = audio_high_payload["afterAffect"]
+    audio_low_after = audio_low_payload["afterAffect"]
 
     if live_after["emotionPanelState"] != "ready":
         raise RuntimeError("emotion panel did not reach ready state")
@@ -60,12 +64,18 @@ def main() -> None:
         raise RuntimeError("enterprise dataset placeholder was not rendered")
     if "speaker_a/1" not in enterprise_after["sourceRecord"]:
         raise RuntimeError("enterprise record id placeholder was not rendered")
+    if audio_high_after["audioSignal"] != "steady_high_energy_proxy":
+        raise RuntimeError("audio high-energy mode did not render the expected audio label")
+    if audio_low_after["audioSignal"] != "slow_low_energy_proxy":
+        raise RuntimeError("audio low-energy mode did not render the expected audio label")
 
     print(
         json.dumps(
             {
                 "live": live_after,
                 "enterprise": enterprise_after,
+                "audio_high": audio_high_after,
+                "audio_low": audio_low_after,
             },
             ensure_ascii=False,
             indent=2,
