@@ -96,6 +96,9 @@ Current repository state:
   into event payloads for enterprise-bound sessions
 - step 48 now adds a local replay mode on top of exported session JSON, so one saved
   conversation can be reconstructed in the web shell without calling live model services
+- step 49 now generates a baseline latency report across affect, dialogue, TTS, avatar
+  present time, and one enterprise offline audio path, with the current stable eval
+  baseline pinned to `wave_fallback` TTS and explicit ASR-timeout fallback notes
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -218,6 +221,8 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_magicdata_asr_eval.py`
 - Run the stable ASR regression suite, including MAGICDATA when available:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_regression.py`
+- Generate and verify the current latency baseline report:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_latency_report.py`
 - Verify the curated RAG knowledge-card dataset before retrieval work:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_knowledge_cards.py`
 - Import external ASR draft results from a JSONL file:

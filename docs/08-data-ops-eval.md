@@ -134,6 +134,33 @@
 - 企业验证集评测链和 MAGICDATA 中文评测链必须分开维护
 - 公开语料派生产物默认不进入版本库
 
+当前仓库在步骤 49 已补齐时延评测基线：
+
+- `scripts/eval_latency_report.py`
+- `scripts/verify_latency_report.py`
+
+这条路径的作用是：
+
+- 串行执行 `5` 轮真实文本交互，统计 `affect -> dialogue -> tts -> avatar present`
+- 增加 `1` 条企业离线样本的处理时延记录
+- 输出 Markdown 和 JSON 两份报表，写入 `data/derived/eval-local/`
+- 汇总平均值、中位值、`P90`、最小值、最大值
+
+当前实现边界：
+
+- 为了保证评测可复现，TTS 评测基线固定使用本地 `wave_fallback`
+- 企业离线样本当前使用固定 `5s` 裁剪窗口，而不是完整 `30s` 片段
+- 如果外部 ASR 在企业样本上超时，脚本会把超时耗时记入 `asr_ms`，并回退到
+  已有 `draft_text_raw/final_text` 继续跑后续阶段
+- 这种回退不会伪装成 ASR 成功，报告 `notes` 会显式写出
+  `asr_fallback=cached_transcript`
+
+因此，这份时延报表当前的意义是：
+
+- 提供一份稳定、可复现的阶段耗时基线
+- 帮助比较后续改动是否让 `dialogue/tts/total` 变慢
+- 不能把企业样本这条记录直接当作“外部 ASR 在完整 30s 语音上的最终性能证明”
+
 当前仓库在数字人侧也增加了一条企业离线路径：
 
 - `services/avatar-driver-service`

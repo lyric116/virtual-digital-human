@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-11 - Latency evaluation baseline
+
+- The step-49 latency report now measures affect, dialogue, TTS, avatar-present time, and one enterprise offline audio path in a single reproducible run.
+- For reproducibility, latency evaluation pins TTS to wave_fallback instead of the unstable remote edge-tts path.
+- Enterprise offline latency currently uses a fixed 5-second clip and records ASR timeout fallback explicitly in report notes so the report can complete without hiding upstream instability.
+
 ## 2026-03-10 - Replay Uses Exported Event Stream As The Single Source Of Truth
 
 - Step 48 builds replay directly on top of exported session JSON. When events are present, the web shell replays them in order and never calls live services; when events are missing, it synthesizes a minimal replay sequence from exported messages.

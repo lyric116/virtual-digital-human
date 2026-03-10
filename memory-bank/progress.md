@@ -21,6 +21,27 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-11 - Step 49 Latency Baseline
+
+### Scope
+
+Established a reproducible latency report across five real text turns and one enterprise offline audio turn, using stable local TTS and explicit ASR-timeout accounting.
+
+### Outputs
+
+- Added scripts/eval_latency_report.py and scripts/verify_latency_report.py.
+- Generated data/derived/eval-local/latency_report.md and latency_report.json.
+- Documented the stable latency baseline in README.md and docs/08-data-ops-eval.md.
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_eval_latency_report.py -q
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_latency_report.py
+
+### Next
+
+- Proceed to step 50 and add a 10-turn stability regression harness.
+
 ## 2026-03-10 - Step 48 Session Replay Mode
 
 ### Scope
