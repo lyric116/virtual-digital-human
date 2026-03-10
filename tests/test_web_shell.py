@@ -79,6 +79,8 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="avatar-speech-detail-value"' in content
     assert 'id="avatar-voice-value"' in content
     assert 'id="avatar-duration-value"' in content
+    assert 'id="avatar-expression-preset-value"' in content
+    assert 'id="avatar-expression-detail-value"' in content
     assert 'id="avatar-replay-button"' in content
     assert 'id="avatar-audio-player"' in content
     assert 'id="fusion-risk-value"' in content

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, 33, and 34:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, 33, 34, and 35:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -39,6 +39,9 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
   playback and returns to `closed` after audio ends
 - step 34: the avatar panel now exposes two selectable roles and routes the chosen
   role into both new session bootstrap requests and the TTS voice used for that role
+- step 35: the avatar stage now maps dialogue `stage`, `emotion`, and `risk_level`
+  into deterministic expression presets so the same role no longer looks identical in
+  `assess`, `intervene`, `reassess`, and `handoff`
 
 ## Files
 
@@ -52,7 +55,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
     history restore plus session export, microphone recording, audio chunk upload, and
     finalized audio submission plus partial transcript preview back into the text dialogue loop,
     followed by frontend TTS synthesis, avatar audio playback, subtitle sync, static
-    avatar state switching, basic mouth cue playback, and dual-avatar selection
+    avatar state switching, basic mouth cue playback, dual-avatar selection, and
+    stage-driven expression preset mapping
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -96,10 +100,15 @@ Then open:
 - after one valid assistant reply, the frontend requests one TTS asset, attempts
   autoplay, and still keeps subtitle text visible even if TTS synthesis or playback fails
 - `Replay Voice` reuses the latest successful `audio_url` without re-running dialogue generation
-- both avatars are intentionally static; only `idle` and `speaking` states plus coarse
-  mouth motion are implemented, without expressions or body gestures yet
+- both avatars are intentionally static; only preset-driven facial/posture states plus
+  coarse mouth motion are implemented, without continuous expressions or body gestures yet
 - avatar switching updates the selected role immediately, and a new session binds the
   chosen `avatar_id` into the gateway session bootstrap request
+- expression presets are deterministic frontend mappings:
+  - `assess -> focused_assess`
+  - `intervene -> steady_support`
+  - `reassess -> calm_checkin`
+  - `handoff` or `risk_level=high -> guarded_handoff`
 - the mouth layer now uses a deterministic coarse cue sequence derived from reply text and
   TTS duration so playback visibly opens and closes even before a dedicated viseme model exists
 - the current active `sessionId` is stored in browser storage and used to restore
@@ -126,3 +135,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_baseline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_mouth_drive.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_switch.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_expression_presets.py`

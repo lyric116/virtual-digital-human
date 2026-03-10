@@ -29,6 +29,38 @@
       voicePreview: "zh-CN-YunxiNeural",
     },
   };
+  const avatarExpressionPresets = {
+    ready_idle: {
+      presetId: "ready_idle",
+      label: "ready_idle",
+      detail: "未进入业务阶段前保持中性等待，不提前表现强情绪。",
+    },
+    open_warm: {
+      presetId: "open_warm",
+      label: "open_warm",
+      detail: "建立联系阶段保持开放和低压，表情轻微上扬。",
+    },
+    focused_assess: {
+      presetId: "focused_assess",
+      label: "focused_assess",
+      detail: "评估阶段收敛动作，表情更专注，方便继续追问。",
+    },
+    steady_support: {
+      presetId: "steady_support",
+      label: "steady_support",
+      detail: "干预阶段保持稳定支持，动作柔和，不做夸张变化。",
+    },
+    calm_checkin: {
+      presetId: "calm_checkin",
+      label: "calm_checkin",
+      detail: "再评估阶段回到中性稳定，观察用户反馈变化。",
+    },
+    guarded_handoff: {
+      presetId: "guarded_handoff",
+      label: "guarded_handoff",
+      detail: "高风险或 handoff 阶段降低轻快感，保持严肃和稳定。",
+    },
+  };
 
   function resolveAvatarId(candidateAvatarId) {
     if (typeof candidateAvatarId === "string" && avatarProfiles[candidateAvatarId]) {
@@ -50,6 +82,42 @@
 
   function getEffectiveAvatarProfile(state) {
     return getAvatarProfile(getEffectiveAvatarId(state));
+  }
+
+  function normalizeEmotionLabel(value) {
+    if (typeof value !== "string") {
+      return "pending";
+    }
+    const normalized = value.trim().toLowerCase();
+    return normalized || "pending";
+  }
+
+  function resolveAvatarExpressionPreset(state) {
+    const currentStage = dialogueStages.has(state.stage) ? state.stage : "idle";
+    const currentRiskLevel = dialogueRiskLevels.has(state.lastReplyRiskLevel)
+      ? state.lastReplyRiskLevel
+      : "low";
+    const currentEmotion = normalizeEmotionLabel(state.lastReplyEmotion);
+
+    if (currentStage === "idle" || currentEmotion === "pending") {
+      return avatarExpressionPresets.ready_idle;
+    }
+    if (currentRiskLevel === "high" || currentStage === "handoff") {
+      return avatarExpressionPresets.guarded_handoff;
+    }
+    if (currentStage === "reassess") {
+      return avatarExpressionPresets.calm_checkin;
+    }
+    if (currentStage === "intervene") {
+      return avatarExpressionPresets.steady_support;
+    }
+    if (currentStage === "assess") {
+      return avatarExpressionPresets.focused_assess;
+    }
+    if (currentEmotion.includes("distress") || currentEmotion.includes("anxious")) {
+      return avatarExpressionPresets.open_warm;
+    }
+    return avatarExpressionPresets.open_warm;
   }
 
   function findMissingPanels(rootDocument) {
@@ -186,6 +254,8 @@
       avatarCharacterStateValue: findOptionalElement(rootDocument, "avatar-character-state-value"),
       avatarCharacterDetailValue: findOptionalElement(rootDocument, "avatar-character-detail-value"),
       avatarStageNoteValue: findOptionalElement(rootDocument, "avatar-stage-note-value"),
+      avatarExpressionPresetValue: findOptionalElement(rootDocument, "avatar-expression-preset-value"),
+      avatarExpressionDetailValue: findOptionalElement(rootDocument, "avatar-expression-detail-value"),
       avatarMouthShape: findOptionalElement(rootDocument, "avatar-mouth-shape"),
       avatarMouthStateValue: findOptionalElement(rootDocument, "avatar-mouth-state-value"),
       avatarMouthDetailValue: findOptionalElement(rootDocument, "avatar-mouth-detail-value"),
@@ -586,6 +656,7 @@
   function renderSessionState(rootDocument, elements, state, appConfig) {
     const selectedAvatar = getAvatarProfile(state.activeAvatarId);
     const effectiveAvatar = getEffectiveAvatarProfile(state);
+    const avatarExpressionPreset = resolveAvatarExpressionPreset(state);
     elements.sessionIdValue.textContent = state.sessionId || defaultSessionIdLabel;
     elements.sessionStatusValue.textContent = state.status;
     elements.sessionStageValue.textContent = state.stage;
@@ -685,6 +756,7 @@
     if (elements.avatarBaselineCard && typeof elements.avatarBaselineCard.dataset === "object") {
       elements.avatarBaselineCard.dataset.avatarState = avatarVisualState;
       elements.avatarBaselineCard.dataset.avatarProfile = effectiveAvatar.profileId;
+      elements.avatarBaselineCard.dataset.avatarExpressionPreset = avatarExpressionPreset.presetId;
     }
     if (elements.avatarOptionCompanion && typeof elements.avatarOptionCompanion.dataset === "object") {
       elements.avatarOptionCompanion.dataset.selected = selectedAvatar.avatarId === "companion_female_01" ? "true" : "false";
@@ -714,6 +786,12 @@
     }
     if (elements.avatarStageNoteValue) {
       elements.avatarStageNoteValue.textContent = getAvatarStageNote(state);
+    }
+    if (elements.avatarExpressionPresetValue) {
+      elements.avatarExpressionPresetValue.textContent = avatarExpressionPreset.label;
+    }
+    if (elements.avatarExpressionDetailValue) {
+      elements.avatarExpressionDetailValue.textContent = avatarExpressionPreset.detail;
     }
     if (elements.avatarMouthShape && typeof elements.avatarMouthShape.dataset === "object") {
       elements.avatarMouthShape.dataset.mouthState = state.avatarMouthState;
@@ -772,6 +850,7 @@
     rootDocument.body.dataset.activeAvatarId = selectedAvatar.avatarId;
     rootDocument.body.dataset.effectiveAvatarId = effectiveAvatar.avatarId;
     rootDocument.body.dataset.effectiveAvatarProfile = effectiveAvatar.profileId;
+    rootDocument.body.dataset.avatarExpressionPreset = avatarExpressionPreset.presetId;
   }
 
   function validateDialogueReplyPayload(payload) {

@@ -14,6 +14,9 @@ function parseArgs(argv) {
     wsUrl: "ws://127.0.0.1:8000/ws",
     ttsBaseUrl: "http://127.0.0.1:8040",
     avatarId: "companion_female_01",
+    dialogueStage: "assess",
+    dialogueEmotion: "anxious",
+    dialogueRiskLevel: "medium",
     replyText: "谢谢你愿意说出来。我们先慢一点，把今晚最难受的部分说清楚。",
     connectTimeoutMs: 5000,
     replyTimeoutMs: 8000,
@@ -45,6 +48,21 @@ function parseArgs(argv) {
     }
     if (current === "--avatar-id") {
       args.avatarId = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (current === "--dialogue-stage") {
+      args.dialogueStage = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (current === "--dialogue-emotion") {
+      args.dialogueEmotion = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (current === "--dialogue-risk-level") {
+      args.dialogueRiskLevel = argv[index + 1];
       index += 1;
       continue;
     }
@@ -184,6 +202,8 @@ class FakeDocument {
       ["avatar-speech-detail-value", "等待系统回复并合成语音。", ""],
       ["avatar-voice-value", "zh-CN-XiaoxiaoNeural", ""],
       ["avatar-duration-value", "0.0s / preview", ""],
+      ["avatar-expression-preset-value", "ready_idle", ""],
+      ["avatar-expression-detail-value", "未进入业务阶段前保持中性等待，不提前表现强情绪。", ""],
       ["avatar-replay-button", "Replay Voice", ""],
       ["fusion-risk-value", "pending", ""],
       ["fusion-stage-value", "stage: idle / next: pending", ""],
@@ -251,7 +271,7 @@ function resolveMockVoice(requestedVoiceId) {
   return "zh-CN-XiaoxiaoNeural";
 }
 
-function createMockRuntime(ttsBaseUrl, replyText, defaultAvatarId) {
+function createMockRuntime(ttsBaseUrl, replyText, defaultAvatarId, dialogueConfig) {
   let currentSocket = null;
   let sessionPayload = {
     session_id: "sess_mock_tts_001",
@@ -366,9 +386,9 @@ function createMockRuntime(ttsBaseUrl, replyText, defaultAvatarId) {
         trace_id: sessionPayload.trace_id,
         message_id: "msg_assistant_mock_001",
         reply: replyText,
-        emotion: "anxious",
-        risk_level: "medium",
-        stage: "assess",
+        emotion: dialogueConfig.emotion,
+        risk_level: dialogueConfig.riskLevel,
+        stage: dialogueConfig.stage,
         next_action: "ask_followup",
         knowledge_refs: ["sleep_hygiene_basic"],
         avatar_style: "warm_support",
@@ -463,6 +483,7 @@ function collectSnapshot(document) {
     activeAvatarId: document.body.dataset.activeAvatarId || null,
     effectiveAvatarId: document.body.dataset.effectiveAvatarId || null,
     effectiveAvatarProfile: document.body.dataset.effectiveAvatarProfile || null,
+    avatarExpressionPreset: document.body.dataset.avatarExpressionPreset || null,
     avatarMouthState: document.body.dataset.avatarMouthState || null,
     avatarMouthTransitionCount: Number(document.body.dataset.avatarMouthTransitionCount || "0"),
     assistantReply: document.getElementById("transcript-assistant-reply-text").textContent,
@@ -472,6 +493,8 @@ function collectSnapshot(document) {
     avatarCharacterState: document.getElementById("avatar-character-state-value").textContent,
     avatarCharacterDetail: document.getElementById("avatar-character-detail-value").textContent,
     avatarStageNote: document.getElementById("avatar-stage-note-value").textContent,
+    avatarExpressionLabel: document.getElementById("avatar-expression-preset-value").textContent,
+    avatarExpressionDetail: document.getElementById("avatar-expression-detail-value").textContent,
     avatarMouthLabel: document.getElementById("avatar-mouth-state-value").textContent,
     avatarMouthDetail: document.getElementById("avatar-mouth-detail-value").textContent,
     avatarSpeechState: document.getElementById("avatar-speech-state-value").textContent,
@@ -550,7 +573,11 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const runtimeConfig = args.mode === "live"
     ? { fetchImpl: fetch, WebSocketImpl: WebSocket }
-    : createMockRuntime(args.ttsBaseUrl, args.replyText, args.avatarId);
+    : createMockRuntime(args.ttsBaseUrl, args.replyText, args.avatarId, {
+        stage: args.dialogueStage,
+        emotion: args.dialogueEmotion,
+        riskLevel: args.dialogueRiskLevel,
+      });
 
   if (typeof runtimeConfig.fetchImpl !== "function") {
     throw new Error("fetch is not available in this runtime");

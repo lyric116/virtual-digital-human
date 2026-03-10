@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - Stage semantics now reach the avatar layer
+
+- Step 35 keeps the avatar layer rule-based: apps/web now resolves stage, emotion, and risk_level into a small fixed preset set instead of trying to infer continuous expressions from raw text or audio.
+- guarded_handoff is now the hard visual safety state for both high-risk replies and explicit handoff stage responses, so the avatar layer cannot accidentally render an upbeat style when the business state is serious.
+- The new expression preset output remains purely frontend-owned and testable through the web_tts_playback_harness, which keeps stage-driven expression regression checks independent from upstream LLM availability.
+
 ## 2026-03-09 - Dual avatar selection stays frontend-owned in V1
 
 - Step 34 keeps avatar switching inside apps/web: the frontend now owns the active avatar registry, selected avatar state, and the mapping from selected avatar to the session bootstrap avatar_id and TTS voice_id.

@@ -21,6 +21,27 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 35 avatar expression presets
+
+### Scope
+
+Completed implementation plan step 35 by mapping dialogue stage, emotion, and risk_level into deterministic avatar expression presets in the frontend so the same static avatar no longer looks identical across assess, intervene, reassess, and handoff stages.
+
+### Outputs
+
+- Added expression preset resolution in apps/web/app.js with guarded_handoff as the hard safety override for high-risk or handoff replies
+- Extended apps/web/index.html and apps/web/styles.css with expression preset telemetry and preset-specific visual states
+- Added scripts/verify_web_avatar_expression_presets.py and tests/test_web_avatar_expression_presets.py for deterministic stage-to-expression verification
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_expression_presets.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 140 passed
+
+### Next
+
+- Step 35A: wire enterprise 3D face features into an offline avatar-driver validation path
+
 ## 2026-03-09 - Step 34 dual avatar switch
 
 ### Scope

@@ -304,6 +304,23 @@ body::before {
   background: linear-gradient(180deg, rgba(242, 247, 251, 0.96), rgba(227, 235, 246, 0.76));
 }
 
+.avatar-baseline-card[data-avatar-expression-preset="focused_assess"] {
+  box-shadow: 0 18px 40px rgba(43, 88, 133, 0.14);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="steady_support"] {
+  box-shadow: 0 18px 40px rgba(15, 108, 104, 0.15);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="calm_checkin"] {
+  box-shadow: 0 16px 34px rgba(82, 102, 118, 0.1);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="guarded_handoff"] {
+  border-color: rgba(90, 42, 42, 0.22);
+  box-shadow: 0 18px 40px rgba(90, 42, 42, 0.12);
+}
+
 .avatar-baseline-header {
   display: flex;
   align-items: flex-start;
@@ -376,12 +393,44 @@ body::before {
   background: radial-gradient(circle, rgba(34, 71, 122, 0.18), rgba(34, 71, 122, 0));
 }
 
+.avatar-baseline-card[data-avatar-expression-preset="focused_assess"] .avatar-halo {
+  opacity: 0.88;
+  transform: scale(1.02);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="steady_support"] .avatar-halo {
+  opacity: 0.96;
+  transform: scale(1.1);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="calm_checkin"] .avatar-halo {
+  opacity: 0.58;
+  transform: scale(0.98);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="guarded_handoff"] .avatar-halo {
+  opacity: 0.22;
+  transform: scale(0.94);
+}
+
 .avatar-figure {
   position: absolute;
   left: 50%;
   bottom: 20px;
   width: 220px;
   transform: translateX(-50%);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="focused_assess"] .avatar-figure {
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="steady_support"] .avatar-figure {
+  transform: translateX(-50%) translateY(-2px);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="guarded_handoff"] .avatar-figure {
+  transform: translateX(-50%) translateY(2px);
 }
 
 .avatar-head {
@@ -392,6 +441,18 @@ body::before {
   border-radius: 54% 54% 48% 48%;
   background: linear-gradient(180deg, #f6d6bf 0%, #f0c8b2 100%);
   border: 1px solid rgba(29, 42, 43, 0.08);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="focused_assess"] .avatar-head {
+  transform: rotate(-1deg);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="steady_support"] .avatar-head {
+  transform: rotate(1.5deg);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="guarded_handoff"] .avatar-head {
+  transform: rotate(0deg);
 }
 
 .avatar-baseline-card[data-avatar-profile="coach"] .avatar-head {
@@ -437,6 +498,21 @@ body::before {
   background: #20324a;
 }
 
+.avatar-baseline-card[data-avatar-expression-preset="focused_assess"] .avatar-eye {
+  width: 14px;
+  height: 6px;
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="steady_support"] .avatar-eye {
+  height: 9px;
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="guarded_handoff"] .avatar-eye {
+  width: 18px;
+  height: 5px;
+  background: #2f3038;
+}
+
 .avatar-mouth {
   position: absolute;
   left: 50%;
@@ -473,6 +549,12 @@ body::before {
   border-radius: 999px;
 }
 
+.avatar-baseline-card[data-avatar-expression-preset="guarded_handoff"] .avatar-mouth[data-mouth-state="closed"] {
+  width: 24px;
+  height: 6px;
+  background: #7c4d4a;
+}
+
 .avatar-neck {
   width: 28px;
   height: 20px;
@@ -497,6 +579,10 @@ body::before {
 .avatar-baseline-card[data-avatar-profile="coach"] .avatar-body {
   width: 188px;
   background: linear-gradient(180deg, #5a6e91 0%, #314562 100%);
+}
+
+.avatar-baseline-card[data-avatar-expression-preset="guarded_handoff"] .avatar-body {
+  background: linear-gradient(180deg, #5e5f73 0%, #3d3e4d 100%);
 }
 
 .avatar-character-detail,
