@@ -8,11 +8,11 @@ full execution trail.
 
 ## Snapshot
 
-- Date: 2026-03-09
-- Stable commit: `f810599`
-- Stable commit title: `fix: harden gateway async pipeline and live verifiers`
-- Current plan status: implementation plan completed through step `27`
-- Next planned step: implementation plan step `28` (`high-risk rule precheck`)
+- Date: 2026-03-10
+- Stable commit: `e6d49c4`
+- Stable commit title: `feat: add curated knowledge card dataset`
+- Current plan status: implementation plan completed through step `43`
+- Next planned step: implementation plan step `44` (`建立向量索引与基础检索`)
 
 ## Project Goal
 
@@ -92,6 +92,10 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
 - Step 28-35: high-risk precheck, dialogue fallback reply, TTS playback, static
   avatar baseline, mouth drive, dual avatar switch, and stage-driven expression presets.
 - Step 35A: offline avatar-driver validation against enterprise `3D_FV_files`.
+- Step 36-42: camera preview and upload, affect-service text/audio/video lanes,
+  multimodal fusion, and clarification-first dialogue routing for fusion conflicts.
+- Step 43: curated knowledge-card dataset under `data/kb/knowledge_cards.jsonl`
+  with verifier coverage for stage, risk, category, and high-risk handoff rules.
 
 ### 6. Recent fixes
 
@@ -113,7 +117,9 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
 - Orchestrator: `apps/orchestrator/main.py`
 - Dialogue: `services/dialogue-service/main.py`
 - ASR: `services/asr-service/main.py`
-- Tests: `145 passed` on the last full run
+- Affect: `services/affect-service/main.py`
+- RAG dataset baseline: `data/kb/knowledge_cards.jsonl`
+- Tests: `180 passed` on the last full run
 
 ## Current Model / Provider Policy
 
@@ -150,13 +156,14 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
 - MAGICDATA eval catalog: `data/derived/transcripts-local/magicdata_eval_all.jsonl`
 - MAGICDATA frozen subset: `data/derived/transcripts-local/magicdata_eval_core.jsonl`
 - MAGICDATA eval report: `data/derived/eval-local/magicdata_asr_baseline_report.md`
+- RAG knowledge cards: `data/kb/knowledge_cards.jsonl`
 
 ## Resume Rules For A New Chat
 
 1. Read this file.
 2. Read `memory-bank/progress.md` from newest to older entries as needed.
 3. Read `memory-bank/architecture.md` for stable constraints.
-4. Continue from implementation plan step `36` unless the user redirects.
+4. Continue from implementation plan step `44` unless the user redirects.
 5. Keep `qwen3-asr-flash` limited to ASR and `gpt-5.2` limited to dialogue.
 6. Use `uv run` for Python commands.
 7. Run tests before commit.

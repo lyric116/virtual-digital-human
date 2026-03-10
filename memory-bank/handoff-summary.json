@@ -1,13 +1,13 @@
 {
-  "date": "2026-03-09",
+  "date": "2026-03-10",
   "stable_commit": {
-    "sha": "f810599",
-    "title": "fix: harden gateway async pipeline and live verifiers"
+    "sha": "e6d49c4",
+    "title": "feat: add curated knowledge card dataset"
   },
   "plan_status": {
-    "completed_through_step": "35A",
-    "next_step": 36,
-    "next_step_title": "camera preview and frame upload"
+    "completed_through_step": 43,
+    "next_step": 44,
+    "next_step_title": "knowledge indexing and baseline retrieval"
   },
   "project_goal": "Build a multimodal emotional-support virtual digital human system with text/voice/camera input, ASR, stage-controlled LLM response, avatar output, and replay/evaluation.",
   "model_policy": {
@@ -54,12 +54,13 @@
     "Dialogue-service schema gate, real LLM integration, stage machine, short-term memory, dialogue summary, and high-risk/fallback hardening",
     "TTS service, frontend playback, static avatar baseline, mouth drive, dual-avatar switching, and expression presets",
     "Offline avatar-driver validation against enterprise 3D face features",
-    "Post-review hardening for async IO, websocket delivery, MIME handling, env parsing, verifier topology, and TTS fallback stability"
+    "Post-review hardening for async IO, websocket delivery, MIME handling, env parsing, verifier topology, and TTS fallback stability",
+    "Curated RAG knowledge-card dataset with field, category, and high-risk handoff validation"
   ],
   "completed_steps": [
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
     "18B", "18C", 19, 20, 21, 22, "22A", 23, 24, 25, 26, 27, 28, 29,
-    30, 31, 32, 33, 34, 35, "35A"
+    30, 31, 32, 33, 34, 35, "35A", 36, 37, 38, 39, 40, 41, 42, 43
   ],
   "enterprise_data": {
     "manifest_path": "data/manifests/val_manifest.jsonl",
@@ -83,10 +84,12 @@
     "gateway": "apps/api-gateway/main.py",
     "orchestrator": "apps/orchestrator/main.py",
     "dialogue_service": "services/dialogue-service/main.py",
-    "asr_service": "services/asr-service/main.py"
+    "asr_service": "services/asr-service/main.py",
+    "affect_service": "services/affect-service/main.py",
+    "rag_dataset": "data/kb/knowledge_cards.jsonl"
   },
   "last_verified_state": {
-    "full_test_result": "145 passed",
+    "full_test_result": "180 passed",
     "notes": [
       "Latest stability pass fixed blocking gateway work inside async routes.",
       "WebSocket duplicate/loss edge cases were fixed.",
@@ -94,12 +97,13 @@
       "Live verifier scripts now boot dialogue-service when orchestrator depends on it.",
       "TTS now falls back to a local wav asset when edge_tts times out.",
       "Dialogue live verifiers are confirmed with gpt-5.2 when run serially.",
-      "Offline avatar-driver validation now reads real enterprise 3D_FV_files and writes a checked report under data/derived/avatar_driver/."
+      "Offline avatar-driver validation now reads real enterprise 3D_FV_files and writes a checked report under data/derived/avatar_driver/.",
+      "RAG step 43 now keeps curated support content in data/kb/knowledge_cards.jsonl and explicitly separates it from enterprise validation media and MAGICDATA ASR references."
     ]
   },
   "resume_rules": [
     "Read handoff-summary.md, then progress.md and architecture.md.",
-    "Continue from implementation plan step 36 unless redirected.",
+    "Continue from implementation plan step 44 unless redirected.",
     "Use uv run for Python commands.",
     "Run tests before every commit.",
     "Commit and push only after passing checks.",
