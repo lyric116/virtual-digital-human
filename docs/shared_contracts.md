@@ -236,6 +236,25 @@ converted into one playable speech asset.
 | `fallback_reason` | string | No | Machine-readable fallback reason when `fallback_used=true`. |
 | `generated_at` | string | Yes | Asset generation time. |
 
+## Avatar Offline Drive Response
+
+This payload is returned by the offline avatar-driver service when one enterprise 3D
+feature sample is converted into a validation-friendly driver structure.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `record_id` | string | No | Manifest record id tied to the sample. |
+| `avatar_id` | string | Yes | Target avatar identifier used for validation. |
+| `source_face3d_path` | string | Yes | Relative path of the source `3D_FV_files` asset. |
+| `source_emotion_path` | string | No | Relative path of the paired emotion CSV when available. |
+| `frame_count` | integer | Yes | Number of normalized 3D feature frames. |
+| `feature_dim` | integer | Yes | Feature width after normalization. |
+| `emotion_row_count` | integer | No | Number of paired emotion rows. |
+| `alignment_status` | string | Yes | `aligned`, `mismatch`, or `unverified`. |
+| `mismatch_steps` | integer | No | Absolute difference between 3D frames and emotion rows. |
+| `driver_frames` | array[object] | Yes | Sampled driver parameter frames for offline inspection. |
+| `driver_summary` | object | Yes | Aggregated driver stats plus optional emotion summary. |
+
 ## Avatar Command
 
 This payload is emitted after TTS and dialogue planning and consumed by avatar playback.

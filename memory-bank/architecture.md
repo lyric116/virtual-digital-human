@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - avatar-driver-service is now an offline validation boundary
+
+- Step 35A keeps enterprise 3D_FV_files out of the live avatar path: services/avatar-driver-service reads face3d_path plus optional emotion_path, normalizes 3D tensors, and emits sampled driver frames only for offline validation and reporting.
+- The offline avatar-driver response now makes frame_count, feature_dim, emotion_row_count, alignment_status, and mismatch_steps explicit, so later avatar evaluation can reason about 751-vs-750 timing mismatches without re-reading raw files everywhere.
+- The generated report under data/derived/avatar_driver/ is now the stable artifact that proves enterprise 3D features are wired into the repository as an executable evaluation path rather than just stored data.
+
 ## 2026-03-10 - dialogue now targets gpt-5.2 and tts has a local fallback boundary
 
 - Dialogue and summary generation now target gpt-5.2 through the LLM_* contract, and the real verifier set must continue to run serially because this shared provider has much higher latency than the earlier baseline.

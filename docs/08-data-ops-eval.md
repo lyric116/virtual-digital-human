@@ -134,6 +134,19 @@
 - 企业验证集评测链和 MAGICDATA 中文评测链必须分开维护
 - 公开语料派生产物默认不进入版本库
 
+当前仓库在数字人侧也增加了一条企业离线路径：
+
+- `services/avatar-driver-service`
+- `scripts/verify_avatar_driver_offline.py`
+- `data/derived/avatar_driver/offline_validation_report.md`
+
+这条路径的作用是：
+
+- 读取企业 `3D_FV_files`
+- 和对应情绪 CSV 做长度对齐检查
+- 产出 sampled driver frames 与摘要结果
+- 为后续数字人驱动评测提供可复现的离线输入输出样本
+
 评测脚本需要能直接输出 CSV 或 Markdown 表格，用于方案书和 PPT。
 
 ## 8. 可解释性输出

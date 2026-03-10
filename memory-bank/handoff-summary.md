@@ -91,6 +91,7 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
   machine, short-term memory, dialogue summary layer.
 - Step 28-35: high-risk precheck, dialogue fallback reply, TTS playback, static
   avatar baseline, mouth drive, dual avatar switch, and stage-driven expression presets.
+- Step 35A: offline avatar-driver validation against enterprise `3D_FV_files`.
 
 ### 6. Recent fixes
 
@@ -112,7 +113,7 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
 - Orchestrator: `apps/orchestrator/main.py`
 - Dialogue: `services/dialogue-service/main.py`
 - ASR: `services/asr-service/main.py`
-- Tests: `142 passed` on the last full run
+- Tests: `145 passed` on the last full run
 
 ## Current Model / Provider Policy
 
@@ -155,7 +156,7 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
 1. Read this file.
 2. Read `memory-bank/progress.md` from newest to older entries as needed.
 3. Read `memory-bank/architecture.md` for stable constraints.
-4. Continue from implementation plan step `35A` unless the user redirects.
+4. Continue from implementation plan step `36` unless the user redirects.
 5. Keep `qwen3-asr-flash` limited to ASR and `gpt-5.2` limited to dialogue.
 6. Use `uv run` for Python commands.
 7. Run tests before commit.

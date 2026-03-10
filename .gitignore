@@ -13,3 +13,5 @@ data/derived/live_media/
 data/derived/transcripts-local/
 data/derived/eval-local/
 tmp_logs/
+
+/data/derived/test_avatar_driver_assets/

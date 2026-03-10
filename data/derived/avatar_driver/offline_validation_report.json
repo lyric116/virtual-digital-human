@@ -1,0 +1,119 @@
+{
+  "record_id": "noxi/001_2016-03-17_Paris/speaker_a/1",
+  "avatar_id": "companion_female_01",
+  "source_face3d_path": "data/val/3D_FV_files/NoXI/001_2016-03-17_Paris/Expert_video/1.npy",
+  "source_emotion_path": "data/val/Emotion/NoXI/001_2016-03-17_Paris/P1/1.csv",
+  "frame_count": 751,
+  "feature_dim": 58,
+  "emotion_row_count": 750,
+  "alignment_status": "mismatch",
+  "mismatch_steps": 1,
+  "driver_frames": [
+    {
+      "frame_index": 0,
+      "jaw_open": 0.2877495586872101,
+      "brow_raise": 0.18385277688503265,
+      "mouth_round": 0.021542822942137718,
+      "eye_wide": 0.8177627921104431,
+      "head_tilt": 0.055265575647354126,
+      "expression_energy": 0.2910105288028717
+    },
+    {
+      "frame_index": 75,
+      "jaw_open": 0.33500099182128906,
+      "brow_raise": 0.09926237165927887,
+      "mouth_round": 0.06061878427863121,
+      "eye_wide": 0.5922765135765076,
+      "head_tilt": 0.04788598418235779,
+      "expression_energy": 0.2321566343307495
+    },
+    {
+      "frame_index": 150,
+      "jaw_open": 0.26232147216796875,
+      "brow_raise": 0.27444836497306824,
+      "mouth_round": 0.005196815822273493,
+      "eye_wide": 0.6189240217208862,
+      "head_tilt": 0.05558779463171959,
+      "expression_energy": 0.2549362778663635
+    },
+    {
+      "frame_index": 225,
+      "jaw_open": 0.2811987102031708,
+      "brow_raise": 0.2419968843460083,
+      "mouth_round": 0.02049117349088192,
+      "eye_wide": 0.6145775318145752,
+      "head_tilt": 0.04980700463056564,
+      "expression_energy": 0.2517451047897339
+    },
+    {
+      "frame_index": 300,
+      "jaw_open": 0.4243638217449188,
+      "brow_raise": 0.15177258849143982,
+      "mouth_round": 0.002791662234812975,
+      "eye_wide": 0.6013290286064148,
+      "head_tilt": 0.039417240768671036,
+      "expression_energy": 0.24381542205810547
+    },
+    {
+      "frame_index": 375,
+      "jaw_open": 0.31834644079208374,
+      "brow_raise": 0.21592207252979279,
+      "mouth_round": 0.018945440649986267,
+      "eye_wide": 0.6263478398323059,
+      "head_tilt": 0.09137340635061264,
+      "expression_energy": 0.26259535551071167
+    },
+    {
+      "frame_index": 450,
+      "jaw_open": 0.20957033336162567,
+      "brow_raise": 0.3204413056373596,
+      "mouth_round": 0.04206903278827667,
+      "eye_wide": 0.6353960633277893,
+      "head_tilt": 0.057434022426605225,
+      "expression_energy": 0.2691628038883209
+    },
+    {
+      "frame_index": 525,
+      "jaw_open": 0.23253624141216278,
+      "brow_raise": 0.12477634847164154,
+      "mouth_round": 0.10143538564443588,
+      "eye_wide": 0.6292121410369873,
+      "head_tilt": 0.043072327971458435,
+      "expression_energy": 0.23966670036315918
+    },
+    {
+      "frame_index": 600,
+      "jaw_open": 0.17447800934314728,
+      "brow_raise": 0.24462421238422394,
+      "mouth_round": 0.021077612414956093,
+      "eye_wide": 0.6099801063537598,
+      "head_tilt": 0.04282398894429207,
+      "expression_energy": 0.23513543605804443
+    },
+    {
+      "frame_index": 675,
+      "jaw_open": 0.46142616868019104,
+      "brow_raise": 0.19334103167057037,
+      "mouth_round": 0.012708405964076519,
+      "eye_wide": 0.5682949423789978,
+      "head_tilt": 0.04705951735377312,
+      "expression_energy": 0.253186970949173
+    },
+    {
+      "frame_index": 750,
+      "jaw_open": 0.2829349935054779,
+      "brow_raise": 0.196365624666214,
+      "mouth_round": 0.009133084677159786,
+      "eye_wide": 0.5708330273628235,
+      "head_tilt": 0.05314525589346886,
+      "expression_energy": 0.23032531142234802
+    }
+  ],
+  "driver_summary": {
+    "jaw_open_mean": 0.29726606742902234,
+    "expression_energy_mean": 0.2512487769126892,
+    "dominant_emotion": "Anger",
+    "mean_valence": -0.15337843478893334,
+    "mean_arousal": 0.3363530283421333
+  }
+}

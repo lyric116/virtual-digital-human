@@ -21,6 +21,32 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - step 35A offline avatar-driver validation
+
+### Scope
+
+Completed implementation plan step 35A by adding a standalone avatar-driver-service that reads enterprise 3D_FV_files, validates timing alignment against paired emotion CSV rows, emits deterministic sampled driver frames, and writes a checked offline validation report from a real enterprise sample.
+
+### Outputs
+
+- services/avatar-driver-service/main.py
+- services/avatar-driver-service/README.md
+- scripts/verify_avatar_driver_offline.py
+- tests/test_avatar_driver_service.py
+- data/derived/avatar_driver/offline_validation_report.md
+- data/derived/avatar_driver/offline_validation_report.json
+- README.md and docs/07-tts-avatar.md now describe the offline avatar-driver validation lane
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_avatar_driver_service.py -> 3 passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_avatar_driver_offline.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 145 passed
+
+### Next
+
+- Step 36: add camera permission, preview, and low-frequency frame upload without touching the stable text/audio main path
+
 ## 2026-03-10 - gpt-5.2 confirmation and tts fallback hardening
 
 ### Scope

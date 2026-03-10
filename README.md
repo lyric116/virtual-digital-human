@@ -58,6 +58,9 @@ Current repository state:
   to a distinct TTS voice plus a visibly different stage profile
 - the frontend avatar stage now also maps dialogue `stage`, `emotion`, and `risk_level`
   into deterministic expression presets so high-risk replies stay visually restrained
+- `services/avatar-driver-service` now reads enterprise `3D_FV_files` offline, checks
+  alignment against emotion CSV rows, and emits deterministic sampled driver frames for
+  later avatar evaluation
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -138,6 +141,8 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_mouth_drive.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_switch.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_expression_presets.py`
+- `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/avatar-driver-service main:app --host 0.0.0.0 --port 8050`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_avatar_driver_offline.py`
 
 - Rebuild manifest, transcript workflow, and QC report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/build_data_artifacts.py`
