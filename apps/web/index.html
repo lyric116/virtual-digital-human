@@ -33,18 +33,27 @@
             <h2>Capture Panel</h2>
           </div>
           <p class="panel-summary">
-            Text input is live, and microphone permission plus local recording controls
-            are now available. When a session exists, audio chunks are now uploaded to
-            the gateway and stored as temporary media indexes.
+            Text input is live. Microphone recording and camera preview now share the same
+            capture surface, and the gateway can already persist low-frequency audio/video
+            media records without touching later multimodal inference.
           </p>
           <div class="panel-body stacked">
-            <div class="media-preview">
-              <span class="status-dot muted"></span>
-              <span>Camera preview unavailable in static mode</span>
+            <div class="media-preview camera-preview-shell">
+              <video
+                id="camera-preview-video"
+                class="camera-preview-video"
+                autoplay
+                muted
+                playsinline
+              ></video>
+              <div class="camera-preview-copy">
+                <span class="status-dot muted"></span>
+                <span id="camera-permission-status">摄像头尚未授权。</span>
+              </div>
             </div>
             <div class="pill-row">
               <span class="pill" id="capture-mic-pill">Mic: idle</span>
-              <span class="pill" id="capture-camera-pill">Camera: blocked</span>
+              <span class="pill" id="capture-camera-pill">Camera: idle</span>
               <span class="pill" id="capture-input-pill">Input: text</span>
             </div>
             <div class="mock-input">
@@ -55,6 +64,9 @@
               >我这两天总是睡不好，脑子停不下来。</textarea>
             </div>
             <div class="button-row">
+              <button type="button" id="camera-request-button">Enable Camera</button>
+              <button type="button" id="camera-start-button">Start Camera</button>
+              <button type="button" id="camera-stop-button">Stop Camera</button>
               <button type="button" id="mic-request-button">Enable Mic</button>
               <button type="button" id="mic-start-button">Start Recording</button>
               <button type="button" id="mic-stop-button">Stop Recording</button>
@@ -63,6 +75,16 @@
             <p class="capture-status" id="mic-permission-status" aria-live="polite">
               麦克风尚未授权。
             </p>
+            <div class="capture-meta">
+              <span>Camera state</span>
+              <strong id="camera-preview-state-value">idle</strong>
+              <small id="camera-preview-detail-value">尚未开启摄像头预览。</small>
+            </div>
+            <div class="capture-meta">
+              <span>Video upload</span>
+              <strong id="video-upload-state-value">idle</strong>
+              <small id="video-upload-detail-value">当前没有视频帧上传。</small>
+            </div>
             <div class="capture-meta">
               <span>Recording state</span>
               <strong id="mic-recording-state-value">idle</strong>

@@ -63,6 +63,10 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - step 36 isolates video ingestion from inference
+
+- The browser video path now ends at POST /api/session/{session_id}/video/frame and media_indexes rows with media_kind=video_frame. This route stores low-frequency snapshots only and must stay isolated from dialogue, ASR, and affect inference until later steps deliberately consume video_frame assets.
+
 ## 2026-03-10 - avatar-driver-service is now an offline validation boundary
 
 - Step 35A keeps enterprise 3D_FV_files out of the live avatar path: services/avatar-driver-service reads face3d_path plus optional emotion_path, normalizes 3D tensors, and emits sampled driver frames only for offline validation and reporting.

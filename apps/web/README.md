@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, 33, 34, and 35:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, 33, 34, 35, and 36:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -42,6 +42,9 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
 - step 35: the avatar stage now maps dialogue `stage`, `emotion`, and `risk_level`
   into deterministic expression presets so the same role no longer looks identical in
   `assess`, `intervene`, `reassess`, and `handoff`
+- step 36: the capture panel now requests camera permission, starts and stops local
+  preview, and uploads low-frequency `video_frame` snapshots to the gateway without
+  attaching any visual inference yet
 
 ## Files
 
@@ -56,7 +59,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
     finalized audio submission plus partial transcript preview back into the text dialogue loop,
     followed by frontend TTS synthesis, avatar audio playback, subtitle sync, static
     avatar state switching, basic mouth cue playback, dual-avatar selection, and
-    stage-driven expression preset mapping
+    stage-driven expression preset mapping, plus camera preview and low-frequency video
+    frame upload
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -89,6 +93,10 @@ Then open:
 - `Send Text` is live only after session bootstrap and a connected realtime channel
 - microphone controls can now upload temporary audio chunks to the gateway after a
   session exists; without a session they stay in local-only mode
+- camera controls can now request video permission, keep a local preview alive, and
+  upload low-frequency `video_frame` snapshots to `/api/session/{session_id}/video/frame`
+  when a session exists
+- 摄像头授权被拒绝时，页面会保持稳定，只更新本地权限和预览状态，不影响文本和音频主链路
 - when `window.__APP_CONFIG__.enableAudioFinalize !== false`, stopping a recording also
   submits one complete audio blob to `/api/session/{session_id}/audio/finalize` and
   waits for the final transcript realtime acknowledgement
@@ -129,6 +137,7 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_camera_capture.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_partial_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py`

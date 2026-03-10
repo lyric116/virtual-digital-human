@@ -51,6 +51,15 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert '<link rel="icon" href="./favicon.svg" type="image/svg+xml"' in content
     assert '<script src="./app.js"></script>' in content
     assert 'id="session-start-button"' in content
+    assert 'id="camera-request-button"' in content
+    assert 'id="camera-start-button"' in content
+    assert 'id="camera-stop-button"' in content
+    assert 'id="camera-preview-video"' in content
+    assert 'id="camera-permission-status"' in content
+    assert 'id="camera-preview-state-value"' in content
+    assert 'id="camera-preview-detail-value"' in content
+    assert 'id="video-upload-state-value"' in content
+    assert 'id="video-upload-detail-value"' in content
     assert 'id="text-input-field"' in content
     assert 'id="mic-request-button"' in content
     assert 'id="mic-start-button"' in content

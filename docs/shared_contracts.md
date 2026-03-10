@@ -112,6 +112,26 @@ response is persisted into `media_indexes`.
 | `storage_path` | string | Yes | Local path or object key for the stored chunk. |
 | `media_id` | string | Yes | Stable media index id returned by the gateway. |
 
+## Video Frame Upload
+
+This contract is used by `POST /api/session/{id}/video/frame`. The raw request body
+contains one browser-captured snapshot. The gateway stores the binary and records one
+`video_frame` row in `media_indexes` without calling any vision model yet.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `session_id` | string | Yes | Target session id. |
+| `trace_id` | string | Yes | Session trace id copied into the stored media row. |
+| `frame_seq` | integer | Yes | Monotonic frame sequence starting from `1`. |
+| `captured_at_ms` | integer | No | Browser-side capture timestamp or offset for this frame. |
+| `width` | integer | No | Captured frame width in pixels. |
+| `height` | integer | No | Captured frame height in pixels. |
+| `mime_type` | string | Yes | Browser media type such as `image/jpeg`. |
+| `byte_size` | integer | Yes | Stored byte size for the frame body. |
+| `storage_backend` | string | Yes | `local` in step 36, later `minio` when object storage is enabled. |
+| `storage_path` | string | Yes | Local path or object key for the stored frame. |
+| `media_id` | string | Yes | Stable media index id returned by the gateway. |
+
 ## Audio Preview And Partial Transcript
 
 This contract is used by `POST /api/session/{id}/audio/preview`. The raw request body

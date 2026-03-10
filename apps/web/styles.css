@@ -172,6 +172,27 @@ body::before {
   color: var(--muted);
 }
 
+.camera-preview-shell {
+  align-items: stretch;
+  gap: 16px;
+}
+
+.camera-preview-video {
+  width: min(280px, 42vw);
+  min-height: 156px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(15, 108, 104, 0.24), rgba(18, 24, 38, 0.84));
+  object-fit: cover;
+}
+
+.camera-preview-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .status-dot {
   width: 10px;
   height: 10px;
@@ -735,12 +756,14 @@ body::before {
   cursor: pointer;
 }
 
-.button-row button:nth-child(2),
-.button-row button:nth-child(3) {
+.button-row button#camera-start-button,
+.button-row button#camera-stop-button,
+.button-row button#mic-start-button,
+.button-row button#mic-stop-button {
   background: #476261;
 }
 
-.button-row button:nth-child(4) {
+.button-row button#text-submit-button {
   background: var(--signal);
 }
 

@@ -139,6 +139,7 @@
       enableAudioFinalize: config.enableAudioFinalize !== false,
       enableAudioPreview: config.enableAudioPreview !== false,
       audioPreviewChunkThreshold: config.audioPreviewChunkThreshold || 2,
+      videoFrameUploadIntervalMs: config.videoFrameUploadIntervalMs || 1800,
       autoplayAssistantAudio: config.autoplayAssistantAudio !== false,
     };
   }
@@ -157,6 +158,16 @@
       connectionStatus: "idle",
       lastHeartbeatAt: null,
       connectionLog: ["realtime idle"],
+      cameraPermissionState: "idle",
+      cameraPermissionMessage: "摄像头尚未授权。",
+      cameraState: "idle",
+      cameraPreviewMessage: "尚未开启摄像头预览。",
+      videoUploadState: "idle",
+      videoUploadMessage: "当前没有视频帧上传。",
+      uploadedVideoFrameCount: 0,
+      lastUploadedVideoFrameId: null,
+      lastVideoUploadedAt: null,
+      nextVideoFrameSeq: 1,
       micPermissionState: "idle",
       micPermissionMessage: "麦克风尚未授权。",
       recordingState: "idle",
@@ -226,14 +237,23 @@
   function getViewElements(rootDocument) {
     return {
       startButton: findRequiredElement(rootDocument, "session-start-button"),
+      cameraRequestButton: findOptionalElement(rootDocument, "camera-request-button"),
+      cameraStartButton: findOptionalElement(rootDocument, "camera-start-button"),
+      cameraStopButton: findOptionalElement(rootDocument, "camera-stop-button"),
       micRequestButton: findOptionalElement(rootDocument, "mic-request-button"),
       micStartButton: findOptionalElement(rootDocument, "mic-start-button"),
       micStopButton: findOptionalElement(rootDocument, "mic-stop-button"),
+      cameraPreviewVideo: findOptionalElement(rootDocument, "camera-preview-video"),
       textInputField: findRequiredElement(rootDocument, "text-input-field"),
       textSubmitButton: findRequiredElement(rootDocument, "text-submit-button"),
       captureMicPill: findOptionalElement(rootDocument, "capture-mic-pill"),
       captureCameraPill: findOptionalElement(rootDocument, "capture-camera-pill"),
       captureInputPill: findOptionalElement(rootDocument, "capture-input-pill"),
+      cameraPermissionStatus: findOptionalElement(rootDocument, "camera-permission-status"),
+      cameraPreviewStateValue: findOptionalElement(rootDocument, "camera-preview-state-value"),
+      cameraPreviewDetailValue: findOptionalElement(rootDocument, "camera-preview-detail-value"),
+      videoUploadStateValue: findOptionalElement(rootDocument, "video-upload-state-value"),
+      videoUploadDetailValue: findOptionalElement(rootDocument, "video-upload-detail-value"),
       micPermissionStatus: findOptionalElement(rootDocument, "mic-permission-status"),
       micRecordingStateValue: findOptionalElement(rootDocument, "mic-recording-state-value"),
       micRecordingDetailValue: findOptionalElement(rootDocument, "mic-recording-detail-value"),
@@ -390,6 +410,56 @@
       return state.textSubmitMessage || "文本发送失败。";
     }
     return "输入文本并点击 Send Text。";
+  }
+
+  function getCameraPermissionStatusMessage(state) {
+    if (state.cameraPermissionState === "requesting") {
+      return "正在请求摄像头权限。";
+    }
+    if (state.cameraPermissionState === "granted") {
+      return state.cameraState === "previewing"
+        ? "摄像头已授权，预览与抽帧上传进行中。"
+        : "摄像头已授权，可以开始预览。";
+    }
+    if (state.cameraPermissionState === "denied") {
+      return state.cameraPermissionMessage || "摄像头权限被拒绝。";
+    }
+    if (state.cameraPermissionState === "unsupported") {
+      return "当前环境不支持摄像头采集。";
+    }
+    if (state.cameraPermissionState === "error") {
+      return state.cameraPermissionMessage || "摄像头初始化失败。";
+    }
+    return state.cameraPermissionMessage || "摄像头尚未授权。";
+  }
+
+  function getCameraPreviewDetailMessage(state) {
+    if (state.cameraState === "previewing") {
+      return state.cameraPreviewMessage || "摄像头预览中，正在低频抽帧上传。";
+    }
+    if (state.cameraState === "stopped") {
+      return state.cameraPreviewMessage || "摄像头预览已停止。";
+    }
+    if (state.cameraState === "error") {
+      return state.cameraPreviewMessage || "摄像头预览失败。";
+    }
+    return state.cameraPreviewMessage || "尚未开启摄像头预览。";
+  }
+
+  function getVideoUploadStatusMessage(state) {
+    if (state.videoUploadState === "uploading") {
+      return state.videoUploadMessage || "视频帧上传中。";
+    }
+    if (state.videoUploadState === "completed") {
+      return state.videoUploadMessage || "视频帧上传完成。";
+    }
+    if (state.videoUploadState === "local_only") {
+      return state.videoUploadMessage || "当前只做本地预览，没有上传到网关。";
+    }
+    if (state.videoUploadState === "error") {
+      return state.videoUploadMessage || "视频帧上传失败。";
+    }
+    return state.videoUploadMessage || "当前没有视频帧上传。";
   }
 
   function getMicPermissionStatusMessage(state) {
@@ -677,14 +747,34 @@
       elements.captureMicPill.textContent = `Mic: ${state.micPermissionState}`;
     }
     if (elements.captureCameraPill) {
-      elements.captureCameraPill.textContent = "Camera: blocked";
+      elements.captureCameraPill.textContent = state.cameraState === "previewing"
+        ? "Camera: live"
+        : `Camera: ${state.cameraPermissionState}`;
     }
     if (elements.captureInputPill) {
-      elements.captureInputPill.textContent = (
-        state.recordingState === "recording"
-          ? "Input: text + audio"
-          : "Input: text"
-      );
+      const activeInputs = ["text"];
+      if (state.recordingState === "recording") {
+        activeInputs.push("audio");
+      }
+      if (state.cameraState === "previewing") {
+        activeInputs.push("video");
+      }
+      elements.captureInputPill.textContent = `Input: ${activeInputs.join(" + ")}`;
+    }
+    if (elements.cameraPermissionStatus) {
+      elements.cameraPermissionStatus.textContent = getCameraPermissionStatusMessage(state);
+    }
+    if (elements.cameraPreviewStateValue) {
+      elements.cameraPreviewStateValue.textContent = state.cameraState;
+    }
+    if (elements.cameraPreviewDetailValue) {
+      elements.cameraPreviewDetailValue.textContent = getCameraPreviewDetailMessage(state);
+    }
+    if (elements.videoUploadStateValue) {
+      elements.videoUploadStateValue.textContent = state.videoUploadState;
+    }
+    if (elements.videoUploadDetailValue) {
+      elements.videoUploadDetailValue.textContent = getVideoUploadStatusMessage(state);
     }
     if (elements.micPermissionStatus) {
       elements.micPermissionStatus.textContent = getMicPermissionStatusMessage(state);
@@ -709,6 +799,21 @@
         state.micPermissionState === "requesting"
         || state.recordingState === "recording"
       );
+    }
+    if (elements.cameraRequestButton) {
+      elements.cameraRequestButton.disabled = (
+        state.cameraPermissionState === "requesting"
+        || state.cameraState === "previewing"
+      );
+    }
+    if (elements.cameraStartButton) {
+      elements.cameraStartButton.disabled = (
+        state.cameraPermissionState !== "granted"
+        || state.cameraState === "previewing"
+      );
+    }
+    if (elements.cameraStopButton) {
+      elements.cameraStopButton.disabled = state.cameraState !== "previewing";
     }
     if (elements.micStartButton) {
       elements.micStartButton.disabled = (
@@ -839,6 +944,9 @@
     rootDocument.body.dataset.dialogueReplyState = state.dialogueReplyState;
     rootDocument.body.dataset.historyRestoreState = state.historyRestoreState;
     rootDocument.body.dataset.exportState = state.exportState;
+    rootDocument.body.dataset.cameraPermissionState = state.cameraPermissionState;
+    rootDocument.body.dataset.cameraState = state.cameraState;
+    rootDocument.body.dataset.videoUploadState = state.videoUploadState;
     rootDocument.body.dataset.micPermissionState = state.micPermissionState;
     rootDocument.body.dataset.recordingState = state.recordingState;
     rootDocument.body.dataset.audioUploadState = state.audioUploadState;
@@ -1008,6 +1116,47 @@
       const message = responsePayload && typeof responsePayload.message === "string"
         ? responsePayload.message
         : `Audio chunk upload failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return responsePayload;
+  }
+
+  async function requestVideoFrameUpload(fetchImpl, appConfig, state, payload) {
+    const query = new URLSearchParams();
+    query.set("frame_seq", String(payload.frameSeq));
+    if (typeof payload.capturedAtMs === "number") {
+      query.set("captured_at_ms", String(payload.capturedAtMs));
+    }
+    if (typeof payload.width === "number") {
+      query.set("width", String(payload.width));
+    }
+    if (typeof payload.height === "number") {
+      query.set("height", String(payload.height));
+    }
+
+    const response = await fetchImpl(
+      `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(state.sessionId)}/video/frame?${query.toString()}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": payload.mimeType || "application/octet-stream",
+        },
+        body: payload.blob,
+      },
+    );
+
+    let responsePayload = null;
+    try {
+      responsePayload = await response.json();
+    } catch (error) {
+      responsePayload = null;
+    }
+
+    if (!response.ok) {
+      const message = responsePayload && typeof responsePayload.message === "string"
+        ? responsePayload.message
+        : `Video frame upload failed with status ${response.status}`;
       throw new Error(message);
     }
 
@@ -1418,10 +1567,14 @@
       socket: null,
       heartbeatTimerId: null,
       reconnectTimerId: null,
+      cameraFrameTimerId: null,
       recordingTimerId: null,
       reconnectAttempt: 0,
       connectionToken: 0,
       manualClose: false,
+      cameraStream: null,
+      cameraCanvas: null,
+      pendingVideoUploads: 0,
       micStream: null,
       mediaRecorder: null,
       pendingAudioUploads: 0,
@@ -1449,6 +1602,13 @@
       if (runtime.reconnectTimerId) {
         rootWindow.clearTimeout(runtime.reconnectTimerId);
         runtime.reconnectTimerId = null;
+      }
+    }
+
+    function clearCameraFrameTimer() {
+      if (runtime.cameraFrameTimerId) {
+        rootWindow.clearInterval(runtime.cameraFrameTimerId);
+        runtime.cameraFrameTimerId = null;
       }
     }
 
@@ -2174,6 +2334,280 @@
       return { ...state };
     }
 
+    async function requestCameraAccess() {
+      if (state.cameraState === "previewing") {
+        return { ...state };
+      }
+
+      const navigatorLike = getNavigatorLike(rootWindow);
+      if (
+        !navigatorLike
+        || !navigatorLike.mediaDevices
+        || typeof navigatorLike.mediaDevices.getUserMedia !== "function"
+      ) {
+        state.cameraPermissionState = "unsupported";
+        state.cameraPermissionMessage = "当前环境不支持摄像头采集。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      state.cameraPermissionState = "requesting";
+      state.cameraPermissionMessage = "正在请求摄像头权限。";
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        if (!runtime.cameraStream) {
+          runtime.cameraStream = await navigatorLike.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
+        state.cameraPermissionState = "granted";
+        state.cameraPermissionMessage = "摄像头已授权，可以开始预览。";
+      } catch (error) {
+        const name = error && typeof error === "object" ? error.name : "";
+        state.cameraState = "idle";
+        if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+          state.cameraPermissionState = "denied";
+          state.cameraPermissionMessage = "摄像头权限被拒绝，请检查浏览器授权设置。";
+        } else {
+          state.cameraPermissionState = "error";
+          state.cameraPermissionMessage = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      renderSessionState(rootDocument, elements, state, appConfig);
+      return { ...state };
+    }
+
+    function teardownCamera(stopTracks) {
+      clearCameraFrameTimer();
+      if (elements.cameraPreviewVideo) {
+        try {
+          if (typeof elements.cameraPreviewVideo.pause === "function") {
+            elements.cameraPreviewVideo.pause();
+          }
+        } catch (error) {
+          // ignore preview shutdown errors in test and browser runtimes
+        }
+        if ("srcObject" in elements.cameraPreviewVideo) {
+          elements.cameraPreviewVideo.srcObject = null;
+        }
+      }
+      if (stopTracks && runtime.cameraStream && typeof runtime.cameraStream.getTracks === "function") {
+        runtime.cameraStream.getTracks().forEach(function (track) {
+          if (track && typeof track.stop === "function") {
+            track.stop();
+          }
+        });
+        runtime.cameraStream = null;
+      }
+    }
+
+    function finalizeVideoUploadState() {
+      if (state.videoUploadState === "error") {
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+      if (!state.sessionId) {
+        state.videoUploadState = state.cameraState === "previewing" ? "local_only" : "idle";
+        state.videoUploadMessage = state.cameraState === "previewing"
+          ? "未创建会话，当前只做本地预览，不上传视频帧。"
+          : "当前没有视频帧上传。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
+      if (state.cameraState === "previewing" || runtime.pendingVideoUploads > 0) {
+        state.videoUploadState = "uploading";
+        state.videoUploadMessage = runtime.pendingVideoUploads > 0
+          ? `正在上传视频帧，已完成 ${state.uploadedVideoFrameCount} 帧，仍有 ${runtime.pendingVideoUploads} 帧进行中。`
+          : `摄像头预览中，已上传 ${state.uploadedVideoFrameCount} 帧。`;
+      } else if (state.uploadedVideoFrameCount > 0) {
+        state.videoUploadState = "completed";
+        state.videoUploadMessage = `视频帧上传完成，共 ${state.uploadedVideoFrameCount} 帧。`;
+      } else {
+        state.videoUploadState = "idle";
+        state.videoUploadMessage = "当前没有视频帧上传。";
+      }
+      renderSessionState(rootDocument, elements, state, appConfig);
+    }
+
+    async function buildVideoFramePayload() {
+      const BlobCtor = getBlobCtor();
+      const previewVideo = elements.cameraPreviewVideo;
+      const fallbackMimeType = "image/jpeg";
+      const width = previewVideo && previewVideo.videoWidth ? previewVideo.videoWidth : 640;
+      const height = previewVideo && previewVideo.videoHeight ? previewVideo.videoHeight : 360;
+
+      if (previewVideo && typeof rootDocument.createElement === "function") {
+        const canvas = runtime.cameraCanvas || rootDocument.createElement("canvas");
+        runtime.cameraCanvas = canvas;
+        if (canvas) {
+          canvas.width = width;
+          canvas.height = height;
+          const context = typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
+          if (context && typeof context.drawImage === "function") {
+            try {
+              context.drawImage(previewVideo, 0, 0, width, height);
+            } catch (error) {
+              // ignore draw failures and fallback to synthetic frame payload
+            }
+          }
+          if (typeof canvas.toBlob === "function") {
+            const blob = await new Promise(function (resolve) {
+              canvas.toBlob(resolve, fallbackMimeType, 0.82);
+            });
+            if (blob) {
+              return {
+                blob,
+                mimeType: blob.type || fallbackMimeType,
+                width,
+                height,
+              };
+            }
+          }
+        }
+      }
+
+      if (!BlobCtor) {
+        return null;
+      }
+
+      return {
+        blob: new BlobCtor(
+          [
+            JSON.stringify({
+              camera_state: state.cameraState,
+              frame_seq: state.nextVideoFrameSeq,
+              captured_at: Date.now(),
+            }),
+          ],
+          { type: fallbackMimeType },
+        ),
+        mimeType: fallbackMimeType,
+        width,
+        height,
+      };
+    }
+
+    async function uploadVideoFrame(payload) {
+      if (!state.sessionId) {
+        state.videoUploadState = "local_only";
+        state.videoUploadMessage = "未创建会话，当前只做本地预览，不上传视频帧。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return null;
+      }
+
+      runtime.pendingVideoUploads += 1;
+      state.videoUploadState = "uploading";
+      state.videoUploadMessage = `正在上传第 ${payload.frameSeq} 帧视频快照。`;
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      try {
+        const responsePayload = await requestVideoFrameUpload(resolvedFetch, appConfig, state, payload);
+        state.uploadedVideoFrameCount += 1;
+        state.lastUploadedVideoFrameId = responsePayload.media_id || null;
+        state.lastVideoUploadedAt = responsePayload.created_at || new Date().toISOString();
+        return responsePayload;
+      } catch (error) {
+        state.videoUploadState = "error";
+        state.videoUploadMessage = error instanceof Error ? error.message : String(error);
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return null;
+      } finally {
+        runtime.pendingVideoUploads = Math.max(0, runtime.pendingVideoUploads - 1);
+        finalizeVideoUploadState();
+      }
+    }
+
+    async function captureAndUploadVideoFrame() {
+      if (state.cameraState !== "previewing") {
+        return null;
+      }
+
+      const capturePayload = await buildVideoFramePayload();
+      if (!capturePayload) {
+        state.videoUploadState = "error";
+        state.videoUploadMessage = "当前环境不支持视频帧序列化。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return null;
+      }
+
+      const frameSeq = state.nextVideoFrameSeq;
+      state.nextVideoFrameSeq += 1;
+      return uploadVideoFrame({
+        blob: capturePayload.blob,
+        frameSeq,
+        capturedAtMs: Math.max(0, Date.now()),
+        width: capturePayload.width,
+        height: capturePayload.height,
+        mimeType: capturePayload.mimeType,
+      });
+    }
+
+    async function startCameraPreview() {
+      if (state.cameraState === "previewing") {
+        return { ...state };
+      }
+
+      if (state.cameraPermissionState !== "granted" || !runtime.cameraStream) {
+        await requestCameraAccess();
+      }
+      if (state.cameraPermissionState !== "granted" || !runtime.cameraStream) {
+        state.cameraState = "error";
+        state.cameraPreviewMessage = "摄像头未就绪，无法开始预览。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      if (elements.cameraPreviewVideo && "srcObject" in elements.cameraPreviewVideo) {
+        elements.cameraPreviewVideo.srcObject = runtime.cameraStream;
+      }
+      if (elements.cameraPreviewVideo && typeof elements.cameraPreviewVideo.play === "function") {
+        try {
+          await elements.cameraPreviewVideo.play();
+        } catch (error) {
+          state.cameraState = "error";
+          state.cameraPreviewMessage = error instanceof Error ? error.message : String(error);
+          renderSessionState(rootDocument, elements, state, appConfig);
+          return { ...state };
+        }
+      }
+
+      clearCameraFrameTimer();
+      state.cameraState = "previewing";
+      state.cameraPreviewMessage = "摄像头预览中，正在低频抽帧上传。";
+      state.videoUploadState = state.sessionId ? "uploading" : "local_only";
+      state.videoUploadMessage = state.sessionId
+        ? "摄像头已开启，等待第一帧上传。"
+        : "摄像头已开启，但当前会话未创建，只做本地预览。";
+      state.uploadedVideoFrameCount = 0;
+      state.lastUploadedVideoFrameId = null;
+      state.lastVideoUploadedAt = null;
+      state.nextVideoFrameSeq = 1;
+      renderSessionState(rootDocument, elements, state, appConfig);
+
+      void captureAndUploadVideoFrame();
+      runtime.cameraFrameTimerId = rootWindow.setInterval(function () {
+        void captureAndUploadVideoFrame();
+      }, appConfig.videoFrameUploadIntervalMs);
+
+      return { ...state };
+    }
+
+    function stopCameraPreview() {
+      if (state.cameraState !== "previewing") {
+        return { ...state };
+      }
+
+      teardownCamera(true);
+      state.cameraState = "stopped";
+      state.cameraPreviewMessage = "摄像头预览已停止。";
+      finalizeVideoUploadState();
+      return { ...state };
+    }
+
     async function requestMicrophoneAccess() {
       if (state.recordingState === "recording") {
         return { ...state };
@@ -2571,6 +3005,7 @@
 
     function shutdownForTest() {
       teardownRealtime(true);
+      teardownCamera(true);
       teardownMicrophone();
       state.connectionStatus = "closed";
       pushConnectionLog(state, "realtime shutdown");
@@ -2581,6 +3016,21 @@
     elements.startButton.addEventListener("click", function () {
       return startSession();
     });
+    if (elements.cameraRequestButton) {
+      elements.cameraRequestButton.addEventListener("click", function () {
+        return requestCameraAccess();
+      });
+    }
+    if (elements.cameraStartButton) {
+      elements.cameraStartButton.addEventListener("click", function () {
+        return startCameraPreview();
+      });
+    }
+    if (elements.cameraStopButton) {
+      elements.cameraStopButton.addEventListener("click", function () {
+        return stopCameraPreview();
+      });
+    }
     if (elements.avatarOptionCompanion) {
       elements.avatarOptionCompanion.addEventListener("click", function () {
         return selectAvatar("companion_female_01");
@@ -2660,6 +3110,9 @@
         return { ...state };
       },
       startSession,
+      requestCameraAccess,
+      startCameraPreview,
+      stopCameraPreview,
       requestMicrophoneAccess,
       startRecording,
       stopRecording,

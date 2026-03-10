@@ -61,6 +61,9 @@ Current repository state:
 - `services/avatar-driver-service` now reads enterprise `3D_FV_files` offline, checks
   alignment against emotion CSV rows, and emits deterministic sampled driver frames for
   later avatar evaluation
+- the frontend capture panel now supports camera permission, local preview, and
+  low-frequency `video_frame` uploads to the gateway so the video modality can enter the
+  system before affect inference is attached
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -128,6 +131,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_camera_capture.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_partial_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/asr-service main:app --host 0.0.0.0 --port 8020`

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 26, 27, and 28:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 26, 27, 28, and 36:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -32,6 +32,8 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 2
   longer sessions stop relying only on raw recent turns
 - step 28: run a deterministic high-risk rule precheck before calling orchestrator so
   obvious self-harm or suicide expressions short-circuit directly to `handoff`
+- step 36: accept low-frequency browser video frames, persist them as `video_frame`
+  media rows, and keep the video path isolated from dialogue and affect inference
 
 ## Files
 
@@ -46,6 +48,7 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 2
 - `GET /api/session/{session_id}/export`
 - `POST /api/session/{session_id}/text`
 - `POST /api/session/{session_id}/audio/chunk`
+- `POST /api/session/{session_id}/video/frame`
 - `POST /api/session/{session_id}/audio/preview`
 - `POST /api/session/{session_id}/audio/finalize`
 - `GET /ws/session/{session_id}` as a WebSocket upgrade endpoint
@@ -79,6 +82,9 @@ From repository root:
   carry the same session `trace_id`.
 - `POST /api/session/{session_id}/audio/chunk` does not invoke ASR yet; it only stores
   the raw chunk under `MEDIA_STORAGE_ROOT` and records an `audio_chunk` index row.
+- `POST /api/session/{session_id}/video/frame` stores one low-frequency browser
+  snapshot under `MEDIA_STORAGE_ROOT` and records a `video_frame` row in
+  `media_indexes`. It does not trigger vision inference or dialogue updates yet.
 - `POST /api/session/{session_id}/audio/finalize` stores one complete recording under
   `MEDIA_STORAGE_ROOT`, sends the binary to `services/asr-service`, writes the final
   transcript as a user message with `source_kind='audio'`, and then triggers the same

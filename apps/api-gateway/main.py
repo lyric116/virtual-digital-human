@@ -34,6 +34,10 @@ MIME_EXTENSION_MAP = {
     "audio/wave": ".wav",
     "audio/ogg": ".ogg",
     "audio/mpeg": ".mp3",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
     "application/octet-stream": ".bin",
 }
 
@@ -202,6 +206,22 @@ class AudioChunkAcceptedResponse(BaseModel):
     chunk_seq: int = Field(ge=1)
     chunk_started_at_ms: int | None = Field(default=None, ge=0)
     is_final: bool = False
+    created_at: datetime
+
+
+class VideoFrameAcceptedResponse(BaseModel):
+    media_id: str
+    session_id: str
+    trace_id: str
+    media_kind: Literal["video_frame"]
+    storage_backend: Literal["local", "minio"]
+    storage_path: str
+    mime_type: str
+    byte_size: int = Field(ge=0)
+    frame_seq: int = Field(ge=1)
+    captured_at_ms: int | None = Field(default=None, ge=0)
+    width: int | None = Field(default=None, ge=1)
+    height: int | None = Field(default=None, ge=1)
     created_at: datetime
 
 
@@ -450,6 +470,20 @@ class SessionRepository(Protocol):
         chunk_started_at_ms: int | None,
         duration_ms: int | None,
         is_final: bool,
+        mime_type: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        ...
+
+    def create_video_frame_index(
+        self,
+        session_id: str,
+        *,
+        content: bytes,
+        frame_seq: int,
+        captured_at_ms: int | None,
+        width: int | None,
+        height: int | None,
         mime_type: str,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -767,6 +801,31 @@ class PostgresSessionRepository:
 
         extension = MIME_EXTENSION_MAP.get(resolved_mime_type, ".bin")
         absolute_path = storage_root / "audio_final" / session_id / f"{media_id}{extension}"
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            storage_path = str(absolute_path.relative_to(storage_prefix))
+        except ValueError:
+            storage_path = str(absolute_path)
+        return absolute_path, storage_path
+
+    def _resolve_video_frame_path(
+        self,
+        session_id: str,
+        media_id: str,
+        frame_seq: int,
+        mime_type: str,
+    ) -> tuple[Path, str]:
+        resolved_mime_type = normalize_mime_type(mime_type)
+        configured_root = Path(self.media_storage_root)
+        if configured_root.is_absolute():
+            storage_root = configured_root
+            storage_prefix = configured_root
+        else:
+            storage_root = ROOT / configured_root
+            storage_prefix = ROOT
+
+        extension = MIME_EXTENSION_MAP.get(resolved_mime_type, ".bin")
+        absolute_path = storage_root / "video_frames" / session_id / f"{frame_seq:06d}_{media_id}{extension}"
         absolute_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             storage_path = str(absolute_path.relative_to(storage_prefix))
@@ -1625,6 +1684,120 @@ class PostgresSessionRepository:
             raise RuntimeError("audio final insert returned no row")
         return dict(row)
 
+    def create_video_frame_index(
+        self,
+        session_id: str,
+        *,
+        content: bytes,
+        frame_seq: int,
+        captured_at_ms: int | None,
+        width: int | None,
+        height: int | None,
+        mime_type: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        media_id = f"media_{uuid4().hex[:24]}"
+        resolved_mime_type = normalize_mime_type(mime_type)
+
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT session_id, trace_id
+                    FROM sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                session_row = cur.fetchone()
+                if session_row is None:
+                    raise KeyError(session_id)
+
+                absolute_path, storage_path = self._resolve_video_frame_path(
+                    session_id=session_id,
+                    media_id=media_id,
+                    frame_seq=frame_seq,
+                    mime_type=resolved_mime_type,
+                )
+                absolute_path.write_bytes(content)
+
+                row_metadata = dict(metadata or {})
+                row_metadata.update(
+                    {
+                        "frame_seq": frame_seq,
+                        "captured_at_ms": captured_at_ms,
+                        "width": width,
+                        "height": height,
+                    }
+                )
+
+                cur.execute(
+                    """
+                    INSERT INTO media_indexes (
+                        media_id,
+                        session_id,
+                        trace_id,
+                        message_id,
+                        media_kind,
+                        storage_backend,
+                        storage_path,
+                        mime_type,
+                        duration_ms,
+                        byte_size,
+                        metadata,
+                        created_at
+                    ) VALUES (
+                        %(media_id)s,
+                        %(session_id)s,
+                        %(trace_id)s,
+                        %(message_id)s,
+                        'video_frame',
+                        'local',
+                        %(storage_path)s,
+                        %(mime_type)s,
+                        %(duration_ms)s,
+                        %(byte_size)s,
+                        %(metadata)s,
+                        %(created_at)s
+                    )
+                    RETURNING
+                        media_id,
+                        session_id,
+                        trace_id,
+                        media_kind,
+                        storage_backend,
+                        storage_path,
+                        mime_type,
+                        byte_size,
+                        created_at
+                    """,
+                    {
+                        "media_id": media_id,
+                        "session_id": session_id,
+                        "trace_id": session_row["trace_id"],
+                        "message_id": None,
+                        "storage_path": storage_path,
+                        "mime_type": resolved_mime_type,
+                        "duration_ms": None,
+                        "byte_size": len(content),
+                        "metadata": Jsonb(row_metadata),
+                        "created_at": now,
+                    },
+                )
+                row = cur.fetchone()
+
+        if row is None:
+            raise RuntimeError("video frame insert returned no row")
+
+        return {
+            **dict(row),
+            "frame_seq": frame_seq,
+            "captured_at_ms": captured_at_ms,
+            "width": width,
+            "height": height,
+        }
+
     def delete_media_asset(self, media_id: str) -> None:
         storage_path: str | None = None
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
@@ -1871,6 +2044,60 @@ def create_audio_chunk_record(
             content=error_payload(
                 error_code="audio_chunk_store_failed",
                 message="Failed to store audio chunk",
+                session_id=session_id,
+            ),
+        )
+
+
+def create_video_frame_record(
+    repository: SessionRepository,
+    session_id: str,
+    *,
+    content: bytes,
+    frame_seq: int,
+    captured_at_ms: int | None,
+    width: int | None,
+    height: int | None,
+    mime_type: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any] | JSONResponse:
+    normalized_mime_type = normalize_mime_type(mime_type)
+    if not content:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_payload(
+                error_code="video_frame_empty",
+                message="Video frame body must not be empty",
+                session_id=session_id,
+            ),
+        )
+
+    try:
+        return repository.create_video_frame_index(
+            session_id,
+            content=content,
+            frame_seq=frame_seq,
+            captured_at_ms=captured_at_ms,
+            width=width,
+            height=height,
+            mime_type=normalized_mime_type,
+            metadata=metadata,
+        )
+    except KeyError:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=error_payload(
+                error_code="session_not_found",
+                message="Session not found",
+                session_id=session_id,
+            ),
+        )
+    except (OSError, psycopg.Error):
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error_payload(
+                error_code="video_frame_store_failed",
+                message="Failed to store video frame",
                 session_id=session_id,
             ),
         )
@@ -2575,6 +2802,37 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             chunk_started_at_ms=chunk_started_at_ms,
             duration_ms=duration_ms,
             is_final=is_final,
+            mime_type=normalize_mime_type(
+                request.headers.get("content-type", "application/octet-stream")
+            ),
+            metadata={"source": "web-shell"},
+        )
+        return result
+
+    @app.post(
+        "/api/session/{session_id}/video/frame",
+        response_model=VideoFrameAcceptedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def upload_video_frame(
+        session_id: str,
+        request: Request,
+        frame_seq: int,
+        captured_at_ms: int | None = None,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> Any:
+        repository = request.app.state.session_repository
+        body = await request.body()
+        result = await asyncio.to_thread(
+            create_video_frame_record,
+            repository,
+            session_id,
+            content=body,
+            frame_seq=frame_seq,
+            captured_at_ms=captured_at_ms,
+            width=width,
+            height=height,
             mime_type=normalize_mime_type(
                 request.headers.get("content-type", "application/octet-stream")
             ),

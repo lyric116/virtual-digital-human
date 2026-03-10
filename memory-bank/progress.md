@@ -21,6 +21,24 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Camera preview and frame upload baseline
+
+### Scope
+
+Completed implementation plan step 36 by adding camera permission handling, local preview, low-frequency video_frame upload, gateway persistence, and live verification.
+
+### Outputs
+
+- apps/api-gateway/main.py; apps/web/index.html; apps/web/app.js; apps/web/styles.css; scripts/web_camera_capture_harness.js; scripts/verify_web_camera_capture.py; tests/test_api_gateway_video_frame.py; tests/test_web_camera_capture.py
+
+### Checks
+
+- Ran node --check apps/web/app.js and scripts/web_camera_capture_harness.js; UV_CACHE_DIR=.uv-cache uv run pytest tests/test_api_gateway_video_frame.py tests/test_web_camera_capture.py tests/test_web_shell.py; UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_camera_capture.py (outside sandbox for local socket access); UV_CACHE_DIR=.uv-cache uv run pytest with 152 passed.
+
+### Next
+
+- Implementation plan step 37: add lightweight visual feature extraction baseline on top of the new video ingestion path without coupling it to dialogue yet.
+
 ## 2026-03-10 - step 35A offline avatar-driver validation
 
 ### Scope
