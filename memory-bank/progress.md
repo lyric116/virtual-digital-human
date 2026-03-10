@@ -21,6 +21,35 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 44 RAG Retrieval Baseline
+
+### Scope
+
+Completed implementation plan step 44 by adding a standalone rag-service that loads the curated knowledge-card dataset, builds an in-memory sparse retrieval index, applies stage and risk metadata filters, and returns scored source_id-bearing retrieval results without yet touching dialogue-service.
+
+### Outputs
+
+- services/rag-service/main.py
+- services/rag-service/README.md
+- scripts/verify_rag_service.py
+- tests/test_rag_service.py
+- docs/06-rag-kb.md
+- docs/shared_contracts.md
+- docs/environment.md
+- .env.example
+- README.md
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run python -m py_compile services/rag-service/main.py scripts/verify_rag_service.py
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_rag_service.py tests/test_environment_inventory.py tests/test_shared_contracts.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_rag_service.py
+- UV_CACHE_DIR=.uv-cache uv run pytest with 184 passed
+
+### Next
+
+- Step 45: inject retrieved knowledge refs and support phrases into dialogue-service while keeping the current source_id traceability.
+
 ## 2026-03-10 - Step 43 Knowledge Card Dataset
 
 ### Scope

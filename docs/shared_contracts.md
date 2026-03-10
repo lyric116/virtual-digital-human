@@ -228,6 +228,34 @@ the same outer shape.
 | `fusion_result.conflict_reason` | string | No | Conflict explanation placeholder, currently formatted as semicolon-separated lane evidence such as `text-neutral; audio-slow_low_energy_proxy; video-stable_gaze_proxy`. |
 | `fusion_result.detail` | string | Yes | Human-readable fusion summary. |
 
+## Knowledge Retrieve Request And Response
+
+This contract is used by `POST /internal/rag/retrieve`. Step 44 keeps it internal and
+does not yet inject results into dialogue-service.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `session_id` | string | Yes | Current session id. |
+| `trace_id` | string | No | Trace id associated with the current retrieval request. |
+| `query_text` | string | Yes | User-facing query text used for retrieval scoring. |
+| `current_stage` | string | No | Current dialogue stage used for metadata filtering. |
+| `risk_level` | string | No | Risk level used for metadata filtering. |
+| `emotion` | string | No | Emotion hint used as a scoring boost. |
+| `top_k` | integer | No | Maximum number of cards to return. |
+| `generated_at` | string | Yes | Retrieval generation time. |
+| `index_card_count` | integer | Yes | Number of indexed cards currently loaded. |
+| `candidate_count` | integer | Yes | Candidate count after metadata filtering. |
+| `filters_applied` | array[string] | Yes | Filters that shaped the candidate set, for example `stage:intervene`. |
+| `results` | array[object] | Yes | Retrieved knowledge cards. |
+| `results[].source_id` | string | Yes | Stable card identifier used later by dialogue and logging. |
+| `results[].title` | string | Yes | Human-readable card title. |
+| `results[].category` | string | Yes | Card category such as `anxiety_support` or `handoff_support`. |
+| `results[].summary` | string | Yes | Short card summary. |
+| `results[].score` | number | Yes | Retrieval relevance score. |
+| `results[].recommended_phrases` | array[string] | Yes | Reusable support phrases. |
+| `results[].followup_questions` | array[string] | Yes | Follow-up prompts that fit this card. |
+| `results[].contraindications` | array[string] | Yes | Situations where this card should not be used. |
+
 ## Dialogue Result
 
 This payload is produced by dialogue orchestration and consumed by frontend, logs, and

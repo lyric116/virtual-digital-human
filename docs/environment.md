@@ -71,6 +71,17 @@ code or deployment files.
 | `AFFECT_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8060` | Browser-facing base URL used by the step-37 emotion panel. |
 | `AFFECT_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173` | Browser origins allowed to call the affect service directly during frontend preview. |
 
+## RAG Service
+
+| Variable | Required | Default / Example | Purpose |
+| --- | --- | --- | --- |
+| `RAG_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for the standalone retrieval service. |
+| `RAG_SERVICE_PORT` | Yes | `8070` | HTTP port for the standalone RAG service. |
+| `RAG_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8070` | Base URL used by future internal callers when step 45 wires retrieval into dialogue. |
+| `RAG_CARDS_PATH` | Yes | `data/kb/knowledge_cards.jsonl` | Canonical curated knowledge-card dataset path loaded at service startup. |
+| `RAG_DEFAULT_TOP_K` | Yes | `3` | Default number of cards returned when callers do not specify `top_k`. |
+| `RAG_MAX_TOP_K` | Yes | `5` | Hard upper bound for returned card count in the step-44 baseline. |
+
 ## PostgreSQL
 
 | Variable | Required | Default / Example | Purpose |

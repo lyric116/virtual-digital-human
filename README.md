@@ -83,6 +83,8 @@ Current repository state:
   one conflict sample persists `affect.snapshot` and yields a clarification-first reply
 - step 43 now provides a curated structured knowledge-card dataset under `data/kb/` as
   the retrieval-ready baseline for later RAG indexing, filtering, and safety guards
+- step 44 now adds a standalone `rag-service` baseline that loads the curated card set,
+  applies metadata filtering, and returns scored `source_id`-bearing retrieval results
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -135,6 +137,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/orchestrator main:app --host 0.0.0.0 --port 8010`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/dialogue-service main:app --host 0.0.0.0 --port 8030`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/affect-service main:app --host 0.0.0.0 --port 8060`
+- `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/rag-service main:app --host 0.0.0.0 --port 8070`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
@@ -154,6 +157,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_camera_capture.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_affect_service.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_rag_service.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_emotion_panel.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_partial_transcript.py`

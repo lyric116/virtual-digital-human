@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - RAG service now owns the first retrieval boundary
+
+- Step 44 establishes services/rag-service/main.py as the first executable retrieval boundary: it loads data/kb/knowledge_cards.jsonl at startup, builds an in-memory sparse vector index, and exposes internal retrieval results without coupling retrieval to dialogue generation yet.
+- The current retrieval contract already carries source_id, recommended_phrases, followup_questions, and contraindications, so step 45 should inject these fields into dialogue-service instead of re-reading the raw JSONL file directly from the dialogue layer.
+- High-risk protection is currently enforced twice: structurally in the card dataset, where high-risk cards live only in handoff_support, and operationally in rag-service, where stage and risk metadata filtering shapes the candidate set before similarity scoring.
+
 ## 2026-03-10 - RAG now begins from a curated card corpus
 
 - Step 43 establishes data/kb/knowledge_cards.jsonl as the first stable RAG asset: later retrieval work should index this curated card corpus instead of scraping enterprise validation transcripts or MAGICDATA public ASR references.

@@ -60,27 +60,29 @@ Step 43 当前先落一个小规模、高质量、可验证的数据集，不做
 
 这样做的好处是召回更准，注入上下文更短。
 
-## 6. 向量检索方案
+## 6. 当前检索方案
 
-- Embedding：`bge-m3`
-- 向量库：`pgvector`
-- 重排：`bge-reranker-v2-m3`
+Step 44 当前先实现最小可运行版本，不直接上 `pgvector` 和重排模型。当前基线是：
 
-原因：
+- 数据源：`data/kb/knowledge_cards.jsonl`
+- 索引方式：启动时构建内存稀疏向量索引
+- 检索方式：先按 `stage` 和 `risk_level` 过滤，再做相似度排序
+- 返回内容：`source_id + recommended_phrases + followup_questions + contraindications`
 
-- 与 PostgreSQL 统一，部署简单
-- 中文检索效果好
-- 小团队更容易维护
+这样做的原因：
+
+- 不引入额外数据库扩展，先把检索 API 跑通
+- 中文短句和固定卡片规模下，基础检索已经够做第一轮验证
+- 后续要切到 `embedding + pgvector` 时，可以保留同一外层 API，不影响上游服务
 
 ## 7. 检索流程
 
-1. 编排层提交当前 `stage + risk_level + emotion + user_query`
+1. 调用方提交当前 `stage + risk_level + emotion + query_text`
 2. RAG 先做元数据过滤
-3. 向量检索召回 Top 8
-4. 重排取 Top 2 到 Top 3
-5. 组织为结构化 `knowledge_cards` 返回给对话服务
+3. 对候选卡片做基础相似度排序
+4. 返回 Top K 结构化知识卡片
 
-Step 43 只完成第 0 步：把卡片集做成稳定、可校验的数据资产。Step 44 再开始索引与检索。
+Step 43 完成了知识卡片数据集。Step 44 已完成最小索引和召回，但还没有接入对话服务，也还没有做重排。
 
 ## 8. 注入方式
 
@@ -125,12 +127,16 @@ Step 43 只完成第 0 步：把卡片集做成稳定、可校验的数据资产
 
 ## 11. 接口设计
 
-- `POST /kb/index`
-- `POST /kb/retrieve`
-- `GET /kb/item/{id}`
-- `POST /kb/eval`
+- `GET /health`
+- `POST /internal/rag/retrieve`
+- `POST /internal/rag/index/reload`
 
-返回结果必须包含 `source_id`，便于日志与答辩说明“本轮回复参考了哪些知识”。
+当前返回结果必须包含 `source_id`，便于日志与答辩说明“本轮回复参考了哪些知识”。
+
+当前 verifier：
+
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_knowledge_cards.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_rag_service.py`
 
 ## 12. 验收标准
 
@@ -138,6 +144,8 @@ Step 43 只完成第 0 步：把卡片集做成稳定、可校验的数据资产
 - 对话服务能引用 `source_id` 生成可追溯回复。
 - 召回内容短而准，不出现大段无关知识注入。
 - 高风险输入不会错误召回普通安抚卡片。
+
+Step 44 当前只验收前两项中的“检索相关性”和“返回知识标识”，Step 45 再验收对话服务引用 `source_id`。
 
 ## 13. 与企业验证集的数据边界
 
