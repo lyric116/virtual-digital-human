@@ -218,6 +218,25 @@ def test_audio_message_record_rejects_empty_audio_body():
     assert payload["error_code"] == "audio_final_empty"
 
 
+def test_audio_message_record_rejects_negative_duration():
+    module = load_gateway_module()
+    repository = FakeAudioFinalizeRepository()
+    settings = build_settings(module)
+
+    response = module.create_audio_message_record(
+        repository,
+        settings,
+        "sess_fake_001",
+        content=b"wav-bytes",
+        duration_ms=-1,
+        mime_type="audio/wav",
+    )
+
+    assert response.status_code == 400
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["error_code"] == "audio_final_invalid_duration"
+
+
 def test_audio_message_record_cleans_up_orphan_asset_when_asr_fails():
     module = load_gateway_module()
     repository = FakeAudioFinalizeRepository()

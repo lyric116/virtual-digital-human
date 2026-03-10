@@ -1891,6 +1891,22 @@ def error_payload(
     }
 
 
+def bad_request_response(
+    *,
+    error_code: str,
+    message: str,
+    session_id: str | None = None,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=error_payload(
+            error_code=error_code,
+            message=message,
+            session_id=session_id,
+        ),
+    )
+
+
 def build_event_envelope(
     *,
     session: dict[str, Any],
@@ -2009,13 +2025,28 @@ def create_audio_chunk_record(
 ) -> dict[str, Any] | JSONResponse:
     normalized_mime_type = normalize_mime_type(mime_type)
     if not content:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=error_payload(
-                error_code="audio_chunk_empty",
-                message="Audio chunk body must not be empty",
-                session_id=session_id,
-            ),
+        return bad_request_response(
+            error_code="audio_chunk_empty",
+            message="Audio chunk body must not be empty",
+            session_id=session_id,
+        )
+    if chunk_seq < 1:
+        return bad_request_response(
+            error_code="audio_chunk_invalid_seq",
+            message="chunk_seq must be greater than or equal to 1",
+            session_id=session_id,
+        )
+    if chunk_started_at_ms is not None and chunk_started_at_ms < 0:
+        return bad_request_response(
+            error_code="audio_chunk_invalid_started_at",
+            message="chunk_started_at_ms must be greater than or equal to 0",
+            session_id=session_id,
+        )
+    if duration_ms is not None and duration_ms < 0:
+        return bad_request_response(
+            error_code="audio_chunk_invalid_duration",
+            message="duration_ms must be greater than or equal to 0",
+            session_id=session_id,
         )
 
     try:
@@ -2063,13 +2094,34 @@ def create_video_frame_record(
 ) -> dict[str, Any] | JSONResponse:
     normalized_mime_type = normalize_mime_type(mime_type)
     if not content:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=error_payload(
-                error_code="video_frame_empty",
-                message="Video frame body must not be empty",
-                session_id=session_id,
-            ),
+        return bad_request_response(
+            error_code="video_frame_empty",
+            message="Video frame body must not be empty",
+            session_id=session_id,
+        )
+    if frame_seq < 1:
+        return bad_request_response(
+            error_code="video_frame_invalid_seq",
+            message="frame_seq must be greater than or equal to 1",
+            session_id=session_id,
+        )
+    if captured_at_ms is not None and captured_at_ms < 0:
+        return bad_request_response(
+            error_code="video_frame_invalid_captured_at",
+            message="captured_at_ms must be greater than or equal to 0",
+            session_id=session_id,
+        )
+    if width is not None and width < 1:
+        return bad_request_response(
+            error_code="video_frame_invalid_width",
+            message="width must be greater than or equal to 1",
+            session_id=session_id,
+        )
+    if height is not None and height < 1:
+        return bad_request_response(
+            error_code="video_frame_invalid_height",
+            message="height must be greater than or equal to 1",
+            session_id=session_id,
         )
 
     try:
@@ -2114,13 +2166,16 @@ def create_audio_finalize_asset_record(
 ) -> dict[str, Any] | JSONResponse:
     normalized_mime_type = normalize_mime_type(mime_type)
     if not content:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=error_payload(
-                error_code="audio_final_empty",
-                message="Audio finalize body must not be empty",
-                session_id=session_id,
-            ),
+        return bad_request_response(
+            error_code="audio_final_empty",
+            message="Audio finalize body must not be empty",
+            session_id=session_id,
+        )
+    if duration_ms is not None and duration_ms < 0:
+        return bad_request_response(
+            error_code="audio_final_invalid_duration",
+            message="duration_ms must be greater than or equal to 0",
+            session_id=session_id,
         )
 
     try:
@@ -2414,13 +2469,28 @@ def create_audio_preview_record(
 ) -> dict[str, Any] | JSONResponse:
     normalized_mime_type = normalize_mime_type(mime_type)
     if not content:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=error_payload(
-                error_code="audio_preview_empty",
-                message="Audio preview body must not be empty",
-                session_id=session_id,
-            ),
+        return bad_request_response(
+            error_code="audio_preview_empty",
+            message="Audio preview body must not be empty",
+            session_id=session_id,
+        )
+    if preview_seq < 1:
+        return bad_request_response(
+            error_code="audio_preview_invalid_seq",
+            message="preview_seq must be greater than or equal to 1",
+            session_id=session_id,
+        )
+    if duration_ms is not None and duration_ms < 0:
+        return bad_request_response(
+            error_code="audio_preview_invalid_duration",
+            message="duration_ms must be greater than or equal to 0",
+            session_id=session_id,
+        )
+    if not recording_id.strip():
+        return bad_request_response(
+            error_code="audio_preview_invalid_recording_id",
+            message="recording_id must not be empty",
+            session_id=session_id,
         )
 
     session = repository.get_session_summary(session_id)

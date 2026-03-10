@@ -126,7 +126,14 @@ class FakeDocument {
 
 function createMockFetch(mode) {
   if (mode === "mock-error") {
-    return async function mockErrorFetch() {
+    const mockErrorFetch = async function mockErrorFetch(url, options = {}) {
+      if (url.endsWith("/api/session/create") && options.body) {
+        try {
+          mockErrorFetch.__requestPayloads.push(JSON.parse(options.body));
+        } catch (error) {
+          mockErrorFetch.__requestPayloads.push(null);
+        }
+      }
       return {
         ok: false,
         status: 502,
@@ -135,6 +142,8 @@ function createMockFetch(mode) {
         },
       };
     };
+    mockErrorFetch.__requestPayloads = [];
+    return mockErrorFetch;
   }
 
   const responses = [
@@ -161,7 +170,14 @@ function createMockFetch(mode) {
   ];
 
   let index = 0;
-  return async function mockSuccessFetch() {
+  const mockSuccessFetch = async function mockSuccessFetch(url, options = {}) {
+    if (url.endsWith("/api/session/create") && options.body) {
+      try {
+        mockSuccessFetch.__requestPayloads.push(JSON.parse(options.body));
+      } catch (error) {
+        mockSuccessFetch.__requestPayloads.push(null);
+      }
+    }
     const payload = responses[index] || responses[responses.length - 1];
     index += 1;
     return {
@@ -172,6 +188,8 @@ function createMockFetch(mode) {
       },
     };
   };
+  mockSuccessFetch.__requestPayloads = [];
+  return mockSuccessFetch;
 }
 
 function collectSnapshot(document) {
@@ -253,13 +271,13 @@ async function main() {
 
   if (args.mode === "mock-error") {
     const errorPage = await runPage({ fetchImpl, apiBaseUrl: args.apiBaseUrl });
-    process.stdout.write(`${JSON.stringify({ errorPage }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ errorPage, requestPayloads: fetchImpl.__requestPayloads || [] }, null, 2)}\n`);
     return;
   }
 
   const firstPage = await runPage({ fetchImpl, apiBaseUrl: args.apiBaseUrl });
   const secondPage = await runPage({ fetchImpl, apiBaseUrl: args.apiBaseUrl });
-  process.stdout.write(`${JSON.stringify({ firstPage, secondPage }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ firstPage, secondPage, requestPayloads: fetchImpl.__requestPayloads || [] }, null, 2)}\n`);
 }
 
 main().catch((error) => {

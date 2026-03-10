@@ -116,6 +116,27 @@ def test_audio_preview_record_rejects_empty_audio_body():
     assert payload["error_code"] == "audio_preview_empty"
 
 
+def test_audio_preview_record_rejects_invalid_preview_seq():
+    module = load_gateway_module()
+    repository = FakeAudioPreviewRepository()
+    settings = build_settings(module)
+
+    response = module.create_audio_preview_record(
+        repository,
+        settings,
+        "sess_fake_001",
+        content=b"wav-preview",
+        duration_ms=500,
+        mime_type="audio/wav",
+        preview_seq=0,
+        recording_id="rec_001",
+    )
+
+    assert response.status_code == 400
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["error_code"] == "audio_preview_invalid_seq"
+
+
 def test_audio_preview_record_normalizes_webm_content_type_parameters():
     module = load_gateway_module()
     repository = FakeAudioPreviewRepository()

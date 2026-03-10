@@ -114,6 +114,27 @@ def test_video_frame_record_rejects_empty_body():
     assert payload["error_code"] == "video_frame_empty"
 
 
+def test_video_frame_record_rejects_invalid_dimensions():
+    module = load_gateway_module()
+    repository = FakeVideoFrameRepository()
+
+    response = module.create_video_frame_record(
+        repository,
+        "sess_fake_001",
+        content=b"fake frame bytes",
+        frame_seq=1,
+        captured_at_ms=0,
+        width=0,
+        height=360,
+        mime_type="image/jpeg",
+        metadata={"source": "web-shell"},
+    )
+
+    assert response.status_code == 400
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["error_code"] == "video_frame_invalid_width"
+
+
 def test_video_frame_record_normalizes_content_type_parameters():
     module = load_gateway_module()
     repository = FakeVideoFrameRepository()

@@ -39,7 +39,7 @@ validation data.
 | `trace_id` | string | Yes | Trace root created at session start. |
 | `status` | string | Yes | `created`, `active`, `paused`, `closed`, or `error`. |
 | `stage` | string | Yes | `engage`, `assess`, `intervene`, `reassess`, or `handoff`. |
-| `input_modes` | array[string] | Yes | Enabled inputs, for example `["text", "audio"]`. |
+| `input_modes` | array[string] | Yes | Enabled inputs, for example `["text", "audio", "video"]`. |
 | `avatar_id` | string | No | Current selected avatar id. |
 | `metadata` | object | No | Session-scoped runtime data such as persisted `dialogue_summary`. |
 | `started_at` | string | Yes | Session creation time. |

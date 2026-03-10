@@ -34,6 +34,7 @@ def test_web_session_start_happy_path_creates_fresh_session_state():
     assert payload["secondPage"]["afterCreate"]["sessionId"] == "sess_mock_002"
     assert payload["secondPage"]["afterCreate"]["sessionId"] != payload["firstPage"]["afterCreate"]["sessionId"]
     assert payload["secondPage"]["afterCreate"]["requestState"] == "ready"
+    assert payload["requestPayloads"][0]["input_modes"] == ["text", "audio", "video"]
 
 
 def test_web_session_start_failure_path_surfaces_error_and_recovers_button_state():
@@ -45,6 +46,7 @@ def test_web_session_start_failure_path_surfaces_error_and_recovers_button_state
     assert error_page["afterCreate"]["requestState"] == "error"
     assert error_page["afterCreate"]["startButtonDisabled"] is False
     assert "Gateway unavailable" in error_page["afterCreate"]["feedback"]
+    assert payload["requestPayloads"][0]["input_modes"] == ["text", "audio", "video"]
 
 
 def test_web_readme_and_root_readme_document_live_session_bootstrap():

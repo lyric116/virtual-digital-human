@@ -115,6 +115,27 @@ def test_audio_chunk_record_rejects_empty_body():
     assert payload["error_code"] == "audio_chunk_empty"
 
 
+def test_audio_chunk_record_rejects_invalid_sequence():
+    module = load_gateway_module()
+    repository = FakeAudioChunkRepository()
+
+    response = module.create_audio_chunk_record(
+        repository,
+        "sess_fake_001",
+        content=b"fake audio bytes",
+        chunk_seq=0,
+        chunk_started_at_ms=0,
+        duration_ms=250,
+        is_final=False,
+        mime_type="audio/webm",
+        metadata={"source": "web-shell"},
+    )
+
+    assert response.status_code == 400
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["error_code"] == "audio_chunk_invalid_seq"
+
+
 def test_audio_chunk_record_normalizes_content_type_parameters():
     module = load_gateway_module()
     repository = FakeAudioChunkRepository()

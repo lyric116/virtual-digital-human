@@ -21,6 +21,24 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Review fixes for session input modes and media validation
+
+### Scope
+
+Reviewed the current project, confirmed two real defects, and fixed them: the frontend session bootstrap now advertises video capability, and media ingestion helpers now reject invalid sequence, dimension, and duration values with stable 400 responses instead of passing bad input into storage logic.
+
+### Outputs
+
+- apps/web/app.js; apps/api-gateway/main.py; scripts/web_session_start_harness.js; tests/test_web_session_start.py; tests/test_api_gateway_audio_chunk.py; tests/test_api_gateway_video_frame.py; tests/test_api_gateway_audio_preview.py; tests/test_api_gateway_audio_finalize.py; docs/shared_contracts.md
+
+### Checks
+
+- Ran node --check apps/web/app.js and scripts/web_session_start_harness.js; UV_CACHE_DIR=.uv-cache uv run pytest tests/test_web_session_start.py tests/test_api_gateway_audio_chunk.py tests/test_api_gateway_video_frame.py tests/test_api_gateway_audio_preview.py tests/test_api_gateway_audio_finalize.py tests/test_shared_contracts.py; UV_CACHE_DIR=.uv-cache uv run pytest with 156 passed.
+
+### Next
+
+- Continue the implementation plan after the fixed review baseline, starting from step 37 or the next user-directed module.
+
 ## 2026-03-10 - Camera preview and frame upload baseline
 
 ### Scope

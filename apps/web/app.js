@@ -1023,7 +1023,7 @@
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        input_modes: ["text", "audio"],
+        input_modes: ["text", "audio", "video"],
         avatar_id: resolveAvatarId(appConfig.activeAvatarId || appConfig.defaultAvatarId),
         metadata: {
           source: "web-shell",
