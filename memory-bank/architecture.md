@@ -63,6 +63,10 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - Affect conflict is now part of the dialogue control plane
+
+- Step 42 makes affect-service output operational instead of display-only: the gateway now requests affect snapshots for normal turns, persists affect.snapshot events, and forwards metadata.affect_snapshot to dialogue-service. dialogue-service now short-circuits multimodal conflict into clarification-first replies, so future dialogue, RAG, and safety work must preserve affect_conflict evidence fields and avoid bypassing this control path.
+
 ## 2026-03-10 - Fusion is now the first multimodal decision layer
 
 - Step 41 makes services/affect-service more than three independent lanes: fusion_result is now the first place where text, audio, and video evidence are reconciled into stable multimodal states such as needs_clarification or multimodal_consistent_low_risk. Conflict handling now depends on whether audio/video evidence is truly active, so face_not_detected_proxy must not count as real visual evidence while manifest-aligned transcript, audio_path_16k_mono, and face3d_path inputs can be used together for deterministic offline fusion regression.

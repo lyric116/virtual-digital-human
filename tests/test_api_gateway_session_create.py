@@ -259,6 +259,7 @@ class FakeSessionRepository:
                 "content_text": dumped["content_text"],
                 "submitted_at": "2026-03-07T14:01:00Z",
                 "client_seq": dumped.get("client_seq"),
+                "metadata": dumped.get("metadata") or {},
             },
         }
 
@@ -473,6 +474,95 @@ def test_request_dialogue_reply_includes_short_term_memory(monkeypatch):
     assert response.reply == "你好，小李。"
     assert captured["body"]["metadata"]["short_term_memory"][0]["content_text"] == "我叫小李。"
     assert captured["body"]["metadata"]["dialogue_summary"]["user_turn_count"] == 3
+    assert "affect_snapshot" not in captured["body"]["metadata"]
+
+
+def test_request_dialogue_reply_includes_affect_snapshot(monkeypatch):
+    module = load_gateway_module()
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return (
+                b'{"session_id":"sess_fake_001","trace_id":"trace_fake_001","message_id":"msg_assistant_002",'
+                b'"reply":"\xe6\x88\x91\xe6\x83\xb3\xe5\x85\x88\xe5\x86\x8d\xe7\xa1\xae\xe8\xae\xa4\xe4\xb8\x80\xe4\xb8\x8b\xe4\xbd\xa0\xe7\x8e\xb0\xe5\x9c\xa8\xe7\x9a\x84\xe7\x8a\xb6\xe6\x80\x81\xe3\x80\x82","emotion":"guarded",'
+                b'"risk_level":"medium","stage":"assess","next_action":"ask_followup",'
+                b'"knowledge_refs":[],"avatar_style":"calm_guarded","safety_flags":["affect_conflict_clarification"]}'
+            )
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(module.urllib_request, "urlopen", fake_urlopen)
+
+    affect_snapshot = module.AffectAnalyzeResponse(
+        session_id="sess_fake_001",
+        trace_id="trace_fake_001",
+        current_stage="engage",
+        generated_at="2026-03-10T12:00:00Z",
+        source_context=module.AffectSourceContext(
+            origin="test",
+            dataset="live_web",
+            record_id="session/sess_fake_001",
+            note="test conflict",
+        ),
+        text_result=module.AffectLaneResult(
+            status="ready",
+            label="neutral",
+            confidence=0.64,
+            evidence=[],
+            detail="text",
+        ),
+        audio_result=module.AffectLaneResult(
+            status="ready",
+            label="slow_low_energy_proxy",
+            confidence=0.74,
+            evidence=[],
+            detail="audio",
+        ),
+        video_result=module.AffectLaneResult(
+            status="ready",
+            label="stable_gaze_proxy",
+            confidence=0.74,
+            evidence=[],
+            detail="video",
+        ),
+        fusion_result=module.AffectFusionResult(
+            emotion_state="needs_clarification",
+            risk_level="medium",
+            confidence=0.74,
+            conflict=True,
+            conflict_reason="text-neutral; audio-slow_low_energy_proxy; video-stable_gaze_proxy",
+            detail="fusion",
+        ),
+    )
+
+    response = module.request_dialogue_reply(
+        module.GatewaySettings.from_env(),
+        {
+            "session_id": "sess_fake_001",
+            "trace_id": "trace_fake_001",
+            "stage": "engage",
+        },
+        {
+            "message_id": "msg_user_001",
+            "content_text": "今天就普通聊聊，先说说最近的情况。",
+        },
+        affect_snapshot=affect_snapshot,
+    )
+
+    assert response.next_action == "ask_followup"
+    assert captured["body"]["metadata"]["affect_snapshot"]["fusion_result"]["conflict"] is True
+    assert captured["body"]["metadata"]["affect_snapshot"]["fusion_result"]["conflict_reason"].startswith(
+        "text-neutral"
+    )
 
 
 def test_dialogue_summary_refresh_rule_respects_turn_interval():
@@ -488,6 +578,99 @@ def test_dialogue_summary_refresh_rule_respects_turn_interval():
         user_turn_count=6,
         existing_summary={"summary_text": "旧摘要", "user_turn_count": 3},
     )
+
+
+def test_request_affect_snapshot_uses_message_metadata(monkeypatch):
+    module = load_gateway_module()
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "current_stage": "engage",
+                    "generated_at": "2026-03-10T12:00:00Z",
+                    "source_context": {
+                        "origin": "test",
+                        "dataset": "noxi",
+                        "record_id": "noxi/sample/1",
+                        "note": "bound test sample",
+                    },
+                    "text_result": {
+                        "status": "ready",
+                        "label": "neutral",
+                        "confidence": 0.64,
+                        "evidence": [],
+                        "detail": "text",
+                    },
+                    "audio_result": {
+                        "status": "ready",
+                        "label": "slow_low_energy_proxy",
+                        "confidence": 0.74,
+                        "evidence": [],
+                        "detail": "audio",
+                    },
+                    "video_result": {
+                        "status": "ready",
+                        "label": "stable_gaze_proxy",
+                        "confidence": 0.74,
+                        "evidence": [],
+                        "detail": "video",
+                    },
+                    "fusion_result": {
+                        "emotion_state": "needs_clarification",
+                        "risk_level": "medium",
+                        "confidence": 0.74,
+                        "conflict": True,
+                        "conflict_reason": "text-neutral; audio-slow_low_energy_proxy; video-stable_gaze_proxy",
+                        "detail": "fusion",
+                    },
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(module.urllib_request, "urlopen", fake_urlopen)
+
+    response = module.request_affect_snapshot(
+        module.GatewaySettings.from_env(),
+        {
+            "session_id": "sess_fake_001",
+            "trace_id": "trace_fake_001",
+            "stage": "engage",
+            "metadata": {"source": "session-default"},
+        },
+        {
+            "message_id": "msg_user_001",
+            "source_kind": "text",
+            "content_text": "今天就普通聊聊，先说说最近的情况。",
+            "metadata": {
+                "source": "verify_dialogue_conflict_clarification",
+                "dataset": "noxi",
+                "record_id": "noxi/sample/1",
+                "audio_path_16k_mono": "data/derived/audio.wav",
+                "video_frame_path": "data/derived/frame.npy",
+            },
+        },
+    )
+
+    assert response.fusion_result.conflict is True
+    assert captured["body"]["metadata"]["audio_path_16k_mono"] == "data/derived/audio.wav"
+    assert captured["body"]["metadata"]["video_frame_path"] == "data/derived/frame.npy"
+    assert captured["body"]["metadata"]["source"] == "verify_dialogue_conflict_clarification"
+    assert captured["timeout"] == 10
 
 
 def test_dispatch_pipeline_excludes_current_message_from_memory_and_syncs_next_action(monkeypatch):
@@ -511,6 +694,7 @@ def test_dispatch_pipeline_excludes_current_message_from_memory_and_syncs_next_a
         *,
         short_term_memory=None,
         dialogue_summary=None,
+        affect_snapshot=None,
     ):
         assert short_term_memory is not None
         assert all(item["message_id"] != message["message_id"] for item in short_term_memory)
@@ -702,6 +886,7 @@ def test_dispatch_pipeline_enqueues_message_accepted_before_llm_reply(monkeypatc
         *,
         short_term_memory=None,
         dialogue_summary=None,
+        affect_snapshot=None,
     ):
         observed["before_llm"] = list(connection_registry.enqueued)
         return module.DialogueReplyResponse(
@@ -776,6 +961,7 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
         *,
         short_term_memory=None,
         dialogue_summary=None,
+        affect_snapshot=None,
     ):
         assert short_term_memory is not None
         assert dialogue_summary is None
@@ -852,6 +1038,138 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
     assert repository.event_calls[-1]["payload"]["user_turn_count"] == 3
 
 
+def test_dispatch_pipeline_persists_affect_snapshot_and_routes_conflict_to_clarification(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    connection_registry = module.ConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+
+    affect_snapshot = module.AffectAnalyzeResponse(
+        session_id="sess_fake_001",
+        trace_id="trace_fake_001",
+        current_stage="engage",
+        generated_at="2026-03-10T12:00:00Z",
+        source_context=module.AffectSourceContext(
+            origin="verify_dialogue_conflict_clarification",
+            dataset="noxi",
+            record_id="noxi/sample/1",
+            note="test conflict",
+        ),
+        text_result=module.AffectLaneResult(
+            status="ready",
+            label="neutral",
+            confidence=0.64,
+            evidence=[],
+            detail="text",
+        ),
+        audio_result=module.AffectLaneResult(
+            status="ready",
+            label="slow_low_energy_proxy",
+            confidence=0.74,
+            evidence=[],
+            detail="audio",
+        ),
+        video_result=module.AffectLaneResult(
+            status="ready",
+            label="stable_gaze_proxy",
+            confidence=0.74,
+            evidence=[],
+            detail="video",
+        ),
+        fusion_result=module.AffectFusionResult(
+            emotion_state="needs_clarification",
+            risk_level="medium",
+            confidence=0.74,
+            conflict=True,
+            conflict_reason="text-neutral; audio-slow_low_energy_proxy; video-stable_gaze_proxy",
+            detail="fusion",
+        ),
+    )
+
+    def fake_request_affect_snapshot(settings, session, message):
+        return affect_snapshot
+
+    def fake_request_dialogue_reply(
+        settings,
+        session,
+        message,
+        *,
+        short_term_memory=None,
+        dialogue_summary=None,
+        affect_snapshot=None,
+    ):
+        assert affect_snapshot is not None
+        assert affect_snapshot.fusion_result.conflict is True
+        return module.DialogueReplyResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            message_id="msg_assistant_affect_conflict",
+            reply="我想先再确认一下你现在的真实状态。",
+            emotion="guarded",
+            risk_level="medium",
+            stage="assess",
+            next_action="ask_followup",
+            knowledge_refs=[],
+            avatar_style="calm_guarded",
+            safety_flags=["affect_conflict_clarification"],
+        )
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_affect_snapshot", fake_request_affect_snapshot)
+    monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "engage",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                    "metadata": {},
+                },
+                "message": {
+                    "message_id": "msg_fake_conflict",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "今天就普通聊聊，先说说最近的情况。",
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                    "metadata": {
+                        "audio_path_16k_mono": "data/derived/audio.wav",
+                        "video_frame_path": "data/derived/frame.npy",
+                    },
+                },
+            },
+        )
+    )
+
+    event_types = [event["event_type"] for event in repository.event_calls]
+    assert "affect.snapshot" in event_types
+    dialogue_event = repository.event_calls[-1]
+    assert dialogue_event["event_type"] == "dialogue.reply"
+    assert dialogue_event["payload"]["affect_conflict"] is True
+    assert dialogue_event["payload"]["affect_emotion_state"] == "needs_clarification"
+    assert dialogue_event["payload"]["affect_conflict_reason"].startswith("text-neutral")
+    assert "affect_conflict_clarification" in dialogue_event["payload"]["safety_flags"]
+
+
 def test_dispatch_pipeline_falls_back_when_dialogue_summary_request_fails(monkeypatch):
     module = load_gateway_module()
     repository = FakeSessionRepository()
@@ -880,6 +1198,7 @@ def test_dispatch_pipeline_falls_back_when_dialogue_summary_request_fails(monkey
         *,
         short_term_memory=None,
         dialogue_summary=None,
+        affect_snapshot=None,
     ):
         return module.DialogueReplyResponse(
             session_id=session["session_id"],

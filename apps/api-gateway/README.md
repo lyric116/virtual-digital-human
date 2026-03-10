@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 26, 27, 28, and 36:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 26, 27, 28, 36, and 42:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -34,6 +34,8 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 2
   obvious self-harm or suicide expressions short-circuit directly to `handoff`
 - step 36: accept low-frequency browser video frames, persist them as `video_frame`
   media rows, and keep the video path isolated from dialogue and affect inference
+- step 42: request affect snapshots for normal dialogue turns, persist `affect.snapshot`
+  evidence, and forward conflict signals so dialogue can prioritize clarification
 
 ## Files
 
@@ -108,3 +110,7 @@ From repository root:
   rule layer. If an obvious self-harm or suicide expression is detected, the gateway
   generates a fixed safety reply locally, forces `risk_level=high` and `stage=handoff`,
   and marks the assistant message with `high_risk_rule_precheck`.
+- For normal turns, the gateway now also requests one affect snapshot before dialogue.
+  If fusion marks the sample as conflict, the gateway persists `affect.snapshot` into
+  `system_events`, forwards the snapshot inside `metadata.affect_snapshot`, and exposes
+  `affect_conflict*` fields on the resulting `dialogue.reply` event payload.

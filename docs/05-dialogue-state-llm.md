@@ -77,6 +77,25 @@ LLM 只负责“怎么说”，不独占“是否高风险”的判断权。
 - 留痕方式：`safety_flags` 增加 `dialogue_fallback_response` 与 `dialogue_fallback_reason:*`
 - 当前验证：强制 `DIALOGUE_FORCE_FAILURE_MODE=timeout` 时，前端仍必须收到 `dialogue.reply`，且数据库中不能出现同轮 `session.error`
 
+当前仓库在步骤 42 已将多模态冲突真正接入对话策略：
+
+- 触发来源：`services/affect-service` 返回 `fusion_result.conflict=true`
+- 网关动作：
+  - 在正常文本链路里请求一份 affect snapshot
+  - 持久化一条 `affect.snapshot` 事件到 `system_events`
+  - 将完整 affect snapshot 写入对话请求 `metadata.affect_snapshot`
+- 对话服务动作：
+  - 一旦检测到 affect conflict，不再继续普通建议型回复
+  - 直接优先返回澄清型追问
+  - 默认 `next_action=ask_followup`
+- 当前留痕：
+  - `dialogue.reply.payload` 增加 `affect_conflict`
+  - `dialogue.reply.payload` 增加 `affect_conflict_reason`
+  - `safety_flags` 增加 `affect_conflict_clarification`
+- 当前验证：
+  - 冲突样例“文本中性 + 音频低能量 + 视频稳定”必须先进入澄清追问
+  - 导出 JSON 中必须同时看到 `affect.snapshot` 和带冲突字段的 `dialogue.reply`
+
 ## 6. Prompt 结构
 
 建议拆成 5 段：
@@ -147,6 +166,7 @@ LLM 只负责“怎么说”，不独占“是否高风险”的判断权。
 - 在 `handoff` 阶段固定插入求助资源模板。
 - 对明显高风险表达，优先走规则层短路，不等待 LLM 再决定是否升级。
 - 对普通对话中的模型故障，优先走安全回退模板，不让主链路卡死在错误页或长时间等待中。
+- 对多模态冲突样本，优先走澄清追问，不直接给出结论性干预建议。
 
 ## 10. 工具调用建议
 

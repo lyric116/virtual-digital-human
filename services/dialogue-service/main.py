@@ -164,6 +164,36 @@ FALLBACK_NEXT_ACTION = {
 }
 
 
+def extract_affect_conflict(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(metadata, dict):
+        return None
+
+    snapshot = metadata.get("affect_snapshot")
+    if not isinstance(snapshot, dict):
+        return None
+
+    fusion_result = snapshot.get("fusion_result")
+    if not isinstance(fusion_result, dict):
+        return None
+    if fusion_result.get("conflict") is not True:
+        return None
+
+    source_context = snapshot.get("source_context")
+    if not isinstance(source_context, dict):
+        source_context = {}
+    text_result = snapshot.get("text_result")
+    if not isinstance(text_result, dict):
+        text_result = {}
+
+    return {
+        "emotion_state": str(fusion_result.get("emotion_state") or "needs_clarification"),
+        "risk_level": str(fusion_result.get("risk_level") or "medium"),
+        "conflict_reason": str(fusion_result.get("conflict_reason") or "").strip() or None,
+        "record_id": str(source_context.get("record_id") or "").strip() or None,
+        "text_label": str(text_result.get("label") or "").strip() or None,
+    }
+
+
 def build_llm_client(settings: DialogueServiceSettings):
     from openai import OpenAI
 
@@ -440,6 +470,56 @@ def build_dialogue_fallback_reply(
     )
 
 
+def build_affect_conflict_reply(
+    payload: DialogueReplyRequest,
+    conflict_info: dict[str, Any],
+) -> DialogueReplyResponse:
+    requested_risk = str(conflict_info.get("risk_level") or "medium")
+    if requested_risk == "high":
+        reply = (
+            "我先不急着下结论。"
+            "从当前多模态线索看还需要优先确认你的安全，如果你现在有伤害自己或他人的打算，请立刻联系身边可信任的人，并尽快寻求线下帮助。"
+        )
+        stage = "handoff"
+        next_action = "handoff"
+        risk_level = "high"
+        emotion = "guarded"
+        avatar_style = "calm_guarded"
+    else:
+        reply = (
+            "我想先再确认一下你现在的真实状态。"
+            "虽然你刚才的文字表达比较平静，但其他线索提示还需要澄清；你现在更接近疲惫、情绪低落，还是只是身体有点累？"
+        )
+        if payload.current_stage == "engage":
+            stage = "assess"
+        elif payload.current_stage == "handoff":
+            stage = "handoff"
+        else:
+            stage = payload.current_stage
+        next_action = "ask_followup" if stage != "handoff" else "handoff"
+        risk_level = "medium"
+        emotion = str(conflict_info.get("text_label") or "guarded")
+        avatar_style = "calm_guarded"
+
+    safety_flags = ["affect_conflict_clarification"]
+    if conflict_info.get("conflict_reason"):
+        safety_flags.append("affect_conflict_reason_present")
+
+    return DialogueReplyResponse(
+        session_id=payload.session_id,
+        trace_id=payload.trace_id,
+        message_id=f"msg_assistant_{uuid4().hex[:16]}",
+        reply=reply,
+        emotion=emotion,
+        risk_level=risk_level,
+        stage=stage,
+        next_action=next_action,
+        knowledge_refs=[],
+        avatar_style=avatar_style,
+        safety_flags=safety_flags,
+    )
+
+
 def translate_llm_exception(exc: Exception) -> HTTPException:
     if isinstance(exc, HTTPException):
         return exc
@@ -466,6 +546,9 @@ def create_app() -> FastAPI:
     @app.post("/internal/dialogue/respond", response_model=DialogueReplyResponse)
     def respond(payload: DialogueReplyRequest) -> DialogueReplyResponse:
         try:
+            affect_conflict = extract_affect_conflict(payload.metadata)
+            if affect_conflict is not None:
+                return build_affect_conflict_reply(payload, affect_conflict)
             llm_fields = generate_dialogue_fields(settings, payload)
             return build_dialogue_reply(payload, llm_fields)
         except Exception as exc:

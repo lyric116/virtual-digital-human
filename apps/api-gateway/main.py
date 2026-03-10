@@ -94,6 +94,7 @@ class GatewaySettings:
     cors_origins: list[str]
     orchestrator_base_url: str
     orchestrator_timeout_seconds: float
+    affect_service_base_url: str
     asr_service_base_url: str
     asr_timeout_seconds: float
     media_storage_root: str
@@ -124,6 +125,12 @@ class GatewaySettings:
             or f"http://127.0.0.1:{os.getenv('ORCHESTRATOR_PORT', '8010')}",
             orchestrator_timeout_seconds=float(
                 os.getenv("ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS", "60")
+            ),
+            affect_service_base_url=(
+                os.getenv("AFFECT_SERVICE_BASE_URL")
+                or f"http://"
+                f"{'127.0.0.1' if os.getenv('AFFECT_SERVICE_HOST', '127.0.0.1') in {'0.0.0.0', '::'} else os.getenv('AFFECT_SERVICE_HOST', '127.0.0.1')}"
+                f":{os.getenv('AFFECT_SERVICE_PORT', '8060')}"
             ),
             asr_service_base_url=(
                 f"http://"
@@ -345,6 +352,53 @@ class DialogueSummaryResponse(BaseModel):
     current_stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
     user_turn_count: int = Field(ge=1)
     generated_at: datetime
+
+
+class AffectSourceContext(BaseModel):
+    origin: str
+    dataset: str
+    record_id: str
+    note: str | None = None
+
+
+class AffectLaneResult(BaseModel):
+    status: Literal["ready", "pending", "offline"]
+    label: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence: list[str] = Field(default_factory=list)
+    detail: str
+
+
+class AffectFusionResult(BaseModel):
+    emotion_state: str
+    risk_level: Literal["low", "medium", "high"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    conflict: bool
+    conflict_reason: str | None = None
+    detail: str
+
+
+class AffectAnalyzeRequest(BaseModel):
+    session_id: str
+    trace_id: str | None = None
+    current_stage: Literal["idle", "engage", "assess", "intervene", "reassess", "handoff"] = "idle"
+    text_input: str | None = None
+    last_source_kind: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    capture_state: dict[str, Any] = Field(default_factory=dict)
+    source_context: AffectSourceContext | None = None
+
+
+class AffectAnalyzeResponse(BaseModel):
+    session_id: str
+    trace_id: str | None = None
+    current_stage: str
+    generated_at: datetime
+    source_context: AffectSourceContext
+    text_result: AffectLaneResult
+    audio_result: AffectLaneResult
+    video_result: AffectLaneResult
+    fusion_result: AffectFusionResult
 
 
 SEQUENTIAL_DIALOGUE_STAGES = ["engage", "assess", "intervene", "reassess"]
@@ -900,7 +954,8 @@ class PostgresSessionRepository:
                         status,
                         source_kind,
                         content_text,
-                        submitted_at
+                        submitted_at,
+                        metadata
                     """,
                     {
                         "message_id": message_id,
@@ -2248,18 +2303,23 @@ def request_dialogue_reply(
     *,
     short_term_memory: list[dict[str, Any]] | None = None,
     dialogue_summary: dict[str, Any] | None = None,
+    affect_snapshot: AffectAnalyzeResponse | None = None,
 ) -> DialogueReplyResponse:
+    metadata = {
+        "source_service": "api_gateway",
+        "short_term_memory": short_term_memory or [],
+        "dialogue_summary": dialogue_summary,
+    }
+    if affect_snapshot is not None:
+        metadata["affect_snapshot"] = affect_snapshot.model_dump(mode="json")
+
     request_payload = DialogueReplyRequest(
         session_id=session["session_id"],
         trace_id=session["trace_id"],
         user_message_id=message["message_id"],
         content_text=message["content_text"],
         current_stage=session["stage"],
-        metadata={
-            "source_service": "api_gateway",
-            "short_term_memory": short_term_memory or [],
-            "dialogue_summary": dialogue_summary,
-        },
+        metadata=metadata,
     )
     body = json.dumps(request_payload.model_dump(mode="json")).encode("utf-8")
     request = urllib_request.Request(
@@ -2284,6 +2344,55 @@ def request_dialogue_reply(
         return DialogueReplyResponse.model_validate(raw_payload)
     except ValidationError as exc:
         raise RuntimeError(f"invalid dialogue reply: {exc}") from exc
+
+
+def request_affect_snapshot(
+    settings: GatewaySettings,
+    session: dict[str, Any],
+    message: dict[str, Any],
+) -> AffectAnalyzeResponse:
+    session_metadata = session.get("metadata") if isinstance(session.get("metadata"), dict) else {}
+    message_metadata = message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
+    capture_state = (
+        message_metadata.get("capture_state")
+        if isinstance(message_metadata.get("capture_state"), dict)
+        else {}
+    )
+    merged_metadata = dict(session_metadata or {})
+    merged_metadata.update(message_metadata or {})
+    merged_metadata.setdefault("source", message_metadata.get("source") or "api_gateway")
+
+    request_payload = AffectAnalyzeRequest(
+        session_id=session["session_id"],
+        trace_id=session.get("trace_id"),
+        current_stage=session.get("stage", "engage"),
+        text_input=message.get("content_text"),
+        last_source_kind=message.get("source_kind"),
+        metadata=merged_metadata,
+        capture_state=capture_state,
+    )
+    request = urllib_request.Request(
+        url=f"{settings.affect_service_base_url.rstrip('/')}/internal/affect/analyze",
+        data=json.dumps(request_payload.model_dump(mode="json")).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib_request.urlopen(request, timeout=10) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"affect-service http {exc.code}: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError(f"affect-service unavailable: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("affect-service returned invalid json") from exc
+
+    try:
+        return AffectAnalyzeResponse.model_validate(raw_payload)
+    except ValidationError as exc:
+        raise RuntimeError(f"invalid affect snapshot: {exc}") from exc
 
 
 def request_dialogue_summary(
@@ -2654,6 +2763,7 @@ def build_message_followup_events(
     events: list[dict[str, Any]] = []
 
     rule_match = detect_high_risk_rule_match(result["message"].get("content_text", ""))
+    affect_snapshot: AffectAnalyzeResponse | None = None
 
     try:
         reply_source_service = "orchestrator"
@@ -2665,6 +2775,25 @@ def build_message_followup_events(
             )
             reply_source_service = "api_gateway"
         else:
+            try:
+                affect_snapshot = request_affect_snapshot(
+                    settings,
+                    request_session,
+                    result["message"],
+                )
+                repository.record_system_event(
+                    jsonable_encoder(
+                        build_event_envelope(
+                            session=result["session"],
+                            event_type="affect.snapshot",
+                            payload=affect_snapshot.model_dump(mode="json"),
+                            message_id=result["message"]["message_id"],
+                            source_service="affect_service",
+                        )
+                    )
+                )
+            except RuntimeError:
+                affect_snapshot = None
             dialogue_reply = request_dialogue_reply(
                 settings,
                 request_session,
@@ -2675,15 +2804,26 @@ def build_message_followup_events(
                     exclude_message_id=result["message"]["message_id"],
                 ),
                 dialogue_summary=extract_dialogue_summary(request_session),
+                affect_snapshot=affect_snapshot,
             )
         assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
         assistant_metadata = assistant_result["message"].get("metadata", {})
+        affect_payload: dict[str, Any] = {}
+        if affect_snapshot is not None:
+            affect_payload = {
+                "affect_conflict": affect_snapshot.fusion_result.conflict,
+                "affect_conflict_reason": affect_snapshot.fusion_result.conflict_reason,
+                "affect_emotion_state": affect_snapshot.fusion_result.emotion_state,
+                "affect_risk_level": affect_snapshot.fusion_result.risk_level,
+                "affect_record_id": affect_snapshot.source_context.record_id,
+            }
         dialogue_event = jsonable_encoder(
             build_event_envelope(
                 session=assistant_result["session"],
                 event_type="dialogue.reply",
                 payload={
                     **dialogue_reply.model_dump(mode="json"),
+                    **affect_payload,
                     "stage": assistant_result["session"]["stage"],
                     "next_action": assistant_metadata.get("next_action", dialogue_reply.next_action),
                     "submitted_at": assistant_result["message"]["submitted_at"],

@@ -257,3 +257,45 @@ def test_dialogue_service_routes_fallback_on_reply_error_and_keep_summary_errors
         assert exc.detail == "ValueError: bad credentials"
     else:
         raise AssertionError("expected summarize route to translate generic error")
+
+
+def test_dialogue_service_short_circuits_to_clarification_on_affect_conflict(monkeypatch):
+    module = load_dialogue_module()
+    app = module.create_app()
+    respond_route = next(route for route in app.routes if route.path == "/internal/dialogue/respond")
+
+    def forbidden_generate(settings, payload):
+        raise AssertionError("affect conflict should short-circuit before llm generation")
+
+    monkeypatch.setattr(module, "generate_dialogue_fields", forbidden_generate)
+
+    response = respond_route.endpoint(
+        module.DialogueReplyRequest(
+            session_id="sess_fake_001",
+            trace_id="trace_fake_001",
+            user_message_id="msg_user_001",
+            content_text="今天就普通聊聊，先说说最近的情况。",
+            current_stage="engage",
+            metadata={
+                "source": "test",
+                "affect_snapshot": {
+                    "fusion_result": {
+                        "emotion_state": "needs_clarification",
+                        "risk_level": "medium",
+                        "confidence": 0.74,
+                        "conflict": True,
+                        "conflict_reason": "text-neutral; audio-slow_low_energy_proxy; video-stable_gaze_proxy",
+                        "detail": "文本中性，但音频低能量且视频稳定。",
+                    },
+                    "text_result": {"label": "neutral"},
+                    "source_context": {"record_id": "noxi/example"},
+                },
+            },
+        )
+    )
+
+    assert response.stage == "assess"
+    assert response.next_action == "ask_followup"
+    assert response.risk_level == "medium"
+    assert "affect_conflict_clarification" in response.safety_flags
+    assert "确认一下" in response.reply

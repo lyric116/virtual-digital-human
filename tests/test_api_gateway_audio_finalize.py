@@ -108,6 +108,7 @@ def build_settings(module):
         cors_origins=["http://127.0.0.1:4173"],
         orchestrator_base_url="http://127.0.0.1:8010",
         orchestrator_timeout_seconds=60.0,
+        affect_service_base_url="http://127.0.0.1:8060",
         asr_service_base_url="http://127.0.0.1:8020",
         asr_timeout_seconds=60.0,
         media_storage_root="data/derived/live_media",

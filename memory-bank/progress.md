@@ -21,6 +21,24 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 42 Affect Conflict Clarification
+
+### Scope
+
+Completed implementation plan step 42 by routing affect-service fusion conflicts into the dialogue path, persisting affect.snapshot evidence in the gateway, and forcing clarification-first replies when multimodal evidence disagrees with the user text.
+
+### Outputs
+
+- apps/api-gateway/main.py; services/dialogue-service/main.py; scripts/verify_dialogue_conflict_clarification.py; tests/test_api_gateway_session_create.py; tests/test_dialogue_service.py; tests/test_api_gateway_audio_finalize.py; tests/test_api_gateway_audio_preview.py; docs/05-dialogue-state-llm.md; apps/api-gateway/README.md; services/dialogue-service/README.md; docs/shared_contracts.md; README.md
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run python -m py_compile apps/api-gateway/main.py services/dialogue-service/main.py scripts/verify_dialogue_conflict_clarification.py; UV_CACHE_DIR=.uv-cache uv run pytest tests/test_api_gateway_session_create.py tests/test_dialogue_service.py tests/test_api_gateway_audio_finalize.py tests/test_api_gateway_audio_preview.py; UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_conflict_clarification.py; UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py; UV_CACHE_DIR=.uv-cache uv run pytest with 177 passed.
+
+### Next
+
+- Step 43: build a small structured knowledge-card set before introducing retrieval, so the next stage can keep the current clarification-first safety behavior while adding grounded support content.
+
 ## 2026-03-10 - Step 41 First Fusion Rules
 
 ### Scope

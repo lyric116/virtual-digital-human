@@ -2,13 +2,14 @@
 
 ## Purpose
 
-This service now covers implementation plan steps 23, 24, 27, and 29:
+This service now covers implementation plan steps 23, 24, 27, 29, and 42:
 
 - own the dialogue reply schema
 - validate all dialogue payloads against that schema
 - call the configured real LLM while preserving the same response contract
 - generate compact staged dialogue summaries for longer sessions
 - return a safe fallback dialogue reply when the upstream LLM path fails
+- short-circuit multimodal conflict turns into clarification-first replies
 
 ## Files
 
@@ -50,6 +51,9 @@ Required environment variables:
 - If the upstream LLM times out, returns empty content, or produces invalid JSON/fields,
   the `respond` route now returns a safe fallback `DialogueReplyResponse` instead of
   failing the main dialogue chain.
+- If `metadata.affect_snapshot.fusion_result.conflict=true`, the `respond` route now
+  short-circuits before the LLM call and returns a clarification-first reply with
+  `next_action=ask_followup` plus `affect_conflict_clarification` in `safety_flags`.
 - `POST /internal/dialogue/validate` is the strict schema gate used to reject malformed
   response payloads before they can leak into orchestrator or gateway code.
 - Obvious self-harm or suicide expressions are now intercepted earlier by the gateway
@@ -59,3 +63,5 @@ Required environment variables:
   provider and reports latency statistics plus high-risk routing behavior.
 - `scripts/verify_dialogue_fallback_reply.py` forces a timeout failure mode and proves the
   frontend still receives a persisted fallback assistant reply.
+- `scripts/verify_dialogue_conflict_clarification.py` proves a real gateway turn with
+  multimodal conflict evidence now persists `affect.snapshot` and produces a clarification reply.

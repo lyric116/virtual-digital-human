@@ -79,6 +79,8 @@ Current repository state:
 - `services/affect-service` step 41 now fuses text/audio/video baseline lanes into
   deterministic multimodal states, including conflict-driven `needs_clarification`
   output and low-risk stable multimodal confirmation for aligned samples
+- the gateway and dialogue-service step 42 now consume multimodal conflict evidence so
+  one conflict sample persists `affect.snapshot` and yields a clarification-first reply
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -142,6 +144,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_summary_memory.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_high_risk_precheck.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_fallback_reply.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_conflict_clarification.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
