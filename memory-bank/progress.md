@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 38 Text Affect Baseline
+
+### Scope
+
+Implemented step 38 by upgrading affect-service text-lane classification from a single anxious placeholder into deterministic coarse labels that now cover anxious, low_mood, guarded, neutral, and distressed while preserving the existing affect snapshot contract and panel rendering path.
+
+### Outputs
+
+- Upgraded services/affect-service text-lane rules to classify distressed/anxious/low_mood/guarded/neutral.
+- Added enterprise transcript regression coverage using NoXI samples speaker_a/1 and speaker_b/2 from the transcript workflow.
+- Kept the frontend emotion panel contract unchanged while aligning the local web harness with the new text labels.
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_affect_service.py tests/test_web_emotion_panel.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_affect_service.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_emotion_panel.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+
+### Next
+
+- Implement step 39 audio baseline features in affect-service without changing the panel contract.
+
 ## 2026-03-10 - Step 37 Emotion Panel And Affect Service
 
 ### Scope

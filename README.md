@@ -67,6 +67,9 @@ Current repository state:
 - `services/affect-service` now provides a stable step-37 placeholder contract for
   text/audio/video/fusion snapshots, and the frontend emotion panel renders those lane
   results plus sample source metadata without blocking the main dialogue chain
+- `services/affect-service` step 38 now upgrades the text lane to deterministic
+  `distressed / anxious / low_mood / guarded / neutral` labels and validates them
+  against both authored samples and enterprise transcript records
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists

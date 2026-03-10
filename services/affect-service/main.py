@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import re
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
@@ -136,17 +137,69 @@ ANXIOUS_KEYWORDS = (
     "紧张",
     "停不下来",
     "失眠",
+    "stress",
+    "stressé",
+    "stressant",
+    "angoisse",
+    "anxieux",
+    "pression",
+    "insomnie",
 )
-NEUTRAL_MASKING_KEYWORDS = (
+LOW_MOOD_KEYWORDS = (
+    "低落",
+    "难过",
+    "沮丧",
+    "没有意义",
+    "没意思",
+    "提不起劲",
+    "不想说话",
+    "好累",
+    "撑不住",
+    "triste",
+    "fatigué",
+    "fatigue",
+    "déprim",
+)
+GUARDED_MASKING_KEYWORDS = (
     "我没事",
     "没什么",
     "还好",
     "不用担心",
+    "没关系",
+    "不用了",
+    "算了",
+    "ça va",
+    "pas de souci",
+    "t'inquiète",
 )
+ACKNOWLEDGEMENT_ONLY_TOKENS = {
+    "ok",
+    "okay",
+    "oui",
+    "ouais",
+    "d'accord",
+    "dac",
+    "bonjour",
+    "nickel",
+    "hmm",
+    "hm",
+    "euh",
+}
 
 
 def normalize_text(value: str | None) -> str:
     return (value or "").strip().lower()
+
+
+def extract_text_tokens(value: str) -> list[str]:
+    return re.findall(r"[a-zà-ÿ0-9']+|[\u4e00-\u9fff]+", value.lower())
+
+
+def is_brief_acknowledgement(value: str) -> bool:
+    tokens = extract_text_tokens(value)
+    if not tokens or len(tokens) > 5:
+        return False
+    return all(token in ACKNOWLEDGEMENT_ONLY_TOKENS for token in tokens)
 
 
 def build_default_source_context(payload: AffectAnalyzeRequest) -> AffectSourceContext:
@@ -195,13 +248,33 @@ def analyze_text_lane(payload: AffectAnalyzeRequest) -> AffectLaneResult:
             detail="文本路检测到睡眠、压力或紧张相关关键词。",
         )
 
-    if any(keyword in text for keyword in NEUTRAL_MASKING_KEYWORDS):
+    low_mood_hits = [keyword for keyword in LOW_MOOD_KEYWORDS if keyword in text]
+    if low_mood_hits:
         return AffectLaneResult(
             status="ready",
-            label="neutral",
-            confidence=0.58,
-            evidence=["keyword:masking_expression"],
-            detail="文本表面偏中性，后续应结合音频和视频结果判断是否存在冲突。",
+            label="low_mood",
+            confidence=0.73,
+            evidence=[f"keyword:{hit}" for hit in low_mood_hits[:3]],
+            detail="文本路检测到低落、疲惫或明显负性情绪表达。",
+        )
+
+    guarded_hits = [keyword for keyword in GUARDED_MASKING_KEYWORDS if keyword in text]
+    if guarded_hits:
+        return AffectLaneResult(
+            status="ready",
+            label="guarded",
+            confidence=0.64,
+            evidence=[f"keyword:{hit}" for hit in guarded_hits[:3]],
+            detail="文本路出现回避或掩饰式表达，后续应优先结合其他模态澄清。",
+        )
+
+    if is_brief_acknowledgement(text):
+        return AffectLaneResult(
+            status="ready",
+            label="guarded",
+            confidence=0.59,
+            evidence=["pattern:brief_acknowledgement_only"],
+            detail="文本过短且主要由确认式回应组成，文本路暂标为保守型回应。",
         )
 
     return AffectLaneResult(
@@ -304,8 +377,8 @@ def analyze_fusion(
             detail="文本路已触发高风险规则，融合结果直接进入高风险。",
         )
 
-    if any(keyword in text for keyword in NEUTRAL_MASKING_KEYWORDS) and (audio_active or video_active):
-        reasons: list[str] = ["text-neutral"]
+    if text_result.label == "guarded" and (audio_active or video_active):
+        reasons: list[str] = ["text-guarded"]
         if audio_active:
             reasons.append(f"audio-{audio_result.label}")
         if video_active:
@@ -316,7 +389,7 @@ def analyze_fusion(
             confidence=0.68,
             conflict=True,
             conflict_reason="; ".join(reasons),
-            detail="文本路偏中性，但其他模态已有活动，占位融合先标记为冲突待澄清。",
+            detail="文本路偏保守或回避，但其他模态已有活动，占位融合先标记为冲突待澄清。",
         )
 
     if text_result.label == "anxious":
@@ -329,6 +402,28 @@ def analyze_fusion(
             conflict=False,
             conflict_reason=None,
             detail=evidence_detail,
+        )
+
+    if text_result.label == "low_mood":
+        confidence = 0.76 if (audio_active or video_active) else 0.71
+        evidence_detail = "文本低落线索已出现，并有其他模态在线。" if (audio_active or video_active) else "文本低落线索已出现，其他模态仍在占位。"
+        return AffectFusionResult(
+            emotion_state="low_mood_monitoring",
+            risk_level="medium",
+            confidence=confidence,
+            conflict=False,
+            conflict_reason=None,
+            detail=evidence_detail,
+        )
+
+    if text_result.label == "guarded":
+        return AffectFusionResult(
+            emotion_state="guarded_monitoring",
+            risk_level="low",
+            confidence=0.56,
+            conflict=False,
+            conflict_reason=None,
+            detail="文本较短或偏回避，系统会优先继续澄清而不直接下结论。",
         )
 
     if audio_active or video_active:

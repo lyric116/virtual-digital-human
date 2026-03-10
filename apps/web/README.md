@@ -48,6 +48,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
 - step 37: the emotion panel now requests one placeholder snapshot from
   `services/affect-service` and renders text/audio/video/fusion cards plus sample source
   metadata without blocking the main dialogue chain
+- step 38: the emotion panel keeps the same contract but the text lane can now render
+  coarse labels such as `anxious`, `low_mood`, `guarded`, and `neutral`
 
 ## Files
 

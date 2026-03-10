@@ -216,7 +216,7 @@ the same outer shape.
 | `source_context.record_id` | string | Yes | Stable sample identifier for replay or live session binding. |
 | `source_context.note` | string | No | Human-readable binding note shown in the UI. |
 | `text_result.status` | string | Yes | `ready`, `pending`, or `offline`. |
-| `text_result.label` | string | Yes | Coarse text-lane label. |
+| `text_result.label` | string | Yes | Coarse text-lane label such as `distressed`, `anxious`, `low_mood`, `guarded`, or `neutral`. |
 | `text_result.confidence` | number | Yes | Placeholder confidence in step 37, real confidence later. |
 | `text_result.detail` | string | Yes | Human-readable explanation shown in the UI. |
 | `audio_result.*` | object | Yes | Same shape as `text_result` for the audio lane. |

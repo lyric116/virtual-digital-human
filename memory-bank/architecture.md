@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - Affect Text Labels
+
+- The affect-service text lane is now the first lane with meaningful semantics: it emits deterministic distressed/anxious/low_mood/guarded/neutral labels while audio/video remain proxy lanes.
+- Enterprise transcript workflow is now part of affect verification, using a longer NoXI utterance as neutral and a short acknowledgement-only NoXI utterance as guarded.
+- The outer affect snapshot contract did not change, so later steps can replace lane internals without changing Emotion Panel bindings or gateway integration.
+
 ## 2026-03-10 - Affect Snapshot Contract Is Now The Multimodal Mount Point
 
 - services/affect-service is now the stable step-37 boundary for text/audio/video/fusion placeholder output, so steps 38-41 should replace lane internals without changing the outer response shape or the frontend panel ids.

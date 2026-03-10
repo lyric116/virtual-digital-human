@@ -11,6 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 AFFECT_MAIN = ROOT / "services" / "affect-service" / "main.py"
+TRANSCRIPTS = ROOT / "data" / "derived" / "transcripts" / "val_transcripts_template.jsonl"
 
 
 def load_module():
@@ -21,6 +22,14 @@ def load_module():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def load_transcript_text(record_id: str) -> str:
+    for raw_line in TRANSCRIPTS.read_text(encoding="utf-8").splitlines():
+        payload = json.loads(raw_line)
+        if payload.get("record_id") == record_id:
+            return str(payload.get("draft_text_raw") or "")
+    raise RuntimeError(f"missing transcript sample for {record_id}")
 
 
 def main() -> None:
@@ -64,19 +73,67 @@ def main() -> None:
             },
         ),
     )
+    low_mood_snapshot = module.generate_affect_snapshot(
+        settings,
+        module.AffectAnalyzeRequest(
+            session_id="sess_verify_affect_low_mood",
+            trace_id="trace_verify_affect_low_mood",
+            current_stage="assess",
+            text_input="这几天我一直提不起劲，感觉很多事情都没有意义。",
+        ),
+    )
+    enterprise_neutral_snapshot = module.generate_affect_snapshot(
+        settings,
+        module.AffectAnalyzeRequest(
+            session_id="sess_verify_affect_enterprise_neutral",
+            trace_id="trace_verify_affect_enterprise_neutral",
+            current_stage="assess",
+            text_input=load_transcript_text("noxi/001_2016-03-17_Paris/speaker_a/1"),
+            metadata={
+                "source": "enterprise_validation_manifest",
+                "dataset": "noxi",
+                "record_id": "noxi/001_2016-03-17_Paris/speaker_a/1",
+            },
+        ),
+    )
+    enterprise_guarded_snapshot = module.generate_affect_snapshot(
+        settings,
+        module.AffectAnalyzeRequest(
+            session_id="sess_verify_affect_enterprise_guarded",
+            trace_id="trace_verify_affect_enterprise_guarded",
+            current_stage="assess",
+            text_input=load_transcript_text("noxi/001_2016-03-17_Paris/speaker_b/2"),
+            metadata={
+                "source": "enterprise_validation_manifest",
+                "dataset": "noxi",
+                "record_id": "noxi/001_2016-03-17_Paris/speaker_b/2",
+            },
+        ),
+    )
 
     if anxious_snapshot.text_result.label != "anxious":
         raise RuntimeError("anxious snapshot did not classify text lane as anxious")
     if anxious_snapshot.video_result.status != "ready":
         raise RuntimeError("anxious snapshot did not mark video lane ready")
+    if conflict_snapshot.text_result.label != "guarded":
+        raise RuntimeError("guarded snapshot did not classify text lane as guarded")
     if conflict_snapshot.fusion_result.conflict is not True:
-        raise RuntimeError("neutral masking snapshot did not raise a conflict flag")
+        raise RuntimeError("guarded masking snapshot did not raise a conflict flag")
+    if low_mood_snapshot.text_result.label != "low_mood":
+        raise RuntimeError("low mood snapshot did not classify text lane as low_mood")
+    if enterprise_neutral_snapshot.text_result.label != "neutral":
+        raise RuntimeError("enterprise neutral sample did not stay neutral")
+    if enterprise_guarded_snapshot.text_result.label != "guarded":
+        raise RuntimeError("enterprise guarded sample did not classify as guarded")
 
     print(
         json.dumps(
             {
                 "anxious_snapshot": anxious_snapshot.model_dump(mode="json"),
+                "low_mood_snapshot": low_mood_snapshot.model_dump(mode="json"),
                 "conflict_snapshot": conflict_snapshot.model_dump(mode="json"),
+                "enterprise_neutral_snapshot": enterprise_neutral_snapshot.model_dump(mode="json"),
+                "enterprise_guarded_snapshot": enterprise_guarded_snapshot.model_dump(mode="json"),
             },
             ensure_ascii=False,
             indent=2,

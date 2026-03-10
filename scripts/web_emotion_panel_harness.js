@@ -197,6 +197,43 @@ function buildAffectPayload(requestPayload, mode) {
         note: source.sample_note || "enterprise sample pending binding",
       };
   const anxious = text.includes("睡不好") || text.includes("停不下来");
+  const lowMood = text.includes("提不起劲") || text.includes("没有意义");
+  const guarded =
+    text.includes("我没事") ||
+    text.includes("不用担心") ||
+    text.trim().toLowerCase() === "d'accord. ok.";
+  const textLabel = anxious ? "anxious" : lowMood ? "low_mood" : guarded ? "guarded" : "neutral";
+  const textConfidence = anxious ? 0.78 : lowMood ? 0.73 : guarded ? 0.64 : 0.58;
+  const textEvidence = anxious
+    ? ["keyword:睡不好"]
+    : lowMood
+      ? ["keyword:提不起劲"]
+      : guarded
+        ? ["keyword:我没事"]
+        : ["text:general_statement"];
+  const textDetail = anxious
+    ? "文本路检测到睡眠和紧张相关线索。"
+    : lowMood
+      ? "文本路检测到低落和无意义相关线索。"
+      : guarded
+        ? "文本路检测到防御性或保守型表达。"
+        : "文本路暂未命中明显风险词。";
+  const fusionEmotion = anxious
+    ? "anxious_monitoring"
+    : lowMood
+      ? "low_mood_monitoring"
+      : guarded
+        ? "guarded_monitoring"
+        : "observe_more";
+  const fusionRisk = anxious || lowMood ? "medium" : "low";
+  const fusionConfidence = anxious ? 0.69 : lowMood ? 0.71 : guarded ? 0.56 : 0.48;
+  const fusionDetail = anxious
+    ? "文本焦虑线索已出现，其他模态仍为占位。"
+    : lowMood
+      ? "文本低落线索已出现，其他模态仍为占位。"
+      : guarded
+        ? "文本较短或偏回避，系统会优先继续澄清。"
+        : "当前三路仍以占位结果为主。";
 
   return {
     session_id: requestPayload.session_id,
@@ -206,10 +243,10 @@ function buildAffectPayload(requestPayload, mode) {
     source_context: sourceContext,
     text_result: {
       status: "ready",
-      label: anxious ? "anxious" : "neutral",
-      confidence: anxious ? 0.78 : 0.58,
-      evidence: anxious ? ["keyword:睡不好"] : ["text:general_statement"],
-      detail: anxious ? "文本路检测到睡眠和紧张相关线索。" : "文本路暂未命中明显风险词。",
+      label: textLabel,
+      confidence: textConfidence,
+      evidence: textEvidence,
+      detail: textDetail,
     },
     audio_result: {
       status: "ready",
@@ -226,12 +263,12 @@ function buildAffectPayload(requestPayload, mode) {
       detail: "视频路当前离线，先保留挂载位。",
     },
     fusion_result: {
-      emotion_state: anxious ? "anxious_monitoring" : "observe_more",
-      risk_level: anxious ? "medium" : "low",
-      confidence: anxious ? 0.69 : 0.48,
+      emotion_state: fusionEmotion,
+      risk_level: fusionRisk,
+      confidence: fusionConfidence,
       conflict: false,
       conflict_reason: null,
-      detail: anxious ? "文本焦虑线索已出现，其他模态仍为占位。" : "当前三路仍以占位结果为主。",
+      detail: fusionDetail,
     },
   };
 }

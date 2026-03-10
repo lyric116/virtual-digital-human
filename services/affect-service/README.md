@@ -3,9 +3,9 @@
 ## Purpose
 
 `affect-service` is the first stable multimodal affect boundary for steps 37-41.
-In step 37 it does not run a real model yet. It returns deterministic placeholder
-results for text, audio, video, and fusion so the frontend emotion panel and later
-fusion logic have one fixed contract to target.
+Step 37 established the fixed response contract. Step 38 upgrades only the text lane
+so the frontend can already render coarse text affect categories before audio/video
+and true fusion logic are replaced in later steps.
 
 ## Endpoints
 
@@ -14,12 +14,31 @@ fusion logic have one fixed contract to target.
 
 ## Current Behavior
 
-- text lane: keyword-based placeholder labels such as `anxious`, `neutral`, `distressed`
+- text lane: deterministic coarse labels `distressed`, `anxious`, `low_mood`,
+  `guarded`, and `neutral`
 - audio lane: capture-state proxy labels such as `speech_observed` or `low_energy_proxy`
 - video lane: camera-state proxy labels such as `face_present_proxy` or `camera_offline`
 - fusion lane: deterministic `emotion_state`, `risk_level`, `confidence`, and `conflict`
 - source context: always returns `origin`, `dataset`, `record_id`, and `note` so the UI
   can already reserve fields for enterprise validation sample binding
+
+## Step-38 Text Rules
+
+- `distressed`
+  - direct high-risk expressions such as self-harm or suicide intent
+- `anxious`
+  - sleep problems, stress, tension, or similar activation cues
+- `low_mood`
+  - low-energy, meaninglessness, sadness, or exhaustion cues
+- `guarded`
+  - masking language such as `我没事` or very short acknowledgement-only replies
+- `neutral`
+  - informative or ordinary statements without strong affect cues
+
+Enterprise transcript verification for step 38 uses:
+
+- one longer NoXI transcript that should remain `neutral`
+- one short NoXI acknowledgement transcript that should be classified as `guarded`
 
 ## Local Run
 
@@ -32,8 +51,8 @@ From repository root:
 - Browser preview calls this service directly.
 - Configure the browser-facing base URL through `window.__APP_CONFIG__.affectBaseUrl`.
 - Default local browser preview origin is controlled by `AFFECT_CORS_ORIGINS`.
-- This step intentionally keeps real multimodal inference out of the main path. Steps 38-41
-  will replace the lane internals while keeping the same response shape.
+- This step intentionally keeps real multimodal inference out of the main path. Steps 39-41
+  will replace the audio/video/fusion internals while keeping the same response shape.
 
 ## Verification
 
