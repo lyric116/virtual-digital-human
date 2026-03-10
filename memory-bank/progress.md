@@ -21,6 +21,32 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 43 Knowledge Card Dataset
+
+### Scope
+
+Completed implementation plan step 43 by introducing the first curated knowledge-card dataset for RAG, validating field coverage and category boundaries, and documenting the separation between curated support content, enterprise multimodal validation data, and MAGICDATA ASR evaluation data.
+
+### Outputs
+
+- data/kb/knowledge_cards.jsonl
+- data/kb/README.md
+- services/rag-service/README.md
+- scripts/verify_knowledge_cards.py
+- tests/test_knowledge_cards.py
+- docs/06-rag-kb.md
+- README.md
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run python -m py_compile scripts/verify_knowledge_cards.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_knowledge_cards.py
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_knowledge_cards.py
+
+### Next
+
+- Step 44: implement indexing and retrieval on top of the now-fixed curated card dataset instead of cleaning raw knowledge content during retrieval work.
+
 ## 2026-03-10 - Step 42 Affect Conflict Clarification
 
 ### Scope

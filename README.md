@@ -81,6 +81,8 @@ Current repository state:
   output and low-risk stable multimodal confirmation for aligned samples
 - the gateway and dialogue-service step 42 now consume multimodal conflict evidence so
   one conflict sample persists `affect.snapshot` and yields a clarification-first reply
+- step 43 now provides a curated structured knowledge-card dataset under `data/kb/` as
+  the retrieval-ready baseline for later RAG indexing, filtering, and safety guards
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -197,6 +199,8 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_magicdata_asr_eval.py`
 - Run the stable ASR regression suite, including MAGICDATA when available:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_regression.py`
+- Verify the curated RAG knowledge-card dataset before retrieval work:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_knowledge_cards.py`
 - Import external ASR draft results from a JSONL file:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/write_asr_drafts.py import-results --results <results.jsonl>`
 - Generate a manual review checklist:

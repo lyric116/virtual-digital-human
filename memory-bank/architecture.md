@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - RAG now begins from a curated card corpus
+
+- Step 43 establishes data/kb/knowledge_cards.jsonl as the first stable RAG asset: later retrieval work should index this curated card corpus instead of scraping enterprise validation transcripts or MAGICDATA public ASR references.
+- High-risk knowledge remains structurally separated from ordinary support cards because verify_knowledge_cards.py enforces that cards carrying risk_level=high stay inside the handoff_support category.
+- services/rag-service is still dataset-only at this point, so later steps must preserve the current separation of concerns: card authoring and validation live in data/kb plus scripts/verify_knowledge_cards.py, while indexing and retrieval should be added without mutating the curated source file format.
+
 ## 2026-03-10 - Affect conflict is now part of the dialogue control plane
 
 - Step 42 makes affect-service output operational instead of display-only: the gateway now requests affect snapshots for normal turns, persists affect.snapshot events, and forwards metadata.affect_snapshot to dialogue-service. dialogue-service now short-circuits multimodal conflict into clarification-first replies, so future dialogue, RAG, and safety work must preserve affect_conflict evidence fields and avoid bypassing this control path.
