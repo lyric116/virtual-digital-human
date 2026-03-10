@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - Unified Event Stream For Full-Chain Traceability
+
+- Step 47 keeps logging inside the existing system_events table instead of adding parallel retrieval or TTS log tables; transcript, affect, retrieval, dialogue, TTS, and avatar runtime events now share one envelope and one export path.
+- Dialogue responses now echo retrieval_context so gateway can persist knowledge.retrieved separately from dialogue.reply; this keeps retrieval evidence auditable even if the final reply text is later shortened, rewritten, or repaired by fallback logic.
+- Frontend runtime telemetry is best-effort only: apps/web posts tts/avatar events through a guarded runtime-event endpoint, but failures in that callback path must never block reply rendering, audio playback, or avatar state changes.
+
 ## 2026-03-10 - High-Risk Retrieval Guardrail
 
 - rag-service now treats risk_level=high as a hard retrieval boundary: it filters to handoff_support and future safety_support categories before scoring, and it bypasses ordinary current_stage filtering so urgent safety cards are not excluded by assess/intervene metadata.

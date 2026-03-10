@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 26, 27, 28, 36, and 42:
+This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 26, 27, 28, 36, 42, and 47:
 
 - step 8: create a session row in PostgreSQL
 - step 10: provide a session-level realtime WebSocket with ready and heartbeat events
@@ -36,6 +36,8 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 2
   media rows, and keep the video path isolated from dialogue and affect inference
 - step 42: request affect snapshots for normal dialogue turns, persist `affect.snapshot`
   evidence, and forward conflict signals so dialogue can prioritize clarification
+- step 47: persist transcript, retrieval, dialogue, TTS, and avatar runtime events into
+  one exportable `system_events` stream
 
 ## Files
 
@@ -53,6 +55,7 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 2
 - `POST /api/session/{session_id}/video/frame`
 - `POST /api/session/{session_id}/audio/preview`
 - `POST /api/session/{session_id}/audio/finalize`
+- `POST /api/session/{session_id}/runtime-event`
 - `GET /ws/session/{session_id}` as a WebSocket upgrade endpoint
 
 ## Local Run
@@ -74,11 +77,13 @@ From repository root:
 - The gateway calls the orchestrator through `ORCHESTRATOR_BASE_URL`.
 - `GATEWAY_CORS_ORIGINS` controls which local frontend preview origins can call the API
   from the browser.
-- The realtime endpoint currently emits only `session.connection.ready`,
-  `session.heartbeat`, `message.accepted`, `dialogue.reply`, and `session.error`.
-- `session.created`, `message.accepted`, `dialogue.reply`, and `session.error` are now
-  persisted into `system_events` so export and later tracing steps can replay a session
-  without reconstructing events from logs.
+- The realtime endpoint currently emits `session.connection.ready`, `session.heartbeat`,
+  `message.accepted`, `transcript.partial`, `transcript.final`, `dialogue.reply`, and
+  `session.error`.
+- `system_events` now carries the end-to-end trace baseline: `session.created`,
+  `message.accepted`, `transcript.partial`, `transcript.final`, `affect.snapshot`,
+  `knowledge.retrieved`, `dialogue.reply`, `dialogue.summary.updated`, plus
+  `tts.*` / `avatar.command` runtime events posted back from the frontend.
 - The text-first trace contract is now explicit: the session row, every message row,
   every persisted business event, the websocket envelopes, and the export payload all
   carry the same session `trace_id`.
@@ -92,8 +97,15 @@ From repository root:
   transcript as a user message with `source_kind='audio'`, and then triggers the same
   mock dialogue flow used by the text path.
 - `POST /api/session/{session_id}/audio/preview` accepts a current recording snapshot,
-  sends it to `services/asr-service`, and emits `transcript.partial` without changing the
-  persisted final-transcript contract introduced in step 19.
+  sends it to `services/asr-service`, emits `transcript.partial`, and persists the same
+  event into `system_events`.
+- `POST /api/session/{session_id}/audio/finalize` now also persists one
+  `transcript.final` event before the accepted transcript message continues into the
+  dialogue pipeline.
+- `POST /api/session/{session_id}/runtime-event` is a guarded browser callback used by
+  the web shell to write `tts.synthesized`, `tts.playback.started`,
+  `tts.playback.ended`, and `avatar.command` into `system_events` without letting client
+  failures break the main reply path.
 - The gateway treats the LLM stage as a proposal, not ground truth. It records
   `stage_before`, `model_stage`, and `stage_machine_reason` in assistant message metadata,
   then emits the resolved stage in `dialogue.reply`.
@@ -114,3 +126,6 @@ From repository root:
   If fusion marks the sample as conflict, the gateway persists `affect.snapshot` into
   `system_events`, forwards the snapshot inside `metadata.affect_snapshot`, and exposes
   `affect_conflict*` fields on the resulting `dialogue.reply` event payload.
+- When dialogue requests carry retrieval context back from orchestrator/dialogue-service,
+  the gateway persists one `knowledge.retrieved` event before `dialogue.reply`, keeping
+  retrieved `source_ids`, applied filters, and grounded refs separately auditable.

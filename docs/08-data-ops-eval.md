@@ -147,6 +147,16 @@
 - 产出 sampled driver frames 与摘要结果
 - 为后续数字人驱动评测提供可复现的离线输入输出样本
 
+当前仓库在步骤 47 又补齐了统一事件日志链，核心落点是：
+
+- `system_events` 继续作为唯一统一事件流
+- 网关会记录 `transcript.partial`、`transcript.final`、`affect.snapshot`、
+  `knowledge.retrieved`、`dialogue.reply`、`dialogue.summary.updated`
+- 前端通过受控接口回写 `tts.synthesized`、`tts.playback.started`、
+  `tts.playback.ended`、`avatar.command`
+- 当会话绑定企业验证集样本时，上述事件 payload 会同时带
+  `record_id`、`dataset`、`canonical_role`、`segment_id`
+
 评测脚本需要能直接输出 CSV 或 Markdown 表格，用于方案书和 PPT。
 
 ## 8. 可解释性输出
@@ -205,3 +215,6 @@
 - 所有导出的实验表都应能区分“实时采集样本”和“企业验证集离线样本”。
 - 当前已产出 `data/derived/qc_report.md`，总量和转录状态应以该文件实时统计为准，不再在方案文档中手工维护固定数字。
 - 对于公开中文评测集，应额外区分“本地生成的官方参考集”和“人工复核工作流参考集”，避免后续把公开语料误写成企业内部标注结果。
+- 当前全链路日志验证脚本为 `scripts/verify_session_trace_logging.py`；它面向
+  “语音输入 -> ASR -> affect -> RAG -> dialogue -> TTS -> avatar runtime event ->
+  export” 这条链路做一次顺序校验。

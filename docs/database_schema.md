@@ -58,6 +58,15 @@ Key fields:
 - `payload`
 - `emitted_at`
 
+Current live use now includes:
+
+- session bootstrap and error events
+- `transcript.partial` and `transcript.final`
+- `affect.snapshot`
+- `knowledge.retrieved`
+- `dialogue.reply` and `dialogue.summary.updated`
+- browser-posted `tts.*` and `avatar.command` runtime events
+
 ### `evaluation_records`
 
 Stores metric outputs from ASR, dialogue, multimodal, and system-level evaluation runs.
@@ -106,13 +115,17 @@ Current live use:
 
 ## Design Boundaries
 
-- This schema does not yet include affect windows, retrieval logs, or long-term user
-  profiles.
+- This schema still does not add separate affect-window or retrieval-log tables; step 47
+  keeps one normalized event stream in `system_events` instead of introducing parallel
+  logging storage.
 - All ids are `TEXT` for now to keep gateway and offline replay identifiers aligned.
 - Status and type fields use `CHECK` constraints instead of custom database enums to keep
   early migrations simple.
 - JSONB fields are included only for flexible metadata and payload storage, not to hide
   core relational fields.
+- When replay lineage exists on the session row, event payloads should copy
+  `record_id`, `dataset`, `canonical_role`, and `segment_id` so exported traces can be
+  tied back to one enterprise validation segment.
 
 ## Verification Standard
 

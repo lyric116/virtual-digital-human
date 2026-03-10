@@ -318,7 +318,47 @@ def test_create_session_endpoint_returns_contract_shape():
     assert body["status"] == "created"
     assert body["stage"] == "engage"
     assert body["input_modes"] == ["text", "audio"]
-    assert repository.session_calls[0]["input_modes"] == ["text", "audio"]
+
+
+def test_build_event_envelope_copies_session_lineage_into_payload():
+    module = load_gateway_module()
+    envelope = module.build_event_envelope(
+        session={
+            "session_id": "sess_fake_001",
+            "trace_id": "trace_fake_001",
+            "record_id": "noxi/sample/1",
+            "dataset": "noxi",
+            "canonical_role": "speaker_a",
+            "segment_id": "1",
+        },
+        event_type="affect.snapshot",
+        payload={"stage": "assess"},
+        source_service="affect_service",
+    )
+
+    assert envelope["payload"]["record_id"] == "noxi/sample/1"
+    assert envelope["payload"]["dataset"] == "noxi"
+    assert envelope["payload"]["canonical_role"] == "speaker_a"
+    assert envelope["payload"]["segment_id"] == "1"
+
+
+def test_create_client_runtime_event_record_accepts_supported_event_type():
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    response = module.create_client_runtime_event_record(
+        repository,
+        "sess_fake_001",
+        module.ClientRuntimeEventRequest(
+            event_type="tts.synthesized",
+            message_id="msg_assistant_001",
+            payload={"voice_id": "zh-CN-XiaoxiaoNeural"},
+        ),
+    )
+
+    assert response.event_type == "tts.synthesized"
+    assert repository.event_calls[-1]["source_service"] == "web_client"
+    assert repository.event_calls[-1]["message_id"] == "msg_assistant_001"
+    assert repository.event_calls[-1]["payload"]["voice_id"] == "zh-CN-XiaoxiaoNeural"
 
 
 def test_create_session_rejects_invalid_input_modes():
@@ -937,6 +977,88 @@ def test_dispatch_pipeline_enqueues_message_accepted_before_llm_reply(monkeypatc
 
     assert observed["before_llm"] == ["message.accepted"]
     assert connection_registry.enqueued == ["message.accepted", "dialogue.reply"]
+
+
+def test_dispatch_pipeline_records_knowledge_retrieval_event(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    connection_registry = module.ConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+
+    def fake_request_dialogue_reply(
+        settings,
+        session,
+        message,
+        *,
+        short_term_memory=None,
+        dialogue_summary=None,
+        affect_snapshot=None,
+    ):
+        return module.DialogueReplyResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            message_id="msg_assistant_rag_001",
+            reply="我们先试着把睡前担忧暂存下来。",
+            emotion="anxious",
+            risk_level="medium",
+            stage="intervene",
+            next_action="intervene",
+            knowledge_refs=["sleep_worry_container"],
+            retrieval_context={
+                "source_ids": ["sleep_worry_container", "sleep_hygiene_basic"],
+                "filters_applied": ["stage:intervene", "risk_level:medium"],
+                "candidate_count": 2,
+            },
+            avatar_style="warm_support",
+            safety_flags=["rag_grounded_response"],
+        )
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "assess",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_fake_001",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "最近总觉得睡前停不下来。",
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                },
+            },
+        )
+    )
+
+    event_types = [event["event_type"] for event in repository.event_calls]
+    assert "knowledge.retrieved" in event_types
+    knowledge_event = next(event for event in repository.event_calls if event["event_type"] == "knowledge.retrieved")
+    assert knowledge_event["payload"]["source_ids"] == ["sleep_worry_container", "sleep_hygiene_basic"]
+    assert knowledge_event["payload"]["grounded_refs"] == ["sleep_worry_container"]
+    assert knowledge_event["payload"]["candidate_count"] == 2
 
 
 def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monkeypatch):

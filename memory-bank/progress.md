@@ -21,6 +21,32 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 47 Unified Trace Logging
+
+### Scope
+
+Completed implementation plan step 47 by extending the shared system_events stream to cover transcript, retrieval, dialogue, TTS, and avatar runtime events, while copying enterprise replay lineage into event payloads for export and audit.
+
+### Outputs
+
+- apps/api-gateway/main.py now persists transcript.final, knowledge.retrieved, and client-posted runtime events, and build_event_envelope now copies record_id/dataset/canonical_role/segment_id into event payloads when the session is replay-bound.
+- services/dialogue-service/main.py now echoes retrieval_context so gateway logging can separate retrieval evidence from the final dialogue reply.
+- apps/web/app.js now best-effort posts tts.synthesized, tts.playback.started, tts.playback.ended, and avatar.command back to the gateway without blocking the main reply path.
+- scripts/verify_session_trace_logging.py was added as the live full-chain verifier for audio input, ASR, affect, RAG, dialogue, TTS, avatar runtime events, and export inspection.
+- README.md, apps/api-gateway/README.md, docs/shared_contracts.md, docs/database_schema.md, and docs/08-data-ops-eval.md now document the unified trace model.
+
+### Checks
+
+- node --check apps/web/app.js && node --check scripts/web_tts_playback_harness.js
+- UV_CACHE_DIR=.uv-cache uv run python -m py_compile apps/api-gateway/main.py apps/orchestrator/main.py services/dialogue-service/main.py scripts/verify_session_trace_logging.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_memory_bank.py tests/test_shared_contracts.py -q
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_session_trace_logging.py currently remains environment-blocked in this sandbox because local PostgreSQL host connectivity closes unexpectedly even though the Docker container is healthy.
+
+### Next
+
+- Step 48: build replay mode on top of exported system_events so a saved session can be reconstructed without calling live model services.
+
 ## 2026-03-10 - Step 46 High-Risk RAG Guardrail
 
 ### Scope

@@ -91,6 +91,9 @@ Current repository state:
 - step 46 now enforces a high-risk RAG guardrail so retrieval bypasses ordinary stage
   filtering and only returns `handoff_support` or future `safety_support` cards when
   `risk_level=high`
+- step 47 now consolidates transcript, affect, retrieval, dialogue, TTS, and avatar
+  runtime events into the exportable `system_events` stream, with replay lineage copied
+  into event payloads for enterprise-bound sessions
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -157,6 +160,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_fallback_reply.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_conflict_clarification.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_rag_grounding.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_session_trace_logging.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`

@@ -271,8 +271,9 @@ function resolveMockVoice(requestedVoiceId) {
   return "zh-CN-XiaoxiaoNeural";
 }
 
-function createMockRuntime(ttsBaseUrl, replyText, defaultAvatarId, dialogueConfig) {
+function createMockRuntime(apiBaseUrl, ttsBaseUrl, replyText, defaultAvatarId, dialogueConfig) {
   let currentSocket = null;
+  const runtimeEvents = [];
   let sessionPayload = {
     session_id: "sess_mock_tts_001",
     trace_id: "trace_mock_tts_001",
@@ -458,6 +459,29 @@ function createMockRuntime(ttsBaseUrl, replyText, defaultAvatarId, dialogueConfi
       };
     }
 
+    if (
+      url
+      === `${apiBaseUrl}/api/session/${encodeURIComponent(sessionPayload.session_id)}/runtime-event`
+    ) {
+      const payload = JSON.parse(options.body || "{}");
+      runtimeEvents.push(payload);
+      return {
+        ok: true,
+        status: 202,
+        async json() {
+          return {
+            event_id: `evt_runtime_${String(runtimeEvents.length).padStart(3, "0")}`,
+            session_id: sessionPayload.session_id,
+            trace_id: sessionPayload.trace_id,
+            message_id: payload.message_id || null,
+            event_type: payload.event_type,
+            source_service: "web_client",
+            emitted_at: "2026-03-10T10:10:10Z",
+          };
+        },
+      };
+    }
+
     return {
       ok: false,
       status: 404,
@@ -470,6 +494,7 @@ function createMockRuntime(ttsBaseUrl, replyText, defaultAvatarId, dialogueConfi
   return {
     fetchImpl: mockFetch,
     WebSocketImpl: MockWebSocket,
+    runtimeEvents,
   };
 }
 
@@ -573,7 +598,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const runtimeConfig = args.mode === "live"
     ? { fetchImpl: fetch, WebSocketImpl: WebSocket }
-    : createMockRuntime(args.ttsBaseUrl, args.replyText, args.avatarId, {
+    : createMockRuntime(args.apiBaseUrl, args.ttsBaseUrl, args.replyText, args.avatarId, {
         stage: args.dialogueStage,
         emotion: args.dialogueEmotion,
         riskLevel: args.dialogueRiskLevel,
@@ -633,7 +658,14 @@ async function main() {
   const afterPlaybackEnd = collectSnapshot(runtime.document);
   runtime.window.__virtualHumanConsoleController.shutdownForTest();
   process.stdout.write(
-    `${JSON.stringify({ beforeCreate, afterConnect, afterReply, afterPlaybackStart, afterPlaybackEnd }, null, 2)}\n`,
+    `${JSON.stringify({
+      beforeCreate,
+      afterConnect,
+      afterReply,
+      afterPlaybackStart,
+      afterPlaybackEnd,
+      runtimeEvents: runtimeConfig.runtimeEvents || [],
+    }, null, 2)}\n`,
   );
 }
 

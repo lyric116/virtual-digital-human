@@ -85,6 +85,7 @@ class DialogueReplyResponse(BaseModel):
     stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
     next_action: str
     knowledge_refs: list[str] = Field(default_factory=list)
+    retrieval_context: dict[str, Any] = Field(default_factory=dict)
     avatar_style: str | None = None
     safety_flags: list[str] = Field(default_factory=list)
 

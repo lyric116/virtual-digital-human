@@ -46,6 +46,11 @@ def test_web_tts_playback_happy_path_updates_subtitle_and_audio_state():
     assert payload["afterPlaybackStart"]["avatarVoice"] == "zh-CN-XiaoxiaoNeural"
     assert payload["afterPlaybackEnd"]["ttsPlaybackState"] == "completed"
     assert payload["afterPlaybackEnd"]["avatarSpeechState"] == "completed"
+    event_types = [item["event_type"] for item in payload["runtimeEvents"]]
+    assert "tts.synthesized" in event_types
+    assert "tts.playback.started" in event_types
+    assert "tts.playback.ended" in event_types
+    assert event_types.count("avatar.command") >= 2
 
 
 def test_web_tts_docs_are_present():

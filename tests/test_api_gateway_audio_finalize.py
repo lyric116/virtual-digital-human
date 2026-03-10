@@ -159,6 +159,11 @@ def test_audio_message_record_calls_asr_and_creates_audio_user_message():
     assert repository.final_asset_calls[0]["mime_type"] == "audio/wav"
     assert repository.audio_message_calls[0]["metadata"]["audio_media_id"] == "media_audio_final_001"
     assert repository.audio_message_calls[0]["metadata"]["asr_provider"] == "dashscope"
+    transcript_event = module.build_transcript_final_event(result)
+    assert transcript_event["event_type"] == "transcript.final"
+    assert transcript_event["message_id"] == "msg_audio_final_001"
+    assert transcript_event["payload"]["asr_engine"] == "qwen3-asr-flash"
+    assert transcript_event["payload"]["media_id"] == "media_audio_final_001"
 
 
 def test_audio_message_record_normalizes_webm_content_type_parameters():
@@ -334,4 +339,5 @@ def test_audio_finalize_route_and_readme_are_present():
     readme = GATEWAY_README.read_text(encoding="utf-8")
 
     assert "/api/session/{session_id}/audio/finalize" in paths
+    assert "/api/session/{session_id}/runtime-event" in paths
     assert "POST /api/session/{session_id}/audio/finalize" in readme

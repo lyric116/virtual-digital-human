@@ -90,6 +90,7 @@ class DialogueReplyResponse(BaseModel):
     stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
     next_action: str
     knowledge_refs: list[str] = Field(default_factory=list)
+    retrieval_context: dict[str, Any] = Field(default_factory=dict)
     avatar_style: str | None = None
     safety_flags: list[str] = Field(default_factory=list)
 
@@ -121,6 +122,12 @@ class KnowledgeCardContext(BaseModel):
     followup_questions: list[str] = Field(default_factory=list)
     contraindications: list[str] = Field(default_factory=list)
     score: float | None = None
+
+
+class RetrievalContext(BaseModel):
+    source_ids: list[str] = Field(default_factory=list)
+    filters_applied: list[str] = Field(default_factory=list)
+    candidate_count: int | None = Field(default=None, ge=0)
 
 
 class LLMDialogueFields(BaseModel):
@@ -276,6 +283,27 @@ def extract_knowledge_cards(metadata: dict[str, Any] | None) -> list[KnowledgeCa
     return cards
 
 
+def extract_retrieval_context(metadata: dict[str, Any] | None) -> RetrievalContext:
+    if not isinstance(metadata, dict):
+        return RetrievalContext()
+
+    cards = extract_knowledge_cards(metadata)
+    raw_filters = metadata.get("knowledge_filters_applied")
+    if isinstance(raw_filters, list):
+        filters_applied = [str(item).strip() for item in raw_filters if str(item).strip()]
+    else:
+        filters_applied = []
+
+    raw_candidate_count = metadata.get("knowledge_candidate_count")
+    candidate_count = raw_candidate_count if isinstance(raw_candidate_count, int) else None
+
+    return RetrievalContext(
+        source_ids=[card.source_id for card in cards],
+        filters_applied=filters_applied,
+        candidate_count=candidate_count,
+    )
+
+
 def build_dialogue_user_prompt(payload: DialogueReplyRequest) -> str:
     metadata = dict(payload.metadata or {})
     cards = extract_knowledge_cards(metadata)
@@ -421,6 +449,7 @@ def build_dialogue_reply(
     payload: DialogueReplyRequest,
     llm_fields: LLMDialogueFields,
 ) -> DialogueReplyResponse:
+    retrieval_context = extract_retrieval_context(payload.metadata)
     return DialogueReplyResponse(
         session_id=payload.session_id,
         trace_id=payload.trace_id,
@@ -431,6 +460,7 @@ def build_dialogue_reply(
         stage=llm_fields.stage,
         next_action=llm_fields.next_action,
         knowledge_refs=llm_fields.knowledge_refs,
+        retrieval_context=retrieval_context.model_dump(mode="json"),
         avatar_style=llm_fields.avatar_style,
         safety_flags=llm_fields.safety_flags,
     )
@@ -571,6 +601,7 @@ def build_dialogue_fallback_reply(
         emotion = "supportive"
         avatar_style = "warm_support"
 
+    retrieval_context = extract_retrieval_context(payload.metadata)
     return DialogueReplyResponse(
         session_id=payload.session_id,
         trace_id=payload.trace_id,
@@ -581,6 +612,7 @@ def build_dialogue_fallback_reply(
         stage=fallback_stage,
         next_action=FALLBACK_NEXT_ACTION.get(fallback_stage, "ask_followup"),
         knowledge_refs=[],
+        retrieval_context=retrieval_context.model_dump(mode="json"),
         avatar_style=avatar_style,
         safety_flags=["dialogue_fallback_response", f"dialogue_fallback_reason:{reason}"],
     )
@@ -621,6 +653,7 @@ def build_affect_conflict_reply(
     if conflict_info.get("conflict_reason"):
         safety_flags.append("affect_conflict_reason_present")
 
+    retrieval_context = extract_retrieval_context(payload.metadata)
     return DialogueReplyResponse(
         session_id=payload.session_id,
         trace_id=payload.trace_id,
@@ -631,6 +664,7 @@ def build_affect_conflict_reply(
         stage=stage,
         next_action=next_action,
         knowledge_refs=[],
+        retrieval_context=retrieval_context.model_dump(mode="json"),
         avatar_style=avatar_style,
         safety_flags=safety_flags,
     )

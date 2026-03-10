@@ -72,8 +72,12 @@ envelope.
 - `transcript.partial`
 - `transcript.final`
 - `affect.snapshot`
+- `knowledge.retrieved`
 - `dialogue.reply`
 - `dialogue.summary.updated`
+- `tts.synthesized`
+- `tts.playback.started`
+- `tts.playback.ended`
 - `avatar.command`
 - `session.error`
 
@@ -178,8 +182,8 @@ reuses the existing `message.accepted -> dialogue.reply` realtime path.
 ## Transcript Result
 
 This payload is used for offline ASR backfill and later live transcript events. In step
-20, the live audio path emits `transcript.partial` during recording but still uses only
-the accepted final user message, not a separate `transcript.final` event, after stop.
+20, the live audio path emits `transcript.partial` during recording and now also records
+`transcript.final` when the finalized ASR result is accepted.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -256,6 +260,18 @@ does not yet inject results into dialogue-service.
 | `results[].followup_questions` | array[string] | Yes | Follow-up prompts that fit this card. |
 | `results[].contraindications` | array[string] | Yes | Situations where this card should not be used. |
 
+## Client Runtime Event Ingest
+
+This contract is used by `POST /api/session/{session_id}/runtime-event`. It lets the web
+frontend persist non-authoritative but traceable runtime events such as TTS synthesis and
+avatar state changes into `system_events` without creating a parallel log store.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `event_type` | string | Yes | One of `tts.synthesized`, `tts.playback.started`, `tts.playback.ended`, or `avatar.command`. |
+| `message_id` | string | No | Assistant message id associated with this runtime event. |
+| `payload` | object | Yes | Event-specific details such as `voice_id`, `duration_ms`, or `command`. |
+
 ## Dialogue Result
 
 This payload is produced by dialogue orchestration and consumed by frontend, logs, and
@@ -272,6 +288,7 @@ avatar selection.
 | `stage` | string | Yes | `engage`, `assess`, `intervene`, `reassess`, or `handoff`. |
 | `next_action` | string | Yes | Action selected by orchestrator. |
 | `knowledge_refs` | array[string] | No | Retrieved KB ids used for grounding. |
+| `retrieval_context` | object | No | Echoed retrieval trace used for logging; may include `source_ids`, `filters_applied`, and `candidate_count`. |
 | `avatar_style` | string | No | Style hint used by TTS and avatar layers. |
 | `safety_flags` | array[string] | No | Triggered policy or risk flags. Gateway high-risk precheck may emit `high_risk_rule_precheck` and `rule_hit:*`; dialogue fallback may emit `dialogue_fallback_response` and `dialogue_fallback_reason:*`; affect-driven clarification may emit `affect_conflict_clarification` and `affect_conflict_reason_present`. |
 

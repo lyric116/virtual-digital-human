@@ -332,6 +332,7 @@ class DialogueReplyResponse(BaseModel):
     stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
     next_action: str
     knowledge_refs: list[str] = Field(default_factory=list)
+    retrieval_context: dict[str, Any] = Field(default_factory=dict)
     avatar_style: str | None = None
     safety_flags: list[str] = Field(default_factory=list)
 
@@ -443,6 +444,12 @@ HIGH_RISK_RULE_PATTERNS: dict[str, tuple[str, ...]] = {
 }
 HIGH_RISK_RULE_KNOWLEDGE_REFS = ["handoff_emergency_support"]
 HIGH_RISK_RULE_SAFETY_FLAGS = ["high_risk_rule_precheck", "needs_immediate_handoff"]
+CLIENT_RUNTIME_EVENT_TYPES = {
+    "tts.synthesized",
+    "tts.playback.started",
+    "tts.playback.ended",
+    "avatar.command",
+}
 
 
 class ASRServiceTranscriptionResponse(BaseModel):
@@ -458,6 +465,30 @@ class ASRServiceTranscriptionResponse(BaseModel):
     transcript_segments: list[dict[str, Any]] = Field(default_factory=list)
     audio: dict[str, Any] = Field(default_factory=dict)
     generated_at: datetime
+
+
+class ClientRuntimeEventRequest(BaseModel):
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    message_id: str | None = None
+
+    @field_validator("event_type")
+    @classmethod
+    def validate_event_type(cls, value: str) -> str:
+        normalized = value.strip()
+        if normalized not in CLIENT_RUNTIME_EVENT_TYPES:
+            raise ValueError("unsupported client runtime event type")
+        return normalized
+
+
+class ClientRuntimeEventAcceptedResponse(BaseModel):
+    event_id: str
+    session_id: str
+    trace_id: str
+    message_id: str | None = None
+    event_type: str
+    source_service: str
+    emitted_at: datetime
 
 
 class SessionRepository(Protocol):
@@ -908,7 +939,15 @@ class PostgresSessionRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT session_id, trace_id, status, stage
+                    SELECT
+                        session_id,
+                        trace_id,
+                        status,
+                        stage,
+                        record_id,
+                        dataset,
+                        canonical_role,
+                        segment_id
                     FROM sessions
                     WHERE session_id = %s
                     """,
@@ -976,7 +1015,16 @@ class PostgresSessionRepository:
                     UPDATE sessions
                     SET status = 'active', updated_at = %(updated_at)s
                     WHERE session_id = %(session_id)s
-                    RETURNING session_id, trace_id, status, stage, updated_at
+                    RETURNING
+                        session_id,
+                        trace_id,
+                        status,
+                        stage,
+                        record_id,
+                        dataset,
+                        canonical_role,
+                        segment_id,
+                        updated_at
                     """,
                     {
                         "session_id": session_id,
@@ -1102,6 +1150,10 @@ class PostgresSessionRepository:
                                     "stage": "engage",
                                     "input_modes": payload.input_modes,
                                     "avatar_id": avatar_id,
+                                    "record_id": payload.record_id,
+                                    "dataset": payload.dataset,
+                                    "canonical_role": payload.canonical_role,
+                                    "segment_id": payload.segment_id,
                                 }
                             ),
                             "emitted_at": now,
@@ -1178,7 +1230,17 @@ class PostgresSessionRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT session_id, trace_id, status, stage, metadata, updated_at
+                    SELECT
+                        session_id,
+                        trace_id,
+                        status,
+                        stage,
+                        record_id,
+                        dataset,
+                        canonical_role,
+                        segment_id,
+                        metadata,
+                        updated_at
                     FROM sessions
                     WHERE session_id = %s
                     """,
@@ -1364,7 +1426,17 @@ class PostgresSessionRepository:
                     UPDATE sessions
                     SET metadata = %(metadata)s, updated_at = %(updated_at)s
                     WHERE session_id = %(session_id)s
-                    RETURNING session_id, trace_id, status, stage, metadata, updated_at
+                    RETURNING
+                        session_id,
+                        trace_id,
+                        status,
+                        stage,
+                        record_id,
+                        dataset,
+                        canonical_role,
+                        segment_id,
+                        metadata,
+                        updated_at
                     """,
                     {
                         "session_id": session_id,
@@ -1444,6 +1516,7 @@ class PostgresSessionRepository:
                     "stage": resolved_stage,
                     "next_action": resolved_next_action,
                     "knowledge_refs": payload.knowledge_refs,
+                    "retrieval_context": payload.retrieval_context,
                     "avatar_style": payload.avatar_style,
                     "safety_flags": payload.safety_flags,
                     "model_stage": payload.stage,
@@ -1514,7 +1587,16 @@ class PostgresSessionRepository:
                     UPDATE sessions
                     SET status = 'active', stage = %(stage)s, updated_at = %(updated_at)s
                     WHERE session_id = %(session_id)s
-                    RETURNING session_id, trace_id, status, stage, updated_at
+                    RETURNING
+                        session_id,
+                        trace_id,
+                        status,
+                        stage,
+                        record_id,
+                        dataset,
+                        canonical_role,
+                        segment_id,
+                        updated_at
                     """,
                     {
                         "session_id": session_id,
@@ -1970,6 +2052,11 @@ def build_event_envelope(
     message_id: str | None = None,
     source_service: str = "api_gateway",
 ) -> dict[str, Any]:
+    merged_payload = dict(payload)
+    for key in ("record_id", "dataset", "canonical_role", "segment_id"):
+        value = session.get(key)
+        if value and key not in merged_payload:
+            merged_payload[key] = value
     return {
         "event_id": f"evt_{uuid4().hex[:24]}",
         "event_type": event_type,
@@ -1979,7 +2066,7 @@ def build_event_envelope(
         "trace_id": session["trace_id"],
         "message_id": message_id,
         "emitted_at": datetime.now(timezone.utc).isoformat(),
-        "payload": payload,
+        "payload": merged_payload,
     }
 
 
@@ -2294,6 +2381,35 @@ def create_session_export_record(
             ),
         )
     return result
+
+
+def create_client_runtime_event_record(
+    repository: SessionRepository,
+    session_id: str,
+    payload: ClientRuntimeEventRequest,
+) -> ClientRuntimeEventAcceptedResponse | JSONResponse:
+    session = repository.get_session_summary(session_id)
+    if session is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=error_payload(
+                error_code="session_not_found",
+                message="Session not found",
+                session_id=session_id,
+            ),
+        )
+
+    envelope = jsonable_encoder(
+        build_event_envelope(
+            session=session,
+            event_type=payload.event_type,
+            payload=payload.payload,
+            message_id=payload.message_id,
+            source_service="web_client",
+        )
+    )
+    repository.record_system_event(envelope)
+    return ClientRuntimeEventAcceptedResponse.model_validate(envelope)
 
 
 def request_dialogue_reply(
@@ -2745,6 +2861,61 @@ def build_message_accepted_event(result: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def build_transcript_final_event(result: dict[str, Any]) -> dict[str, Any]:
+    transcription = dict(result.get("transcription") or {})
+    payload = {
+        "transcript_kind": "final",
+        "text": result["message"]["content_text"],
+        "language": transcription.get("transcript_language"),
+        "confidence": transcription.get("confidence_mean"),
+        "confidence_available": transcription.get("confidence_available", False),
+        "duration_ms": transcription.get("duration_ms"),
+        "asr_engine": transcription.get("model"),
+        "provider": transcription.get("provider"),
+        "media_id": result["audio"]["media_id"],
+        "mime_type": result["audio"]["mime_type"],
+        "generated_at": transcription.get("generated_at"),
+        "source_kind": result["message"].get("source_kind"),
+    }
+    return jsonable_encoder(
+        build_event_envelope(
+            session=result["session"],
+            event_type="transcript.final",
+            payload=payload,
+            message_id=result["message"]["message_id"],
+            source_service="asr_service",
+        )
+    )
+
+
+def build_knowledge_retrieved_event(
+    result: dict[str, Any],
+    dialogue_reply: DialogueReplyResponse,
+) -> dict[str, Any] | None:
+    retrieval_context = dialogue_reply.retrieval_context or {}
+    source_ids = retrieval_context.get("source_ids")
+    if not isinstance(source_ids, list) or not source_ids:
+        return None
+
+    payload = {
+        "source_ids": [str(item) for item in source_ids if str(item).strip()],
+        "grounded_refs": list(dialogue_reply.knowledge_refs),
+        "filters_applied": list(retrieval_context.get("filters_applied") or []),
+        "candidate_count": retrieval_context.get("candidate_count"),
+        "risk_level": dialogue_reply.risk_level,
+        "stage": dialogue_reply.stage,
+    }
+    return jsonable_encoder(
+        build_event_envelope(
+            session=result["session"],
+            event_type="knowledge.retrieved",
+            payload=payload,
+            message_id=result["message"]["message_id"],
+            source_service="orchestrator",
+        )
+    )
+
+
 def build_message_followup_events(
     repository: SessionRepository,
     settings: GatewaySettings,
@@ -2806,6 +2977,10 @@ def build_message_followup_events(
                 dialogue_summary=extract_dialogue_summary(request_session),
                 affect_snapshot=affect_snapshot,
             )
+        retrieval_event = build_knowledge_retrieved_event(result, dialogue_reply)
+        if retrieval_event is not None:
+            repository.record_system_event(retrieval_event)
+            events.append(retrieval_event)
         assistant_result = repository.create_assistant_dialogue_message(session_id, dialogue_reply)
         assistant_metadata = assistant_result["message"].get("metadata", {})
         affect_payload: dict[str, Any] = {}
@@ -2834,6 +3009,7 @@ def build_message_followup_events(
                     "next_action_machine_reason": assistant_metadata.get(
                         "next_action_machine_reason"
                     ),
+                    "retrieval_context": assistant_metadata.get("retrieval_context", {}),
                     "rule_precheck_triggered": assistant_metadata.get("risk_rule_precheck", False),
                     "rule_match_flags": assistant_metadata.get("risk_rule_flags", []),
                 },
@@ -3087,6 +3263,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             source_service="asr_service",
         )
         partial_event = jsonable_encoder(partial_event)
+        await asyncio.to_thread(request.app.state.session_repository.record_system_event, partial_event)
         await request.app.state.connection_registry.enqueue_event(session_id, partial_event)
         return result["transcript"]
 
@@ -3116,6 +3293,9 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         if isinstance(result, JSONResponse):
             return result
 
+        transcript_event = build_transcript_final_event(result)
+        await asyncio.to_thread(request.app.state.session_repository.record_system_event, transcript_event)
+        await request.app.state.connection_registry.enqueue_event(session_id, transcript_event)
         asyncio.create_task(dispatch_message_pipeline(request.app, session_id, result))
         return {
             **result["message"],
@@ -3123,6 +3303,25 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             "mime_type": result["audio"]["mime_type"],
             "duration_ms": duration_ms,
         }
+
+    @app.post(
+        "/api/session/{session_id}/runtime-event",
+        response_model=ClientRuntimeEventAcceptedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def record_runtime_event(
+        session_id: str,
+        payload: ClientRuntimeEventRequest,
+        request: Request,
+    ) -> Any:
+        repository = request.app.state.session_repository
+        result = await asyncio.to_thread(
+            create_client_runtime_event_record,
+            repository,
+            session_id,
+            payload,
+        )
+        return result
 
     @app.websocket("/ws/session/{session_id}")
     async def session_realtime(websocket: WebSocket, session_id: str) -> None:

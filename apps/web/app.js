@@ -1447,6 +1447,35 @@
     return responsePayload;
   }
 
+  async function requestRuntimeEvent(fetchImpl, appConfig, state, payload) {
+    const response = await fetchImpl(
+      `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(state.sessionId)}/runtime-event`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    let responsePayload = null;
+    try {
+      responsePayload = await response.json();
+    } catch (error) {
+      responsePayload = null;
+    }
+
+    if (!response.ok) {
+      const message = responsePayload && typeof responsePayload.message === "string"
+        ? responsePayload.message
+        : `Runtime event failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return responsePayload;
+  }
+
   async function requestAffectAnalysis(fetchImpl, appConfig, payload) {
     const response = await fetchImpl(
       `${appConfig.affectBaseUrl}/internal/affect/analyze`,
@@ -1819,7 +1848,23 @@
       avatarMouthPlaybackStartedAt: null,
       affectRefreshTimerId: null,
       affectRequestToken: 0,
+      lastAvatarCommandKey: null,
     };
+
+    async function logRuntimeEvent(eventType, payload, messageId) {
+      if (!state.sessionId) {
+        return null;
+      }
+      try {
+        return await requestRuntimeEvent(resolvedFetch, appConfig, state, {
+          event_type: eventType,
+          message_id: messageId || null,
+          payload,
+        });
+      } catch (error) {
+        return null;
+      }
+    }
 
     function clearHeartbeatTimer() {
       if (runtime.heartbeatTimerId) {
@@ -2094,6 +2139,21 @@
         state.ttsPlaybackState = "ready";
         state.ttsPlaybackMessage = "语音已生成，准备播放。";
         pushConnectionLog(state, `tts asset ready: ${payload.tts_id || "unknown"}`);
+        void logRuntimeEvent(
+          "tts.synthesized",
+          {
+            tts_id: payload.tts_id || null,
+            voice_id: payload.voice_id || null,
+            audio_format: payload.audio_format || null,
+            duration_ms: typeof payload.duration_ms === "number" ? payload.duration_ms : null,
+            provider_used: payload.provider_used || null,
+            avatar_id: getEffectiveAvatarId(state),
+            stage: state.stage,
+            risk_level: state.lastReplyRiskLevel,
+            emotion: state.lastReplyEmotion,
+          },
+          replyPayload.message_id,
+        );
         renderSessionState(rootDocument, elements, state, appConfig);
 
         if (elements.avatarAudioPlayer && appConfig.autoplayAssistantAudio) {
@@ -3427,12 +3487,58 @@
         state.ttsPlaybackState = "playing";
         state.ttsPlaybackMessage = "数字人语音播放中。";
         startAvatarMouthAnimation();
+        runtime.lastAvatarCommandKey = `speak:${state.lastReplyMessageId || "pending"}`;
+        void logRuntimeEvent(
+          "tts.playback.started",
+          {
+            avatar_id: getEffectiveAvatarId(state),
+            voice_id: state.ttsVoiceId,
+            duration_ms: state.ttsDurationMs,
+            audio_format: state.ttsAudioFormat,
+          },
+          state.lastReplyMessageId,
+        );
+        void logRuntimeEvent(
+          "avatar.command",
+          {
+            command: "speak",
+            avatar_id: getEffectiveAvatarId(state),
+            stage: state.stage,
+            risk_level: state.lastReplyRiskLevel,
+            expression_preset: resolveAvatarExpressionPreset(state).presetId,
+            mouth_state: state.avatarMouthState,
+          },
+          state.lastReplyMessageId,
+        );
         renderSessionState(rootDocument, elements, state, appConfig);
       });
       elements.avatarAudioPlayer.addEventListener("ended", function () {
         state.ttsPlaybackState = "completed";
         state.ttsPlaybackMessage = "本轮语音播放完成。";
         stopAvatarMouthAnimation();
+        runtime.lastAvatarCommandKey = `idle:${state.lastReplyMessageId || "pending"}`;
+        void logRuntimeEvent(
+          "tts.playback.ended",
+          {
+            avatar_id: getEffectiveAvatarId(state),
+            voice_id: state.ttsVoiceId,
+            duration_ms: state.ttsDurationMs,
+            audio_format: state.ttsAudioFormat,
+          },
+          state.lastReplyMessageId,
+        );
+        void logRuntimeEvent(
+          "avatar.command",
+          {
+            command: "idle",
+            avatar_id: getEffectiveAvatarId(state),
+            stage: state.stage,
+            risk_level: state.lastReplyRiskLevel,
+            expression_preset: resolveAvatarExpressionPreset(state).presetId,
+            mouth_state: state.avatarMouthState,
+          },
+          state.lastReplyMessageId,
+        );
         renderSessionState(rootDocument, elements, state, appConfig);
       });
       elements.avatarAudioPlayer.addEventListener("pause", function () {

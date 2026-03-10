@@ -171,6 +171,10 @@ def test_dialogue_service_applies_rag_grounding_and_injects_refs():
     assert "rag_grounded_response" in grounded.safety_flags
     assert "rag_refs_injected" in grounded.safety_flags
 
+    response = module.build_dialogue_reply(payload, grounded)
+    assert response.retrieval_context["source_ids"] == ["sleep_worry_container"]
+    assert response.retrieval_context["candidate_count"] is None
+
 
 def test_dialogue_service_generates_structured_summary(monkeypatch):
     module = load_dialogue_module()
