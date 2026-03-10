@@ -21,6 +21,27 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-11 - Step 50 Ten-Turn Stability Regression
+
+### Scope
+
+Added a real 10-turn service-level regression that exercises affect, RAG, dialogue, summary generation, and one enterprise multimodal offline sample.
+
+### Outputs
+
+- Added scripts/eval_ten_turn_stability.py and scripts/verify_ten_turn_stability.py.
+- Generated data/derived/eval-local/ten_turn_stability_report.md and ten_turn_stability_report.json.
+- Documented the regression path in README.md and docs/08-data-ops-eval.md.
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_eval_ten_turn_stability.py -q
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_ten_turn_stability.py
+
+### Next
+
+- Proceed to step 51 and containerize the core services for clean-environment startup.
+
 ## 2026-03-11 - Step 49 Latency Baseline
 
 ### Scope

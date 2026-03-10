@@ -99,6 +99,9 @@ Current repository state:
 - step 49 now generates a baseline latency report across affect, dialogue, TTS, avatar
   present time, and one enterprise offline audio path, with the current stable eval
   baseline pinned to `wave_fallback` TTS and explicit ASR-timeout fallback notes
+- step 50 now provides a real 10-turn stability regression across affect, RAG,
+  dialogue, and summary generation, plus one enterprise multimodal offline regression
+  sample to catch contract drift without depending on frontend replay or database export
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -223,6 +226,8 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_regression.py`
 - Generate and verify the current latency baseline report:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_latency_report.py`
+- Generate and verify the current 10-turn stability regression:
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_ten_turn_stability.py`
 - Verify the curated RAG knowledge-card dataset before retrieval work:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_knowledge_cards.py`
 - Import external ASR draft results from a JSONL file:

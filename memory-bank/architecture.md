@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-11 - Ten-turn stability harness
+
+- Step 50 now has a service-level 10-turn regression that launches affect, rag, orchestrator, and dialogue directly and records a deterministic local event log for each turn.
+- The stability harness intentionally does not depend on gateway persistence or frontend replay, because the goal at this step is continuous dialogue robustness before full Dockerized end-to-end acceptance.
+- Summary generation failures are now treated as degradations inside the stability report through summary_fallback, not as reasons to abort the entire 10-turn run.
+
 ## 2026-03-11 - Latency evaluation baseline
 
 - The step-49 latency report now measures affect, dialogue, TTS, avatar-present time, and one enterprise offline audio path in a single reproducible run.

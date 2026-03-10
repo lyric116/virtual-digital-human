@@ -161,6 +161,33 @@
 - 帮助比较后续改动是否让 `dialogue/tts/total` 变慢
 - 不能把企业样本这条记录直接当作“外部 ASR 在完整 30s 语音上的最终性能证明”
 
+当前仓库在步骤 50 已补齐 10 轮稳定性回归：
+
+- `scripts/eval_ten_turn_stability.py`
+- `scripts/verify_ten_turn_stability.py`
+
+这条路径的作用是：
+
+- 执行固定 `10` 轮真实对话脚本
+- 串起 `affect -> rag -> dialogue -> summary`
+- 输出一份稳定性 Markdown/JSON 报告到 `data/derived/eval-local/`
+- 同时追加 `1` 条企业多模态离线回归样本，确认 `record_id + audio + face3d`
+  绑定没有被新改动破坏
+
+当前实现边界：
+
+- 这条回归是服务级回归，不依赖前端重放或数据库导出
+- `message.accepted / affect.snapshot / knowledge.retrieved / dialogue.reply /
+  dialogue.summary.updated` 由评测脚本按真实调用顺序做本地记录
+- 如果真实摘要接口失败，脚本会生成明确的 `summary_fallback` 记录，但不会中断
+  10 轮主链路
+
+因此，这份稳定性报表当前的意义是：
+
+- 验证 10 轮真实对话下，状态推进、短期上下文、知识检索和摘要不会在中途崩掉
+- 为步骤 51 之前的服务级回归提供固定脚本
+- 不能替代后续基于完整前后端和数据库导出的最终验收链路
+
 当前仓库在数字人侧也增加了一条企业离线路径：
 
 - `services/avatar-driver-service`
