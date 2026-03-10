@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 48 Session Replay Mode
+
+### Scope
+
+Completed implementation plan step 48 by adding a frontend replay path driven by exported session JSON, so one saved conversation can be reconstructed locally without calling live gateway, dialogue, affect, RAG, or TTS services.
+
+### Outputs
+
+- apps/web/app.js now stores export payloads in browser cache, exposes a Replay Export control, rebuilds a replay sequence from exported events or messages, and replays transcript, affect, dialogue, TTS, and avatar states in order.
+- apps/web/index.html now includes a Replay Export control in the session panel.
+- data/demo/session_replay_export.json now provides a deterministic full-chain replay sample with transcript.final, affect.snapshot, knowledge.retrieved, dialogue.reply, tts.*, and avatar.command events.
+- scripts/web_session_replay_harness.js and scripts/verify_web_session_replay.py now verify replay mode without live services.
+- tests/test_web_session_replay.py now covers the replay flow and documentation references.
+
+### Checks
+
+- node --check apps/web/app.js && node --check scripts/web_session_replay_harness.js && node --check scripts/web_tts_playback_harness.js
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_web_session_replay.py tests/test_web_tts_playback.py tests/test_memory_bank.py -q
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_replay.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+
+### Next
+
+- Step 49: build latency metrics across ASR, affect, dialogue, TTS, avatar, and total interaction time.
+
 ## 2026-03-10 - Step 47 Unified Trace Logging
 
 ### Scope

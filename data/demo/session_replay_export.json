@@ -1,0 +1,243 @@
+{
+  "session_id": "sess_demo_replay_001",
+  "trace_id": "trace_demo_replay_001",
+  "status": "active",
+  "stage": "intervene",
+  "avatar_id": "companion_female_01",
+  "exported_at": "2026-03-10T11:00:09Z",
+  "messages": [
+    {
+      "message_id": "msg_demo_user_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "role": "user",
+      "status": "accepted",
+      "source_kind": "audio",
+      "content_text": "我这两天总是睡不好，脑子停不下来。",
+      "submitted_at": "2026-03-10T11:00:02Z",
+      "metadata": {}
+    },
+    {
+      "message_id": "msg_demo_assistant_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "role": "assistant",
+      "status": "generated",
+      "source_kind": "system",
+      "content_text": "谢谢你说出来。我们先不要急着解决全部问题，先一起把身体节奏放慢一点。",
+      "submitted_at": "2026-03-10T11:00:05Z",
+      "metadata": {
+        "emotion": "supportive",
+        "risk_level": "medium",
+        "stage": "intervene",
+        "next_action": "breathing"
+      }
+    }
+  ],
+  "stage_history": [
+    {
+      "from_stage": "engage",
+      "to_stage": "intervene",
+      "at": "2026-03-10T11:00:05Z"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "evt_demo_transcript_final_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_user_001",
+      "event_type": "transcript.final",
+      "emitted_at": "2026-03-10T11:00:01Z",
+      "payload": {
+        "transcript_kind": "final",
+        "text": "我这两天总是睡不好，脑子停不下来。",
+        "source_kind": "audio",
+        "generated_at": "2026-03-10T11:00:01Z"
+      }
+    },
+    {
+      "event_id": "evt_demo_message_accepted_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_user_001",
+      "event_type": "message.accepted",
+      "emitted_at": "2026-03-10T11:00:02Z",
+      "payload": {
+        "message_id": "msg_demo_user_001",
+        "trace_id": "trace_demo_replay_001",
+        "source_kind": "audio",
+        "content_text": "我这两天总是睡不好，脑子停不下来。",
+        "submitted_at": "2026-03-10T11:00:02Z"
+      }
+    },
+    {
+      "event_id": "evt_demo_affect_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_user_001",
+      "event_type": "affect.snapshot",
+      "emitted_at": "2026-03-10T11:00:03Z",
+      "payload": {
+        "source_context": {
+          "origin": "demo_replay_export",
+          "dataset": "demo_replay",
+          "record_id": "demo/replay/001",
+          "note": "static replay sample"
+        },
+        "text_result": {
+          "status": "ready",
+          "label": "anxious",
+          "confidence": 0.72,
+          "detail": "文本提示睡前担忧与停不下来。"
+        },
+        "audio_result": {
+          "status": "ready",
+          "label": "slow_low_energy_proxy",
+          "confidence": 0.68,
+          "detail": "音频能量偏低，语速偏慢。"
+        },
+        "video_result": {
+          "status": "ready",
+          "label": "stable_gaze_proxy",
+          "confidence": 0.64,
+          "detail": "视频路径稳定，没有明显离开镜头。"
+        },
+        "fusion_result": {
+          "emotion_state": "anxious",
+          "risk_level": "medium",
+          "confidence": 0.71,
+          "conflict": false,
+          "conflict_reason": null,
+          "detail": "文本与音频一致指向轻中度焦虑。"
+        }
+      }
+    },
+    {
+      "event_id": "evt_demo_retrieval_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_user_001",
+      "event_type": "knowledge.retrieved",
+      "emitted_at": "2026-03-10T11:00:04Z",
+      "payload": {
+        "source_ids": [
+          "breathing_box_4444"
+        ],
+        "grounded_refs": [
+          "breathing_box_4444"
+        ],
+        "filters_applied": [
+          "stage:intervene",
+          "risk_level:medium"
+        ],
+        "candidate_count": 1,
+        "stage": "intervene",
+        "risk_level": "medium"
+      }
+    },
+    {
+      "event_id": "evt_demo_reply_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_assistant_001",
+      "event_type": "dialogue.reply",
+      "emitted_at": "2026-03-10T11:00:05Z",
+      "payload": {
+        "session_id": "sess_demo_replay_001",
+        "trace_id": "trace_demo_replay_001",
+        "message_id": "msg_demo_assistant_001",
+        "reply": "谢谢你说出来。我们先不要急着解决全部问题，先一起把身体节奏放慢一点。",
+        "emotion": "supportive",
+        "risk_level": "medium",
+        "stage": "intervene",
+        "next_action": "breathing",
+        "knowledge_refs": [
+          "breathing_box_4444"
+        ],
+        "safety_flags": [
+          "rag_grounded_response"
+        ]
+      }
+    },
+    {
+      "event_id": "evt_demo_tts_synth_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_assistant_001",
+      "event_type": "tts.synthesized",
+      "emitted_at": "2026-03-10T11:00:06Z",
+      "payload": {
+        "tts_id": "tts_demo_001",
+        "voice_id": "zh-CN-XiaoxiaoNeural",
+        "audio_format": "mp3",
+        "duration_ms": 1800,
+        "provider_used": "replay_sample",
+        "avatar_id": "companion_female_01",
+        "stage": "intervene",
+        "risk_level": "medium",
+        "emotion": "supportive"
+      }
+    },
+    {
+      "event_id": "evt_demo_tts_play_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_assistant_001",
+      "event_type": "tts.playback.started",
+      "emitted_at": "2026-03-10T11:00:07Z",
+      "payload": {
+        "avatar_id": "companion_female_01",
+        "voice_id": "zh-CN-XiaoxiaoNeural",
+        "duration_ms": 1800,
+        "audio_format": "mp3"
+      }
+    },
+    {
+      "event_id": "evt_demo_avatar_speak_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_assistant_001",
+      "event_type": "avatar.command",
+      "emitted_at": "2026-03-10T11:00:07.200Z",
+      "payload": {
+        "command": "speak",
+        "avatar_id": "companion_female_01",
+        "stage": "intervene",
+        "risk_level": "medium",
+        "expression_preset": "steady_support",
+        "mouth_state": "small"
+      }
+    },
+    {
+      "event_id": "evt_demo_tts_end_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_assistant_001",
+      "event_type": "tts.playback.ended",
+      "emitted_at": "2026-03-10T11:00:08.500Z",
+      "payload": {
+        "avatar_id": "companion_female_01",
+        "voice_id": "zh-CN-XiaoxiaoNeural",
+        "duration_ms": 1800,
+        "audio_format": "mp3"
+      }
+    },
+    {
+      "event_id": "evt_demo_avatar_idle_001",
+      "session_id": "sess_demo_replay_001",
+      "trace_id": "trace_demo_replay_001",
+      "message_id": "msg_demo_assistant_001",
+      "event_type": "avatar.command",
+      "emitted_at": "2026-03-10T11:00:08.700Z",
+      "payload": {
+        "command": "idle",
+        "avatar_id": "companion_female_01",
+        "stage": "intervene",
+        "risk_level": "medium",
+        "expression_preset": "steady_support",
+        "mouth_state": "closed"
+      }
+    }
+  ]
+}

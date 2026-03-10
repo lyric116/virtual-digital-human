@@ -94,6 +94,8 @@ Current repository state:
 - step 47 now consolidates transcript, affect, retrieval, dialogue, TTS, and avatar
   runtime events into the exportable `system_events` stream, with replay lineage copied
   into event payloads for enterprise-bound sessions
+- step 48 now adds a local replay mode on top of exported session JSON, so one saved
+  conversation can be reconstructed in the web shell without calling live model services
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -163,6 +165,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_session_trace_logging.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_replay.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_recording_controls.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_audio_chunk_upload.py`

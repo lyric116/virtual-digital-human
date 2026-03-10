@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, 33, 34, 35, 36, and 37:
+This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 31, 32, 33, 34, 35, 36, 37, and 48:
 
 - step 7: six-panel single-page layout
 - step 9: `Start Session` calls the gateway session bootstrap API and renders the
@@ -58,6 +58,9 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
 - step 41: the emotion panel can now render first-pass fused states such as
   `needs_clarification` and `multimodal_consistent_low_risk`, including an explicit
   conflict reason when text/audio/video disagree
+- step 48: the control panel now exposes `Replay Export`, which replays one saved
+  export JSON locally and reconstructs transcript, chat timeline, affect snapshot, TTS
+  state, and avatar state without calling live services
 
 ## Files
 
@@ -73,7 +76,8 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
     followed by frontend TTS synthesis, avatar audio playback, subtitle sync, static
     avatar state switching, basic mouth cue playback, dual-avatar selection, and
     stage-driven expression preset mapping, plus camera preview and low-frequency video
-    frame upload, followed by affect panel snapshot fetch and rendering
+    frame upload, followed by affect panel snapshot fetch and rendering, plus export-log
+    replay mode driven by cached session JSON
 - `favicon.svg`
   - local icon to avoid asset 404 noise during preview
 
@@ -106,7 +110,9 @@ Then open:
 - `.env.example` exposes `WEB_PUBLIC_API_BASE_URL`, `WEB_PUBLIC_WS_URL`,
   `WEB_PUBLIC_TTS_BASE_URL`, `WEB_PUBLIC_AFFECT_BASE_URL`, `GATEWAY_CORS_ORIGINS`,
   `TTS_CORS_ORIGINS`, and `AFFECT_CORS_ORIGINS` for local browser preview
-- only `Start Session` and `Export` are live in this step; pause and reset remain disabled
+- `Replay Export` uses the latest cached export JSON and rebuilds one session locally
+  without calling gateway, orchestrator, dialogue, affect, or TTS services
+- pause and reset remain disabled
 - `Send Text` is live only after session bootstrap and a connected realtime channel
 - microphone controls can now upload temporary audio chunks to the gateway after a
   session exists; without a session they stay in local-only mode
@@ -140,6 +146,9 @@ Then open:
   history through `GET /api/session/{session_id}/state`
 - `Export` calls `GET /api/session/{session_id}/export` and downloads the returned JSON
   when browser download APIs are available
+- `Replay Export` prefers the latest cached export payload; if a full `events` list is
+  present it replays that sequence, otherwise it synthesizes a minimal replay from
+  exported `messages`
 - the control panel also shows the latest user and assistant `trace_id` values observed
   from realtime events
 - the emotion panel now renders a deterministic placeholder snapshot from
@@ -168,3 +177,4 @@ Then open:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_switch.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_expression_presets.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_emotion_panel.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_replay.py`

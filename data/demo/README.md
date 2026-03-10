@@ -15,6 +15,8 @@ before all runtime services are connected.
   - description of the demo video-frame packet used by affect and replay mocks
 - `session_export_sample.json`
   - sample exported session payload for download and replay checks
+- `session_replay_export.json`
+  - sample exported session payload with `events` used by the step-48 replay mode
 
 ## Usage
 
@@ -25,3 +27,5 @@ before all runtime services are connected.
 3. Use `video_frame_sample.md` to keep camera-frame replay shape stable before real upload
    logic exists.
 4. Use `session_export_sample.json` as the target shape for early export endpoints.
+5. Use `session_replay_export.json` when you need a deterministic local replay source
+   that includes transcript, affect, retrieval, dialogue, TTS, and avatar runtime events.

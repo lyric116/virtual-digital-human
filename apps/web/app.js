@@ -136,6 +136,7 @@
       affectBaseUrl: config.affectBaseUrl || defaultAffectBaseUrl,
       defaultAvatarId: resolveAvatarId(config.defaultAvatarId || defaultAvatarId),
       activeSessionStorageKey: config.activeSessionStorageKey || "virtual-human-active-session-id",
+      exportCacheStorageKey: config.exportCacheStorageKey || "virtual-human-last-export",
       heartbeatIntervalMs: config.heartbeatIntervalMs || 5000,
       reconnectDelayMs: config.reconnectDelayMs || 1000,
       enableAudioFinalize: config.enableAudioFinalize !== false,
@@ -143,6 +144,9 @@
       audioPreviewChunkThreshold: config.audioPreviewChunkThreshold || 2,
       videoFrameUploadIntervalMs: config.videoFrameUploadIntervalMs || 1800,
       autoplayAssistantAudio: config.autoplayAssistantAudio !== false,
+      replayDelayScale: typeof config.replayDelayScale === "number" ? config.replayDelayScale : 0.25,
+      replayDelayMinMs: config.replayDelayMinMs || 120,
+      replayDelayMaxMs: config.replayDelayMaxMs || 850,
     };
   }
 
@@ -260,6 +264,10 @@
       exportMessage: "创建或恢复会话后可导出当前 JSON。",
       lastExportedAt: null,
       lastExportFileName: null,
+      replayState: "idle",
+      replayMessage: "导出 JSON 后可进入回放模式。",
+      replayEventCount: 0,
+      replaySourceName: null,
       nextClientSeq: 1,
     };
   }
@@ -362,6 +370,7 @@
       sessionWsUrlValue: findRequiredElement(rootDocument, "session-ws-url-value"),
       sessionFeedback: findRequiredElement(rootDocument, "session-feedback"),
       exportButton: findOptionalElement(rootDocument, "session-export-button"),
+      replayButton: findOptionalElement(rootDocument, "session-replay-button"),
       exportStatus: findOptionalElement(rootDocument, "session-export-status"),
       connectionStatusValue: findRequiredElement(rootDocument, "connection-status-value"),
       connectionHeartbeatValue: findRequiredElement(rootDocument, "connection-heartbeat-value"),
@@ -433,6 +442,15 @@
   }
 
   function getFeedbackMessage(state) {
+    if (state.replayState === "running") {
+      return state.replayMessage || "正在基于导出日志回放会话。";
+    }
+    if (state.replayState === "completed") {
+      return state.replayMessage || "导出日志回放完成，可继续重新播放或创建新会话。";
+    }
+    if (state.replayState === "error") {
+      return state.replayMessage || "导出日志回放失败。";
+    }
     if (state.requestState === "restoring") {
       return "正在恢复最近一次会话和历史消息。";
     }
@@ -452,6 +470,9 @@
   }
 
   function getTextSubmitStatusMessage(state) {
+    if (state.replayState === "running" || state.connectionStatus === "replay") {
+      return "回放模式下禁用实时文本发送。";
+    }
     if (!state.sessionId) {
       return "建立会话并连接实时通道后可发送文本。";
     }
@@ -480,6 +501,9 @@
   }
 
   function getCameraPermissionStatusMessage(state) {
+    if (state.replayState === "running" || state.connectionStatus === "replay") {
+      return "回放模式下不请求摄像头权限。";
+    }
     if (state.cameraPermissionState === "requesting") {
       return "正在请求摄像头权限。";
     }
@@ -530,6 +554,9 @@
   }
 
   function getMicPermissionStatusMessage(state) {
+    if (state.replayState === "running" || state.connectionStatus === "replay") {
+      return "回放模式下不请求麦克风权限。";
+    }
     if (state.micPermissionState === "requesting") {
       return "正在请求麦克风权限。";
     }
@@ -712,6 +739,15 @@
   }
 
   function getExportStatusMessage(state) {
+    if (state.replayState === "running") {
+      return state.replayMessage || "正在按导出日志顺序回放。";
+    }
+    if (state.replayState === "completed") {
+      return state.replayMessage || "回放完成。";
+    }
+    if (state.replayState === "error") {
+      return state.replayMessage || "回放失败。";
+    }
     if (!state.sessionId) {
       return "创建或恢复会话后可导出当前 JSON。";
     }
@@ -732,6 +768,13 @@
       return "Exporting...";
     }
     return "Export";
+  }
+
+  function getReplayButtonLabel(state) {
+    if (state.replayState === "running") {
+      return "Replaying...";
+    }
+    return "Replay Export";
   }
 
   function pushConnectionLog(state, message) {
@@ -794,6 +837,11 @@
     const selectedAvatar = getAvatarProfile(state.activeAvatarId);
     const effectiveAvatar = getEffectiveAvatarProfile(state);
     const avatarExpressionPreset = resolveAvatarExpressionPreset(state);
+    const interactionLocked = (
+      state.requestState === "loading"
+      || state.requestState === "restoring"
+      || state.replayState === "running"
+    );
     elements.sessionIdValue.textContent = state.sessionId || defaultSessionIdLabel;
     elements.sessionStatusValue.textContent = state.status;
     elements.sessionStageValue.textContent = state.stage;
@@ -809,7 +857,7 @@
     elements.sessionWsUrlValue.textContent = appConfig.wsUrl;
     elements.sessionFeedback.textContent = getFeedbackMessage(state);
     elements.startButton.textContent = getStartButtonLabel(state);
-    elements.startButton.disabled = state.requestState === "loading" || state.requestState === "restoring";
+    elements.startButton.disabled = interactionLocked;
     if (elements.captureMicPill) {
       elements.captureMicPill.textContent = `Mic: ${state.micPermissionState}`;
     }
@@ -865,18 +913,21 @@
       elements.micRequestButton.disabled = (
         state.micPermissionState === "requesting"
         || state.recordingState === "recording"
+        || state.connectionStatus === "replay"
       );
     }
     if (elements.cameraRequestButton) {
       elements.cameraRequestButton.disabled = (
         state.cameraPermissionState === "requesting"
         || state.cameraState === "previewing"
+        || state.connectionStatus === "replay"
       );
     }
     if (elements.cameraStartButton) {
       elements.cameraStartButton.disabled = (
         state.cameraPermissionState !== "granted"
         || state.cameraState === "previewing"
+        || state.connectionStatus === "replay"
       );
     }
     if (elements.cameraStopButton) {
@@ -886,6 +937,7 @@
       elements.micStartButton.disabled = (
         state.micPermissionState !== "granted"
         || state.recordingState === "recording"
+        || state.connectionStatus === "replay"
       );
     }
     if (elements.micStopButton) {
@@ -895,9 +947,21 @@
       elements.exportButton.textContent = getExportButtonLabel(state);
       elements.exportButton.disabled = (
         !state.sessionId
-        || state.requestState === "loading"
-        || state.requestState === "restoring"
+        || interactionLocked
         || state.exportState === "loading"
+        || state.connectionStatus === "replay"
+      );
+    }
+    if (elements.replayButton) {
+      const cachedExport = readExportCache(
+        typeof window !== "undefined" ? window : null,
+        appConfig,
+      );
+      elements.replayButton.textContent = getReplayButtonLabel(state);
+      elements.replayButton.disabled = (
+        !cachedExport
+        || !cachedExport.payload
+        || interactionLocked
       );
     }
     if (elements.exportStatus) {
@@ -907,14 +971,11 @@
     elements.connectionHeartbeatValue.textContent = formatTimestamp(state.lastHeartbeatAt);
     elements.connectionLogValue.textContent = state.connectionLog.join("\n");
     elements.textInputField.value = state.draftText;
-    elements.textInputField.disabled = (
-      state.requestState === "loading" || state.requestState === "restoring"
-    );
+    elements.textInputField.disabled = interactionLocked || state.connectionStatus === "replay";
     elements.textSubmitButton.textContent = getTextSubmitButtonLabel(state);
     elements.textSubmitButton.disabled = (
       !state.sessionId
-      || state.requestState === "loading"
-      || state.requestState === "restoring"
+      || interactionLocked
       || state.connectionStatus !== "connected"
       || state.textSubmitState === "sending"
     );
@@ -939,10 +1000,10 @@
       elements.avatarOptionCoach.dataset.effective = effectiveAvatar.avatarId === "coach_male_01" ? "true" : "false";
     }
     if (elements.avatarOptionCompanion) {
-      elements.avatarOptionCompanion.disabled = state.requestState === "loading" || state.requestState === "restoring";
+      elements.avatarOptionCompanion.disabled = interactionLocked;
     }
     if (elements.avatarOptionCoach) {
-      elements.avatarOptionCoach.disabled = state.requestState === "loading" || state.requestState === "restoring";
+      elements.avatarOptionCoach.disabled = interactionLocked;
     }
     if (elements.avatarLabelValue) {
       elements.avatarLabelValue.textContent = effectiveAvatar.label;
@@ -1140,6 +1201,19 @@
       return null;
     }
     if (typeof payload.recording_id !== "string" || payload.recording_id.trim() === "") {
+      return null;
+    }
+    return payload;
+  }
+
+  function validateTranscriptFinalPayload(payload) {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    if (payload.transcript_kind !== "final") {
+      return null;
+    }
+    if (typeof payload.text !== "string" || payload.text.trim() === "") {
       return null;
     }
     return payload;
@@ -1618,20 +1692,60 @@
     state.timelineEntries = state.timelineEntries.concat([entry]);
   }
 
-  function clearExportCache(rootWindow) {
+  function readExportCache(rootWindow, appConfig) {
+    if (rootWindow && rootWindow.__virtualHumanLastExportPayload) {
+      return {
+        payload: rootWindow.__virtualHumanLastExportPayload,
+        fileName: rootWindow.__virtualHumanLastExportFileName || null,
+      };
+    }
+    const storage = getStorage(rootWindow);
+    if (!storage || typeof storage.getItem !== "function") {
+      return null;
+    }
+    try {
+      const raw = storage.getItem(appConfig.exportCacheStorageKey);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || !parsed.payload) {
+        return null;
+      }
+      return {
+        payload: parsed.payload,
+        fileName: typeof parsed.fileName === "string" ? parsed.fileName : null,
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function clearExportCache(rootWindow, appConfig) {
     if (!rootWindow || typeof rootWindow !== "object") {
       return;
     }
     rootWindow.__virtualHumanLastExportPayload = null;
     rootWindow.__virtualHumanLastExportFileName = null;
+    const storage = getStorage(rootWindow);
+    if (storage && typeof storage.removeItem === "function") {
+      storage.removeItem(appConfig.exportCacheStorageKey);
+    }
   }
 
-  function storeExportCache(rootWindow, payload, fileName) {
+  function storeExportCache(rootWindow, appConfig, payload, fileName) {
     if (!rootWindow || typeof rootWindow !== "object") {
       return;
     }
     rootWindow.__virtualHumanLastExportPayload = payload;
     rootWindow.__virtualHumanLastExportFileName = fileName;
+    const storage = getStorage(rootWindow);
+    if (storage && typeof storage.setItem === "function") {
+      storage.setItem(
+        appConfig.exportCacheStorageKey,
+        JSON.stringify({ payload, fileName }),
+      );
+    }
   }
 
   function buildExportFileName(sessionId, exportedAt) {
@@ -1771,6 +1885,124 @@
     };
   }
 
+  function normalizeReplayEventEnvelope(rawEvent, index) {
+    if (!rawEvent || typeof rawEvent !== "object") {
+      return null;
+    }
+    const eventType = typeof rawEvent.event_type === "string" ? rawEvent.event_type : null;
+    if (!eventType) {
+      return null;
+    }
+    return {
+      event_id: typeof rawEvent.event_id === "string"
+        ? rawEvent.event_id
+        : `evt_replay_${String(index + 1).padStart(3, "0")}`,
+      event_type: eventType,
+      session_id: typeof rawEvent.session_id === "string" ? rawEvent.session_id : null,
+      trace_id: typeof rawEvent.trace_id === "string" ? rawEvent.trace_id : null,
+      message_id: typeof rawEvent.message_id === "string" ? rawEvent.message_id : null,
+      emitted_at: rawEvent.emitted_at || null,
+      payload: rawEvent.payload && typeof rawEvent.payload === "object" ? rawEvent.payload : {},
+    };
+  }
+
+  function buildReplayEventsFromMessages(exportPayload) {
+    const messages = Array.isArray(exportPayload && exportPayload.messages)
+      ? exportPayload.messages
+      : [];
+    return messages.map(function (message, index) {
+      const metadata = message && typeof message.metadata === "object" && message.metadata
+        ? message.metadata
+        : {};
+      if (message.role === "user") {
+        return normalizeReplayEventEnvelope(
+          {
+            event_type: "message.accepted",
+            session_id: exportPayload.session_id || null,
+            trace_id: message.trace_id || exportPayload.trace_id || null,
+            message_id: message.message_id || null,
+            emitted_at: message.submitted_at || null,
+            payload: {
+              message_id: message.message_id || null,
+              trace_id: message.trace_id || exportPayload.trace_id || null,
+              source_kind: message.source_kind || "text",
+              content_text: message.content_text || "",
+              submitted_at: message.submitted_at || null,
+            },
+          },
+          index,
+        );
+      }
+      if (message.role === "assistant") {
+        return normalizeReplayEventEnvelope(
+          {
+            event_type: "dialogue.reply",
+            session_id: exportPayload.session_id || null,
+            trace_id: message.trace_id || exportPayload.trace_id || null,
+            message_id: message.message_id || null,
+            emitted_at: message.submitted_at || null,
+            payload: {
+              session_id: exportPayload.session_id || "",
+              trace_id: message.trace_id || exportPayload.trace_id || "",
+              message_id: message.message_id || "",
+              reply: message.content_text || "",
+              emotion: metadata.emotion || "neutral",
+              risk_level: metadata.risk_level || "low",
+              stage: metadata.stage || exportPayload.stage || "engage",
+              next_action: metadata.next_action || "ask_followup",
+              knowledge_refs: Array.isArray(metadata.knowledge_refs) ? metadata.knowledge_refs : [],
+              safety_flags: Array.isArray(metadata.safety_flags) ? metadata.safety_flags : [],
+            },
+          },
+          index,
+        );
+      }
+      return normalizeReplayEventEnvelope(
+        {
+          event_type: "session.event",
+          session_id: exportPayload.session_id || null,
+          trace_id: message.trace_id || exportPayload.trace_id || null,
+          message_id: message.message_id || null,
+          emitted_at: message.submitted_at || null,
+          payload: {
+            content_text: message.content_text || "",
+          },
+        },
+        index,
+      );
+    }).filter(Boolean);
+  }
+
+  function buildReplaySequence(exportPayload) {
+    const rawEvents = Array.isArray(exportPayload && exportPayload.events) ? exportPayload.events : [];
+    const normalizedEvents = rawEvents
+      .map(normalizeReplayEventEnvelope)
+      .filter(Boolean)
+      .sort(function (left, right) {
+        const leftMs = left.emitted_at ? new Date(left.emitted_at).getTime() : 0;
+        const rightMs = right.emitted_at ? new Date(right.emitted_at).getTime() : 0;
+        return leftMs - rightMs;
+      });
+
+    if (normalizedEvents.length > 0) {
+      return normalizedEvents;
+    }
+    return buildReplayEventsFromMessages(exportPayload);
+  }
+
+  function getReplayDelayMs(appConfig, previousEnvelope, nextEnvelope) {
+    if (!previousEnvelope || !nextEnvelope) {
+      return appConfig.replayDelayMinMs;
+    }
+    const previousTime = previousEnvelope.emitted_at ? new Date(previousEnvelope.emitted_at).getTime() : Number.NaN;
+    const nextTime = nextEnvelope.emitted_at ? new Date(nextEnvelope.emitted_at).getTime() : Number.NaN;
+    if (!Number.isFinite(previousTime) || !Number.isFinite(nextTime) || nextTime <= previousTime) {
+      return Math.round((appConfig.replayDelayMinMs + appConfig.replayDelayMaxMs) / 2);
+    }
+    const scaled = Math.round((nextTime - previousTime) * appConfig.replayDelayScale);
+    return Math.max(appConfig.replayDelayMinMs, Math.min(appConfig.replayDelayMaxMs, scaled));
+  }
+
   function hydrateStateFromSessionState(state, payload) {
     const session = payload && payload.session ? payload.session : null;
     const messages = payload && Array.isArray(payload.messages) ? payload.messages : [];
@@ -1849,6 +2081,7 @@
       affectRefreshTimerId: null,
       affectRequestToken: 0,
       lastAvatarCommandKey: null,
+      replayTimerId: null,
     };
 
     async function logRuntimeEvent(eventType, payload, messageId) {
@@ -1905,6 +2138,13 @@
       if (runtime.affectRefreshTimerId) {
         rootWindow.clearTimeout(runtime.affectRefreshTimerId);
         runtime.affectRefreshTimerId = null;
+      }
+    }
+
+    function clearReplayTimer() {
+      if (runtime.replayTimerId) {
+        rootWindow.clearTimeout(runtime.replayTimerId);
+        runtime.replayTimerId = null;
       }
     }
 
@@ -2053,6 +2293,7 @@
     }
 
     function stopAvatarAudioPlayback() {
+      clearReplayTimer();
       stopAvatarMouthAnimation();
       if (!elements.avatarAudioPlayer) {
         return;
@@ -2071,6 +2312,37 @@
           console.warn("Failed to reset avatar audio currentTime", error);
         }
       }
+    }
+
+    function applyReplayTtsSynthesis(payload) {
+      state.ttsAudioUrl = null;
+      state.ttsAudioFormat = typeof payload.audio_format === "string" ? payload.audio_format : "pending";
+      state.ttsVoiceId = typeof payload.voice_id === "string"
+        ? payload.voice_id
+        : getAvatarProfile(getEffectiveAvatarId(state)).voicePreview;
+      state.ttsDurationMs = typeof payload.duration_ms === "number" ? payload.duration_ms : 0;
+      state.ttsGeneratedAt = payload.generated_at || new Date().toISOString();
+      runtime.avatarMouthCueSequence = buildMouthCueSequence(state.lastReplyText, state.ttsDurationMs);
+      state.ttsPlaybackState = "ready";
+      state.ttsPlaybackMessage = "回放模式：语音资源已准备。";
+    }
+
+    function applyReplayPlaybackStarted(payload) {
+      state.ttsPlaybackState = "playing";
+      state.ttsPlaybackMessage = "回放模式：数字人语音播放中。";
+      if (typeof payload.duration_ms === "number" && payload.duration_ms > 0) {
+        state.ttsDurationMs = payload.duration_ms;
+      }
+      if (!runtime.avatarMouthCueSequence.length) {
+        runtime.avatarMouthCueSequence = buildMouthCueSequence(state.lastReplyText, state.ttsDurationMs);
+      }
+      startAvatarMouthAnimation();
+    }
+
+    function applyReplayPlaybackEnded() {
+      state.ttsPlaybackState = "completed";
+      state.ttsPlaybackMessage = "回放模式：本轮语音播放完成。";
+      stopAvatarMouthAnimation();
     }
 
     async function replayAssistantAudio() {
@@ -2261,7 +2533,11 @@
       }, appConfig.reconnectDelayMs);
     }
 
-    function handleRealtimeEnvelope(envelope) {
+    function handleRealtimeEnvelope(envelope, options) {
+      const resolvedOptions = options || {};
+      const shouldTriggerTts = resolvedOptions.triggerTts !== false;
+      const shouldScheduleAffect = resolvedOptions.scheduleAffect !== false;
+      const replayMode = resolvedOptions.mode === "replay";
       if (!envelope || typeof envelope !== "object") {
         return;
       }
@@ -2308,6 +2584,24 @@
         return;
       }
 
+      if (envelope.event_type === "transcript.final") {
+        const payload = validateTranscriptFinalPayload(envelope.payload || null);
+        if (!payload) {
+          pushConnectionLog(state, "final transcript rejected: invalid payload");
+          renderSessionState(rootDocument, elements, state, appConfig);
+          return;
+        }
+        state.partialTranscriptState = "idle";
+        state.partialTranscriptText = "";
+        state.partialTranscriptUpdatedAt = payload.generated_at || envelope.emitted_at;
+        state.lastAcceptedText = payload.text;
+        state.lastAcceptedAt = payload.generated_at || envelope.emitted_at;
+        state.lastAcceptedSourceKind = payload.source_kind || "audio";
+        pushConnectionLog(state, "final transcript received");
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
       if (envelope.event_type === "message.accepted") {
         const payload = envelope.payload || {};
         const acceptedSourceKind = typeof payload.source_kind === "string"
@@ -2344,7 +2638,33 @@
           pushConnectionLog(state, `message accepted: ${state.lastAcceptedMessageId || "unknown"}`);
         }
         renderSessionState(rootDocument, elements, state, appConfig);
-        scheduleAffectRefresh("message_accepted", 80);
+        if (shouldScheduleAffect) {
+          scheduleAffectRefresh("message_accepted", 80);
+        }
+        return;
+      }
+
+      if (envelope.event_type === "affect.snapshot") {
+        const payload = validateAffectPayload(envelope.payload || null);
+        if (!payload) {
+          pushConnectionLog(state, "affect snapshot rejected: invalid payload");
+          renderSessionState(rootDocument, elements, state, appConfig);
+          return;
+        }
+        state.affectSnapshot = payload;
+        pushConnectionLog(state, "affect snapshot received");
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
+      if (envelope.event_type === "knowledge.retrieved") {
+        const payload = envelope.payload && typeof envelope.payload === "object" ? envelope.payload : {};
+        const sources = Array.isArray(payload.source_ids) ? payload.source_ids : [];
+        pushConnectionLog(
+          state,
+          sources.length > 0 ? `knowledge retrieved: ${sources.join(", ")}` : "knowledge retrieved",
+        );
+        renderSessionState(rootDocument, elements, state, appConfig);
         return;
       }
 
@@ -2386,8 +2706,49 @@
         state.dialogueReplyState = "received";
         pushConnectionLog(state, `dialogue reply received: ${payload.message_id}`);
         renderSessionState(rootDocument, elements, state, appConfig);
-        scheduleAffectRefresh("dialogue_reply", 80);
-        void synthesizeAssistantAudio(payload);
+        if (shouldScheduleAffect) {
+          scheduleAffectRefresh("dialogue_reply", 80);
+        }
+        if (shouldTriggerTts) {
+          void synthesizeAssistantAudio(payload);
+        }
+        return;
+      }
+
+      if (envelope.event_type === "tts.synthesized") {
+        const payload = envelope.payload && typeof envelope.payload === "object" ? envelope.payload : {};
+        applyReplayTtsSynthesis(payload);
+        pushConnectionLog(state, "replay tts synthesized");
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
+      if (envelope.event_type === "tts.playback.started") {
+        const payload = envelope.payload && typeof envelope.payload === "object" ? envelope.payload : {};
+        applyReplayPlaybackStarted(payload);
+        pushConnectionLog(state, "replay playback started");
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
+      if (envelope.event_type === "tts.playback.ended") {
+        applyReplayPlaybackEnded();
+        pushConnectionLog(state, "replay playback ended");
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return;
+      }
+
+      if (envelope.event_type === "avatar.command") {
+        const payload = envelope.payload && typeof envelope.payload === "object" ? envelope.payload : {};
+        if (typeof payload.mouth_state === "string" && payload.mouth_state.trim() !== "") {
+          setAvatarMouthState(payload.mouth_state);
+        }
+        if (replayMode && payload.command === "idle" && state.ttsPlaybackState === "playing") {
+          applyReplayPlaybackEnded();
+        }
+        runtime.lastAvatarCommandKey = `${payload.command || "unknown"}:${envelope.message_id || "pending"}`;
+        pushConnectionLog(state, `avatar command: ${payload.command || "unknown"}`);
+        renderSessionState(rootDocument, elements, state, appConfig);
         return;
       }
 
@@ -2511,11 +2872,129 @@
       }
     }
 
+    function finishReplay(sequenceLength) {
+      clearReplayTimer();
+      state.replayState = "completed";
+      state.replayMessage = `回放完成：共重现 ${sequenceLength} 个事件。`;
+      state.connectionStatus = "replay";
+      state.status = "replay_ready";
+      renderSessionState(rootDocument, elements, state, appConfig);
+    }
+
+    function scheduleReplayStep(sequence, index) {
+      if (index >= sequence.length) {
+        finishReplay(sequence.length);
+        return;
+      }
+      const previousEnvelope = index > 0 ? sequence[index - 1] : null;
+      const nextEnvelope = sequence[index];
+      const delayMs = index === 0
+        ? appConfig.replayDelayMinMs
+        : getReplayDelayMs(appConfig, previousEnvelope, nextEnvelope);
+      runtime.replayTimerId = rootWindow.setTimeout(function () {
+        runtime.replayTimerId = null;
+        handleRealtimeEnvelope(nextEnvelope, {
+          mode: "replay",
+          triggerTts: false,
+          scheduleAffect: false,
+        });
+        state.replayEventCount = index + 1;
+        state.replayMessage = `正在回放 ${state.replaySourceName || "导出会话"}（${index + 1}/${sequence.length}）`;
+        renderSessionState(rootDocument, elements, state, appConfig);
+        scheduleReplayStep(sequence, index + 1);
+      }, delayMs);
+    }
+
+    async function startReplayFromExport() {
+      const cachedExport = readExportCache(rootWindow, appConfig);
+      if (!cachedExport || !cachedExport.payload) {
+        state.replayState = "error";
+        state.replayMessage = "未找到可回放的导出 JSON，请先执行 Export。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      const exportPayload = cachedExport.payload;
+      const replaySequence = buildReplaySequence(exportPayload);
+      if (!replaySequence.length) {
+        state.replayState = "error";
+        state.replayMessage = "导出 JSON 中没有可回放的事件或消息。";
+        renderSessionState(rootDocument, elements, state, appConfig);
+        return { ...state };
+      }
+
+      teardownRealtime(true);
+      clearAffectRefreshTimer();
+      runtime.affectRequestToken += 1;
+      runtime.ttsRequestToken += 1;
+      clearReplayTimer();
+      teardownCamera(true);
+      teardownMicrophone();
+      stopAvatarAudioPlayback();
+
+      state.sessionId = exportPayload.session_id || "replay_session";
+      state.sessionAvatarId = resolveAvatarId(exportPayload.avatar_id || state.activeAvatarId);
+      state.activeAvatarId = state.sessionAvatarId;
+      state.traceId = exportPayload.trace_id || null;
+      state.status = "replay_loading";
+      state.stage = "engage";
+      state.updatedAt = exportPayload.started_at || exportPayload.exported_at || null;
+      state.requestState = "ready";
+      state.historyRestoreState = "idle";
+      state.error = null;
+      state.connectionStatus = "replay";
+      state.lastHeartbeatAt = null;
+      state.connectionLog = [`replay source loaded: ${cachedExport.fileName || state.sessionId}`];
+      state.timelineEntries = [];
+      state.textSubmitState = "idle";
+      state.textSubmitMessage = "回放模式下禁用实时发送。";
+      state.pendingMessageId = null;
+      state.lastAcceptedMessageId = null;
+      state.lastAcceptedSourceKind = null;
+      state.lastAcceptedTraceId = null;
+      state.lastAcceptedAt = null;
+      state.lastAcceptedText = "";
+      state.dialogueReplyState = "idle";
+      state.lastReplyMessageId = null;
+      state.lastReplyTraceId = null;
+      state.lastReplyAt = null;
+      state.lastReplyText = "";
+      state.lastReplyEmotion = "pending";
+      state.lastReplyRiskLevel = "pending";
+      state.lastReplyNextAction = "pending";
+      state.lastStageTransition = "idle → idle";
+      state.affectSnapshot = createInitialAffectSnapshot();
+      state.ttsPlaybackState = "idle";
+      state.ttsPlaybackMessage = "回放模式准备中。";
+      state.ttsAudioUrl = null;
+      state.ttsAudioFormat = "pending";
+      state.ttsVoiceId = getAvatarProfile(state.sessionAvatarId).voicePreview;
+      state.ttsDurationMs = 0;
+      state.ttsGeneratedAt = null;
+      state.avatarMouthState = "closed";
+      state.avatarMouthTransitionCount = 0;
+      state.partialTranscriptState = "idle";
+      state.partialTranscriptText = "";
+      state.partialTranscriptUpdatedAt = null;
+      state.lastPartialPreviewSeq = 0;
+      state.exportState = "exported";
+      state.exportMessage = `已加载回放源: ${cachedExport.fileName || state.sessionId}`;
+      state.lastExportedAt = exportPayload.exported_at || null;
+      state.lastExportFileName = cachedExport.fileName || null;
+      state.replayState = "running";
+      state.replayEventCount = 0;
+      state.replaySourceName = cachedExport.fileName || state.sessionId;
+      state.replayMessage = `准备回放 ${state.replaySourceName}。`;
+      renderSessionState(rootDocument, elements, state, appConfig);
+      scheduleReplayStep(replaySequence, 0);
+      return { ...state };
+    }
+
     async function startSession() {
       teardownRealtime(true);
       clearAffectRefreshTimer();
       runtime.affectRequestToken += 1;
-      clearExportCache(rootWindow);
+      clearReplayTimer();
       state.sessionId = null;
       state.sessionAvatarId = null;
       state.traceId = null;
@@ -2560,6 +3039,10 @@
       state.exportMessage = "创建或恢复会话后可导出当前 JSON。";
       state.lastExportedAt = null;
       state.lastExportFileName = null;
+      state.replayState = "idle";
+      state.replayMessage = "导出 JSON 后可进入回放模式。";
+      state.replayEventCount = 0;
+      state.replaySourceName = null;
       state.audioUploadState = "idle";
       state.audioUploadMessage = "当前没有音频分片上传。";
       state.uploadedChunkCount = 0;
@@ -2639,12 +3122,15 @@
       try {
         const payload = await requestSessionExport(resolvedFetch, appConfig, state.sessionId);
         const fileName = buildExportFileName(state.sessionId, payload.exported_at);
-        storeExportCache(rootWindow, payload, fileName);
+        storeExportCache(rootWindow, appConfig, payload, fileName);
         triggerExportDownload(rootDocument, rootWindow, payload, fileName);
         state.exportState = "exported";
         state.lastExportedAt = payload.exported_at || new Date().toISOString();
         state.lastExportFileName = fileName;
         state.exportMessage = `导出成功: ${fileName}`;
+        state.replayState = "idle";
+        state.replayMessage = `导出缓存已更新，可回放 ${fileName}。`;
+        state.replaySourceName = fileName;
         pushConnectionLog(state, `session exported: ${state.sessionId}`);
       } catch (error) {
         state.exportState = "error";
@@ -3477,6 +3963,11 @@
         return exportSession();
       });
     }
+    if (elements.replayButton) {
+      elements.replayButton.addEventListener("click", function () {
+        return startReplayFromExport();
+      });
+    }
     if (elements.avatarReplayButton) {
       elements.avatarReplayButton.addEventListener("click", function () {
         return replayAssistantAudio();
@@ -3582,6 +4073,7 @@
       refreshAffectPanel,
       replayAssistantAudio,
       exportSession,
+      startReplayFromExport,
       restoreSessionFromStorage,
       selectAvatar,
       forceRealtimeDropForTest,

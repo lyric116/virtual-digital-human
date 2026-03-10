@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - Replay Uses Exported Event Stream As The Single Source Of Truth
+
+- Step 48 builds replay directly on top of exported session JSON. When events are present, the web shell replays them in order and never calls live services; when events are missing, it synthesizes a minimal replay sequence from exported messages.
+- Replay stays a frontend concern: no new replay backend endpoint was introduced, and the browser-side export cache is now the handoff point between live sessions and offline demo playback.
+- The replay sample under data/demo/session_replay_export.json is now the deterministic contract fixture for transcript, affect, retrieval, dialogue, TTS, and avatar state reconstruction.
+
 ## 2026-03-10 - Unified Event Stream For Full-Chain Traceability
 
 - Step 47 keeps logging inside the existing system_events table instead of adding parallel retrieval or TTS log tables; transcript, affect, retrieval, dialogue, TTS, and avatar runtime events now share one envelope and one export path.
