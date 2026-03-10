@@ -76,6 +76,9 @@ Current repository state:
 - `services/affect-service` step 40 now upgrades the video lane with offline visual
   baseline states for synthetic frames and enterprise `face3d_path` samples while the
   live browser path remains non-blocking camera-state analysis
+- `services/affect-service` step 41 now fuses text/audio/video baseline lanes into
+  deterministic multimodal states, including conflict-driven `needs_clarification`
+  output and low-risk stable multimodal confirmation for aligned samples
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists

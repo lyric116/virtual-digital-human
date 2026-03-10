@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 AFFECT_MAIN = ROOT / "services" / "affect-service" / "main.py"
 AFFECT_README = ROOT / "services" / "affect-service" / "README.md"
 TRANSCRIPTS = ROOT / "data" / "derived" / "transcripts" / "val_transcripts_template.jsonl"
+MANIFEST = ROOT / "data" / "manifests" / "val_manifest.jsonl"
 
 
 def load_affect_module():
@@ -42,6 +43,14 @@ def load_transcript_text(record_id: str) -> str:
         if payload.get("record_id") == record_id:
             return str(payload.get("draft_text_raw") or "")
     raise AssertionError(f"missing transcript sample for {record_id}")
+
+
+def load_manifest_row(record_id: str) -> dict[str, object]:
+    for raw_line in MANIFEST.read_text(encoding="utf-8").splitlines():
+        payload = json.loads(raw_line)
+        if payload.get("record_id") == record_id:
+            return payload
+    raise AssertionError(f"missing manifest row for {record_id}")
 
 
 def write_pattern_wav(
@@ -312,6 +321,68 @@ def test_affect_service_handles_enterprise_face3d_video_binding():
     assert response.video_result.label in {"stable_gaze_proxy", "face_present_proxy"}
     assert "mean_motion" in " ".join(response.video_result.evidence)
     assert response.source_context.record_id.endswith("speaker_a/1")
+
+
+def test_affect_service_flags_conflict_for_neutral_text_with_low_energy_audio():
+    module = load_affect_module()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        slow_audio = Path(temp_dir) / "slow_low.wav"
+        face_frame = Path(temp_dir) / "face_like.npy"
+        write_pattern_wav(slow_audio, amplitude=0.08, tone_ms=80, silence_ms=520, cycles=6)
+        write_face_like_frame(face_frame)
+
+        response = module.generate_affect_snapshot(
+            build_settings(module),
+            module.AffectAnalyzeRequest(
+                session_id="sess_affect_fusion_conflict",
+                trace_id="trace_affect_fusion_conflict",
+                current_stage="assess",
+                text_input="今天就普通聊聊，先说说最近的情况。",
+                metadata={
+                    "audio_path_16k_mono": str(slow_audio),
+                    "video_frame_path": str(face_frame),
+                },
+            ),
+        )
+
+    assert response.text_result.label == "neutral"
+    assert response.audio_result.label == "slow_low_energy_proxy"
+    assert response.video_result.label == "stable_gaze_proxy"
+    assert response.fusion_result.conflict is True
+    assert response.fusion_result.emotion_state == "needs_clarification"
+    assert "text-neutral" in (response.fusion_result.conflict_reason or "")
+    assert "audio-slow_low_energy_proxy" in (response.fusion_result.conflict_reason or "")
+
+
+def test_affect_service_uses_manifest_aligned_multimodal_sample_without_conflict():
+    module = load_affect_module()
+    record_id = "noxi/001_2016-03-17_Paris/speaker_a/1"
+    manifest_row = load_manifest_row(record_id)
+    transcript_text = load_transcript_text(record_id)
+
+    response = module.generate_affect_snapshot(
+        build_settings(module),
+        module.AffectAnalyzeRequest(
+            session_id="sess_affect_manifest_aligned",
+            trace_id="trace_affect_manifest_aligned",
+            current_stage="assess",
+            text_input=transcript_text,
+            metadata={
+                "source": "enterprise_validation_manifest",
+                "dataset": manifest_row["dataset"],
+                "record_id": record_id,
+                "audio_path_16k_mono": manifest_row["audio_path_16k_mono"],
+                "face3d_path": manifest_row["face3d_path"],
+            },
+        ),
+    )
+
+    assert response.text_result.label == "neutral"
+    assert response.audio_result.label in {"steady_high_energy_proxy", "steady_speech_proxy"}
+    assert response.video_result.label in {"stable_gaze_proxy", "face_present_proxy"}
+    assert response.fusion_result.conflict is False
+    assert response.fusion_result.emotion_state in {"multimodal_consistent_low_risk", "observe_more"}
+    assert response.source_context.record_id == record_id
 
 
 def test_affect_service_app_and_readme_document_endpoints():

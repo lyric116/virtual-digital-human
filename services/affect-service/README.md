@@ -3,9 +3,9 @@
 ## Purpose
 
 `affect-service` is the first stable multimodal affect boundary for steps 37-41.
-Step 37 established the fixed response contract. Step 38 upgrades only the text lane
-so the frontend can already render coarse text affect categories before audio/video
-and true fusion logic are replaced in later steps.
+Step 37 established the fixed response contract. Steps 38-40 upgraded text, audio,
+and video lanes independently. Step 41 adds the first rule-based fusion layer without
+changing the outer response shape.
 
 ## Endpoints
 
@@ -23,6 +23,7 @@ and true fusion logic are replaced in later steps.
   labels such as `stable_gaze_proxy` or `face_not_detected_proxy`; otherwise it falls
   back to camera-state proxy labels such as `face_present_proxy` or `camera_offline`
 - fusion lane: deterministic `emotion_state`, `risk_level`, `confidence`, and `conflict`
+  with explicit conflict reasoning and a small set of stable fused states
 - source context: always returns `origin`, `dataset`, `record_id`, and `note` so the UI
   can already reserve fields for enterprise validation sample binding
 
@@ -85,6 +86,28 @@ Step-40 verification uses:
 - one blank frame -> `face_not_detected_proxy`
 - one enterprise `face3d_path` sample -> valid face-present or stable-gaze proxy
 
+## Step-41 Fusion Rules
+
+- current fused states:
+  - `high_risk_distress`
+  - `anxious_monitoring`
+  - `low_mood_monitoring`
+  - `guarded_monitoring`
+  - `negative_high_arousal`
+  - `negative_low_arousal`
+  - `needs_clarification`
+  - `multimodal_consistent_low_risk`
+  - `observe_more`
+  - `pending_multimodal`
+- current conflict examples:
+  - `neutral` text + `slow_low_energy_proxy` audio + `stable_gaze_proxy` video
+    -> `needs_clarification` with `conflict=true`
+  - `guarded` text plus any active audio/video evidence
+    -> `needs_clarification`
+- current aligned example:
+  - one manifest-bound NoXI sample uses the same transcript, audio, and `face3d_path`
+    record to confirm fusion does not regress back to text-only behavior
+
 ## Local Run
 
 From repository root:
@@ -97,7 +120,7 @@ From repository root:
 - Configure the browser-facing base URL through `window.__APP_CONFIG__.affectBaseUrl`.
 - Default local browser preview origin is controlled by `AFFECT_CORS_ORIGINS`.
 - This step intentionally keeps real multimodal inference out of the main path. Steps 39-41
-  will replace the audio/video/fusion internals while keeping the same response shape.
+  replace the audio/video/fusion internals while keeping the same response shape.
 
 ## Verification
 

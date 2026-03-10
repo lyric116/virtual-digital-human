@@ -55,6 +55,9 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
 - step 40: the emotion panel can now also render baseline video labels such as
   `stable_gaze_proxy` and `face_not_detected_proxy` while the live browser path still
   falls back to camera-state placeholders
+- step 41: the emotion panel can now render first-pass fused states such as
+  `needs_clarification` and `multimodal_consistent_low_risk`, including an explicit
+  conflict reason when text/audio/video disagree
 
 ## Files
 
@@ -142,6 +145,8 @@ Then open:
 - the emotion panel now renders a deterministic placeholder snapshot from
   `POST /internal/affect/analyze`, including sample source fields reserved for later
   enterprise replay binding
+- the same panel now also surfaces `fusion_result.conflict` and `fusion_result.conflict_reason`
+  so later dialogue steps can consume multimodal disagreement without redesigning the UI
 
 ## Verification
 

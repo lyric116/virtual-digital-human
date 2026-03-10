@@ -221,11 +221,11 @@ the same outer shape.
 | `text_result.detail` | string | Yes | Human-readable explanation shown in the UI. |
 | `audio_result.*` | object | Yes | Same shape as `text_result` for the audio lane; current labels may include `live_capture_proxy`, `awaiting_audio_features`, `fast_high_energy_proxy`, `steady_high_energy_proxy`, `slow_low_energy_proxy`, or `steady_speech_proxy`. |
 | `video_result.*` | object | Yes | Same shape as `text_result` for the video lane; current labels may include `stable_gaze_proxy`, `gaze_away_proxy`, `face_not_detected_proxy`, `face_present_proxy`, `camera_live`, or `camera_offline`. |
-| `fusion_result.emotion_state` | string | Yes | Unified affect state shown in the panel. |
+| `fusion_result.emotion_state` | string | Yes | Unified affect state shown in the panel; current values may include `anxious_monitoring`, `low_mood_monitoring`, `guarded_monitoring`, `high_risk_distress`, `negative_high_arousal`, `negative_low_arousal`, `needs_clarification`, `multimodal_consistent_low_risk`, `observe_more`, or `pending_multimodal`. |
 | `fusion_result.risk_level` | string | Yes | `low`, `medium`, or `high`. |
 | `fusion_result.confidence` | number | Yes | Fused confidence value. |
 | `fusion_result.conflict` | boolean | Yes | Whether the current lanes disagree strongly enough to require clarification. |
-| `fusion_result.conflict_reason` | string | No | Conflict explanation placeholder. |
+| `fusion_result.conflict_reason` | string | No | Conflict explanation placeholder, currently formatted as semicolon-separated lane evidence such as `text-neutral; audio-slow_low_energy_proxy; video-stable_gaze_proxy`. |
 | `fusion_result.detail` | string | Yes | Human-readable fusion summary. |
 
 ## Dialogue Result

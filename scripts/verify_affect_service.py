@@ -17,6 +17,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 AFFECT_MAIN = ROOT / "services" / "affect-service" / "main.py"
 TRANSCRIPTS = ROOT / "data" / "derived" / "transcripts" / "val_transcripts_template.jsonl"
+MANIFEST = ROOT / "data" / "manifests" / "val_manifest.jsonl"
 
 
 def load_module():
@@ -35,6 +36,14 @@ def load_transcript_text(record_id: str) -> str:
         if payload.get("record_id") == record_id:
             return str(payload.get("draft_text_raw") or "")
     raise RuntimeError(f"missing transcript sample for {record_id}")
+
+
+def load_manifest_row(record_id: str) -> dict[str, object]:
+    for raw_line in MANIFEST.read_text(encoding="utf-8").splitlines():
+        payload = json.loads(raw_line)
+        if payload.get("record_id") == record_id:
+            return payload
+    raise RuntimeError(f"missing manifest row for {record_id}")
 
 
 def write_pattern_wav(
@@ -205,6 +214,21 @@ def main() -> None:
                 metadata={"video_frame_path": str(blank_path)},
             ),
         )
+        fusion_conflict_snapshot = module.generate_affect_snapshot(
+            settings,
+            module.AffectAnalyzeRequest(
+                session_id="sess_verify_affect_fusion_conflict",
+                trace_id="trace_verify_affect_fusion_conflict",
+                current_stage="assess",
+                text_input="今天就普通聊聊，先说说最近的情况。",
+                metadata={
+                    "audio_path_16k_mono": str(slow_path),
+                    "video_frame_path": str(face_path),
+                },
+            ),
+        )
+    aligned_record_id = "noxi/001_2016-03-17_Paris/speaker_a/1"
+    aligned_manifest_row = load_manifest_row(aligned_record_id)
     enterprise_strong_audio_snapshot = module.generate_affect_snapshot(
         settings,
         module.AffectAnalyzeRequest(
@@ -247,6 +271,22 @@ def main() -> None:
             },
         ),
     )
+    manifest_aligned_snapshot = module.generate_affect_snapshot(
+        settings,
+        module.AffectAnalyzeRequest(
+            session_id="sess_verify_affect_manifest_aligned",
+            trace_id="trace_verify_affect_manifest_aligned",
+            current_stage="assess",
+            text_input=load_transcript_text(aligned_record_id),
+            metadata={
+                "source": "enterprise_validation_manifest",
+                "dataset": aligned_manifest_row["dataset"],
+                "record_id": aligned_record_id,
+                "audio_path_16k_mono": aligned_manifest_row["audio_path_16k_mono"],
+                "face3d_path": aligned_manifest_row["face3d_path"],
+            },
+        ),
+    )
 
     if anxious_snapshot.text_result.label != "anxious":
         raise RuntimeError("anxious snapshot did not classify text lane as anxious")
@@ -276,6 +316,16 @@ def main() -> None:
         raise RuntimeError("blank synthetic frame did not classify as face_not_detected_proxy")
     if enterprise_video_snapshot.video_result.label not in {"stable_gaze_proxy", "face_present_proxy"}:
         raise RuntimeError("enterprise face3d sample did not classify as a valid face-present proxy")
+    if fusion_conflict_snapshot.fusion_result.conflict is not True:
+        raise RuntimeError("neutral text plus low-energy audio did not raise a fusion conflict")
+    if fusion_conflict_snapshot.fusion_result.emotion_state != "needs_clarification":
+        raise RuntimeError("fusion conflict sample did not choose needs_clarification")
+    if "audio-slow_low_energy_proxy" not in (fusion_conflict_snapshot.fusion_result.conflict_reason or ""):
+        raise RuntimeError("fusion conflict reason did not retain the low-energy audio evidence")
+    if manifest_aligned_snapshot.fusion_result.conflict is not False:
+        raise RuntimeError("manifest-aligned enterprise sample should not be marked as conflict")
+    if manifest_aligned_snapshot.fusion_result.emotion_state not in {"multimodal_consistent_low_risk", "observe_more"}:
+        raise RuntimeError("manifest-aligned enterprise sample did not produce a stable low-risk fusion state")
 
     print(
         json.dumps(
@@ -292,6 +342,8 @@ def main() -> None:
                 "face_video_snapshot": face_video_snapshot.model_dump(mode="json"),
                 "blank_video_snapshot": blank_video_snapshot.model_dump(mode="json"),
                 "enterprise_video_snapshot": enterprise_video_snapshot.model_dump(mode="json"),
+                "fusion_conflict_snapshot": fusion_conflict_snapshot.model_dump(mode="json"),
+                "manifest_aligned_snapshot": manifest_aligned_snapshot.model_dump(mode="json"),
             },
             ensure_ascii=False,
             indent=2,

@@ -643,9 +643,13 @@ def analyze_fusion(
     audio_result: AffectLaneResult,
     video_result: AffectLaneResult,
 ) -> AffectFusionResult:
-    text = normalize_text(payload.text_input)
     audio_active = audio_result.status == "ready"
     video_active = video_result.status == "ready" and video_result.label != "face_not_detected_proxy"
+    audio_low_energy = audio_result.label == "slow_low_energy_proxy"
+    audio_high_energy = audio_result.label in {"fast_high_energy_proxy", "steady_high_energy_proxy"}
+    video_stable = video_result.label == "stable_gaze_proxy"
+    video_avoidant = video_result.label == "gaze_away_proxy"
+    video_missing = video_result.label == "face_not_detected_proxy"
 
     if text_result.label == "distressed":
         return AffectFusionResult(
@@ -657,22 +661,31 @@ def analyze_fusion(
             detail="文本路已触发高风险规则，融合结果直接进入高风险。",
         )
 
-    if text_result.label == "guarded" and (audio_active or video_active):
+    if text_result.label == "guarded" and (audio_low_energy or video_avoidant or audio_active):
         reasons: list[str] = ["text-guarded"]
         if audio_active:
             reasons.append(f"audio-{audio_result.label}")
-        if video_active:
+        if video_active or video_missing:
             reasons.append(f"video-{video_result.label}")
         return AffectFusionResult(
             emotion_state="needs_clarification",
             risk_level="medium",
-            confidence=0.68,
+            confidence=0.72 if (audio_low_energy or video_avoidant) else 0.68,
             conflict=True,
             conflict_reason="; ".join(reasons),
-            detail="文本路偏保守或回避，但其他模态已有活动，占位融合先标记为冲突待澄清。",
+            detail="文本路偏保守或回避，且其他模态已提供额外线索，融合结果优先进入澄清状态。",
         )
 
     if text_result.label == "anxious":
+        if audio_high_energy or video_avoidant:
+            return AffectFusionResult(
+                emotion_state="negative_high_arousal",
+                risk_level="medium",
+                confidence=0.81,
+                conflict=False,
+                conflict_reason=None,
+                detail="文本焦虑线索与较高能量或回避视线代理一致，融合结果偏向高唤醒负性状态。",
+            )
         confidence = 0.74 if (audio_active or video_active) else 0.69
         evidence_detail = "文本焦虑线索已出现，并有其他模态在线。" if (audio_active or video_active) else "文本焦虑线索已出现，其他模态仍在占位。"
         return AffectFusionResult(
@@ -685,6 +698,15 @@ def analyze_fusion(
         )
 
     if text_result.label == "low_mood":
+        if audio_low_energy or video_stable:
+            return AffectFusionResult(
+                emotion_state="negative_low_arousal",
+                risk_level="medium",
+                confidence=0.82,
+                conflict=False,
+                conflict_reason=None,
+                detail="文本低落线索与低能量音频或稳定低激活视觉代理一致，融合结果偏向低唤醒负性状态。",
+            )
         confidence = 0.76 if (audio_active or video_active) else 0.71
         evidence_detail = "文本低落线索已出现，并有其他模态在线。" if (audio_active or video_active) else "文本低落线索已出现，其他模态仍在占位。"
         return AffectFusionResult(
@@ -704,6 +726,29 @@ def analyze_fusion(
             conflict=False,
             conflict_reason=None,
             detail="文本较短或偏回避，系统会优先继续澄清而不直接下结论。",
+        )
+
+    if text_result.label == "neutral" and audio_low_energy:
+        reasons = ["text-neutral", f"audio-{audio_result.label}"]
+        if video_active or video_missing:
+            reasons.append(f"video-{video_result.label}")
+        return AffectFusionResult(
+            emotion_state="needs_clarification",
+            risk_level="medium",
+            confidence=0.74 if video_stable else 0.69,
+            conflict=True,
+            conflict_reason="; ".join(reasons),
+            detail="文本路偏中性，但音频路呈现低能量和高停顿特征，融合结果优先要求澄清追问。",
+        )
+
+    if text_result.label == "neutral" and audio_high_energy and (video_stable or video_active):
+        return AffectFusionResult(
+            emotion_state="multimodal_consistent_low_risk",
+            risk_level="low",
+            confidence=0.72,
+            conflict=False,
+            conflict_reason=None,
+            detail="文本、音频和视频代理结果整体一致，当前更接近低风险稳定交互状态。",
         )
 
     if audio_active or video_active:

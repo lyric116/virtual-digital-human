@@ -193,6 +193,46 @@ V1 先用可解释、训练成本低的方案：
 
 V2 再升级为轻量 Transformer，用于更细的时序建模。
 
+### 当前 step-41 基线
+
+当前仓库先不接训练式融合器，而是落一个可解释、可回归的规则融合层：
+
+- 输入
+  - 文本路：`distressed / anxious / low_mood / guarded / neutral`
+  - 音频路：`fast_high_energy_proxy / steady_high_energy_proxy / slow_low_energy_proxy / steady_speech_proxy`
+  - 视频路：`stable_gaze_proxy / gaze_away_proxy / face_not_detected_proxy`
+- 当前统一输出
+  - `high_risk_distress`
+  - `anxious_monitoring`
+  - `low_mood_monitoring`
+  - `guarded_monitoring`
+  - `negative_high_arousal`
+  - `negative_low_arousal`
+  - `needs_clarification`
+  - `multimodal_consistent_low_risk`
+  - `observe_more`
+  - `pending_multimodal`
+
+当前规则重点覆盖两类情况：
+
+- 冲突样本
+  - 文本中性，但音频明显低能量、高停顿，同时视频仍保持稳定注视
+  - 这类样本会输出 `needs_clarification`
+  - 并返回 `conflict=true` 与结构化 `conflict_reason`
+- 对齐样本
+  - 当同一条 manifest 样本的文本、音频、视频都没有明显冲突时
+  - 输出保持 `multimodal_consistent_low_risk` 或 `observe_more`
+  - 不会再退化成“只看文本”
+
+step-41 的离线验证固定包含两类样本：
+
+- 1 条构造冲突样本：文本中性 + 音频低能量 + 视频稳定
+- 1 条 manifest 对齐企业样本：
+  - `noxi/001_2016-03-17_Paris/speaker_a/1`
+  - 同时绑定该条记录的 transcript、`audio_path_16k_mono` 和 `face3d_path`
+
+这样后续步骤 42 只需要消费 `fusion_result` 的冲突标志和原因，不需要改多模态契约。
+
 ## 8. 模态冲突处理
 
 典型冲突：

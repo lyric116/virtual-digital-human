@@ -21,6 +21,24 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 41 First Fusion Rules
+
+### Scope
+
+Completed implementation plan step 41 by adding the first rule-based multimodal fusion layer in affect-service, wiring conflict-aware fusion states into the existing Emotion Panel contract, and verifying both a constructed neutral-text versus low-energy-audio conflict sample and one manifest-aligned enterprise sample.
+
+### Outputs
+
+- services/affect-service/main.py; scripts/verify_affect_service.py; scripts/web_emotion_panel_harness.js; scripts/verify_web_emotion_panel.py; tests/test_affect_service.py; tests/test_web_emotion_panel.py; docs/04-multimodal-affect.md; docs/shared_contracts.md; services/affect-service/README.md; apps/web/README.md; README.md
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run python -m py_compile services/affect-service/main.py scripts/verify_affect_service.py scripts/verify_web_emotion_panel.py; UV_CACHE_DIR=.uv-cache uv run pytest tests/test_affect_service.py tests/test_web_emotion_panel.py; UV_CACHE_DIR=.uv-cache uv run python scripts/verify_affect_service.py; UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_emotion_panel.py; UV_CACHE_DIR=.uv-cache uv run pytest with 173 passed.
+
+### Next
+
+- Step 42: route fusion conflicts into dialogue clarification so multimodal disagreement changes reply strategy instead of remaining UI-only.
+
 ## 2026-03-10 - Step 40 Video Baseline States
 
 ### Scope

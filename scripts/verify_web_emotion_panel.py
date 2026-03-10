@@ -44,6 +44,8 @@ def main() -> None:
     audio_low_payload = run_harness("audio-low-energy")
     video_face_payload = run_harness("video-face")
     video_blank_payload = run_harness("video-no-face")
+    fusion_conflict_payload = run_harness("fusion-conflict")
+    fusion_stable_payload = run_harness("fusion-aligned-stable")
 
     live_after = live_payload["afterAffect"]
     enterprise_after = enterprise_payload["afterAffect"]
@@ -51,6 +53,8 @@ def main() -> None:
     audio_low_after = audio_low_payload["afterAffect"]
     video_face_after = video_face_payload["afterAffect"]
     video_blank_after = video_blank_payload["afterAffect"]
+    fusion_conflict_after = fusion_conflict_payload["afterAffect"]
+    fusion_stable_after = fusion_stable_payload["afterAffect"]
 
     if live_after["emotionPanelState"] != "ready":
         raise RuntimeError("emotion panel did not reach ready state")
@@ -76,6 +80,12 @@ def main() -> None:
         raise RuntimeError("video face mode did not render the expected video label")
     if video_blank_after["videoSignal"] != "face_not_detected_proxy":
         raise RuntimeError("video no-face mode did not render the expected video label")
+    if fusion_conflict_after["fusionEmotion"] != "needs_clarification":
+        raise RuntimeError("fusion conflict mode did not render the expected fusion state")
+    if not fusion_conflict_after["fusionConflict"].startswith("conflict: text-neutral"):
+        raise RuntimeError("fusion conflict mode did not retain the expected conflict reason")
+    if fusion_stable_after["fusionEmotion"] != "multimodal_consistent_low_risk":
+        raise RuntimeError("fusion stable mode did not render the expected fusion state")
 
     print(
         json.dumps(
@@ -86,6 +96,8 @@ def main() -> None:
                 "audio_low": audio_low_after,
                 "video_face": video_face_after,
                 "video_blank": video_blank_after,
+                "fusion_conflict": fusion_conflict_after,
+                "fusion_stable": fusion_stable_after,
             },
             ensure_ascii=False,
             indent=2,

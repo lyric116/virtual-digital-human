@@ -82,6 +82,19 @@ def test_web_emotion_panel_can_render_distinct_video_lane_labels():
     assert face_after["videoSignal"] != blank_after["videoSignal"]
 
 
+def test_web_emotion_panel_can_render_fusion_conflict_and_stable_states():
+    conflict_payload = run_harness("fusion-conflict")
+    stable_payload = run_harness("fusion-aligned-stable")
+
+    conflict_after = conflict_payload["afterAffect"]
+    stable_after = stable_payload["afterAffect"]
+
+    assert conflict_after["fusionEmotion"] == "needs_clarification"
+    assert conflict_after["fusionConflict"].startswith("conflict: text-neutral")
+    assert stable_after["fusionEmotion"] == "multimodal_consistent_low_risk"
+    assert stable_after["fusionRisk"] == "low"
+
+
 def test_web_emotion_panel_docs_are_present():
     web_readme = WEB_README.read_text(encoding="utf-8")
     affect_readme = AFFECT_README.read_text(encoding="utf-8")

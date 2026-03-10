@@ -196,12 +196,16 @@ function buildAffectPayload(requestPayload, mode) {
         record_id: source.record_id || `session/${requestPayload.session_id}`,
         note: source.sample_note || "enterprise sample pending binding",
       };
-  const anxious = text.includes("睡不好") || text.includes("停不下来");
-  const lowMood = text.includes("提不起劲") || text.includes("没有意义");
+  const effectiveText =
+    mode === "fusion-conflict" || mode === "fusion-aligned-stable"
+      ? "今天就普通聊聊，先说说最近的情况。"
+      : text;
+  const anxious = effectiveText.includes("睡不好") || effectiveText.includes("停不下来");
+  const lowMood = effectiveText.includes("提不起劲") || effectiveText.includes("没有意义");
   const guarded =
-    text.includes("我没事") ||
-    text.includes("不用担心") ||
-    text.trim().toLowerCase() === "d'accord. ok.";
+    effectiveText.includes("我没事") ||
+    effectiveText.includes("不用担心") ||
+    effectiveText.trim().toLowerCase() === "d'accord. ok.";
   const textLabel = anxious ? "anxious" : lowMood ? "low_mood" : guarded ? "guarded" : "neutral";
   const textConfidence = anxious ? 0.78 : lowMood ? 0.73 : guarded ? 0.64 : 0.58;
   const textEvidence = anxious
@@ -218,22 +222,6 @@ function buildAffectPayload(requestPayload, mode) {
       : guarded
         ? "文本路检测到防御性或保守型表达。"
         : "文本路暂未命中明显风险词。";
-  const fusionEmotion = anxious
-    ? "anxious_monitoring"
-    : lowMood
-      ? "low_mood_monitoring"
-      : guarded
-        ? "guarded_monitoring"
-        : "observe_more";
-  const fusionRisk = anxious || lowMood ? "medium" : "low";
-  const fusionConfidence = anxious ? 0.69 : lowMood ? 0.71 : guarded ? 0.56 : 0.48;
-  const fusionDetail = anxious
-    ? "文本焦虑线索已出现，其他模态仍为占位。"
-    : lowMood
-      ? "文本低落线索已出现，其他模态仍为占位。"
-      : guarded
-        ? "文本较短或偏回避，系统会优先继续澄清。"
-        : "当前三路仍以占位结果为主。";
   const audioModes = {
     "audio-high-energy": {
       label: "steady_high_energy_proxy",
@@ -246,6 +234,18 @@ function buildAffectPayload(requestPayload, mode) {
       confidence: 0.74,
       evidence: ["energy_band:low", "tempo_band:slow"],
       detail: "音频路显示较低能量和较高停顿比例。",
+    },
+    "fusion-conflict": {
+      label: "slow_low_energy_proxy",
+      confidence: 0.74,
+      evidence: ["energy_band:low", "tempo_band:slow"],
+      detail: "音频路显示较低能量和较高停顿比例。",
+    },
+    "fusion-aligned-stable": {
+      label: "steady_high_energy_proxy",
+      confidence: 0.72,
+      evidence: ["energy_band:high", "tempo_band:steady"],
+      detail: "音频路显示较高能量和连续语音活动。",
     },
   };
   const selectedAudio = audioModes[mode] || {
@@ -267,6 +267,18 @@ function buildAffectPayload(requestPayload, mode) {
       evidence: ["frame_std:0.010", "center_focus:0.008"],
       detail: "视频路未检测到足够明显的人脸中心区域。",
     },
+    "fusion-conflict": {
+      label: "stable_gaze_proxy",
+      confidence: 0.74,
+      evidence: ["frame_std:0.220", "center_focus:0.190"],
+      detail: "视频路显示稳定中心区域和较低左右不对称。",
+    },
+    "fusion-aligned-stable": {
+      label: "stable_gaze_proxy",
+      confidence: 0.74,
+      evidence: ["frame_std:0.220", "center_focus:0.190"],
+      detail: "视频路显示稳定中心区域和较低左右不对称。",
+    },
   };
   const selectedVideo = videoModes[mode] || {
     label: "camera_offline",
@@ -274,6 +286,38 @@ function buildAffectPayload(requestPayload, mode) {
     evidence: ["camera_state:idle"],
     detail: "视频路当前离线，先保留挂载位。",
   };
+  let fusionEmotion = anxious
+    ? "anxious_monitoring"
+    : lowMood
+      ? "low_mood_monitoring"
+      : guarded
+        ? "guarded_monitoring"
+        : "observe_more";
+  let fusionRisk = anxious || lowMood ? "medium" : "low";
+  let fusionConfidence = anxious ? 0.69 : lowMood ? 0.71 : guarded ? 0.56 : 0.48;
+  let fusionConflict = false;
+  let fusionConflictReason = null;
+  let fusionDetail = anxious
+    ? "文本焦虑线索已出现，其他模态仍为占位。"
+    : lowMood
+      ? "文本低落线索已出现，其他模态仍为占位。"
+      : guarded
+        ? "文本较短或偏回避，系统会优先继续澄清。"
+        : "当前三路仍以占位结果为主。";
+
+  if (mode === "fusion-conflict") {
+    fusionEmotion = "needs_clarification";
+    fusionRisk = "medium";
+    fusionConfidence = 0.74;
+    fusionConflict = true;
+    fusionConflictReason = "text-neutral; audio-slow_low_energy_proxy; video-stable_gaze_proxy";
+    fusionDetail = "文本中性，但音频低能量且视频稳定，融合结果优先要求澄清追问。";
+  } else if (mode === "fusion-aligned-stable") {
+    fusionEmotion = "multimodal_consistent_low_risk";
+    fusionRisk = "low";
+    fusionConfidence = 0.72;
+    fusionDetail = "文本、音频和视频代理结果整体一致，当前更接近低风险稳定交互状态。";
+  }
 
   return {
     session_id: requestPayload.session_id,
@@ -306,8 +350,8 @@ function buildAffectPayload(requestPayload, mode) {
       emotion_state: fusionEmotion,
       risk_level: fusionRisk,
       confidence: fusionConfidence,
-      conflict: false,
-      conflict_reason: null,
+      conflict: fusionConflict,
+      conflict_reason: fusionConflictReason,
       detail: fusionDetail,
     },
   };
