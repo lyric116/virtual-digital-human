@@ -49,6 +49,7 @@ def bootstrap_runtime_env() -> None:
 class OrchestratorSettings:
     orchestrator_host: str
     orchestrator_port: int
+    rag_service_base_url: str
     dialogue_service_base_url: str
     dialogue_service_timeout_seconds: float
 
@@ -57,6 +58,7 @@ class OrchestratorSettings:
         return cls(
             orchestrator_host=os.getenv("ORCHESTRATOR_HOST", "0.0.0.0"),
             orchestrator_port=int(os.getenv("ORCHESTRATOR_PORT", "8010")),
+            rag_service_base_url=os.getenv("RAG_SERVICE_BASE_URL", "http://127.0.0.1:8070"),
             dialogue_service_base_url=os.getenv("DIALOGUE_SERVICE_BASE_URL", "http://127.0.0.1:8030"),
             dialogue_service_timeout_seconds=float(
                 os.getenv("ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS", "60")
@@ -87,6 +89,47 @@ class DialogueReplyResponse(BaseModel):
     safety_flags: list[str] = Field(default_factory=list)
 
 
+class RetrievedKnowledgeCard(BaseModel):
+    source_id: str
+    id: str
+    title: str
+    category: str
+    summary: str
+    score: float
+    stage: list[str] = Field(default_factory=list)
+    risk_level: list[str] = Field(default_factory=list)
+    emotion: list[str] = Field(default_factory=list)
+    recommended_phrases: list[str] = Field(default_factory=list)
+    followup_questions: list[str] = Field(default_factory=list)
+    contraindications: list[str] = Field(default_factory=list)
+    source: str
+
+
+class RAGRetrieveRequest(BaseModel):
+    session_id: str
+    trace_id: str
+    query_text: str
+    current_stage: Literal["engage", "assess", "intervene", "reassess", "handoff"]
+    risk_level: Literal["low", "medium", "high"] | None = None
+    emotion: str | None = None
+    top_k: int = Field(default=3, ge=1, le=5)
+
+
+class RAGRetrieveResponse(BaseModel):
+    session_id: str
+    trace_id: str | None = None
+    query_text: str
+    current_stage: str | None = None
+    risk_level: str | None = None
+    emotion: str | None = None
+    top_k: int
+    generated_at: datetime
+    index_card_count: int
+    candidate_count: int
+    filters_applied: list[str] = Field(default_factory=list)
+    results: list[RetrievedKnowledgeCard] = Field(default_factory=list)
+
+
 class DialogueSummaryRequest(BaseModel):
     session_id: str
     trace_id: str
@@ -109,9 +152,10 @@ def request_dialogue_reply(
     settings: OrchestratorSettings,
     payload: DialogueReplyRequest,
 ) -> DialogueReplyResponse:
+    enriched_payload = attach_rag_context(settings, payload)
     request = urllib_request.Request(
         url=f"{settings.dialogue_service_base_url.rstrip('/')}/internal/dialogue/respond",
-        data=json.dumps(payload.model_dump()).encode("utf-8"),
+        data=json.dumps(enriched_payload.model_dump()).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
@@ -132,6 +176,97 @@ def request_dialogue_reply(
         return DialogueReplyResponse.model_validate(raw_payload)
     except ValidationError as exc:
         raise RuntimeError(f"invalid dialogue reply: {exc}") from exc
+
+
+def extract_rag_risk_level(payload: DialogueReplyRequest) -> str | None:
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    explicit = str(metadata.get("rag_risk_level_hint") or "").strip()
+    if explicit in {"low", "medium", "high"}:
+        return explicit
+
+    affect_snapshot = metadata.get("affect_snapshot")
+    if isinstance(affect_snapshot, dict):
+        fusion_result = affect_snapshot.get("fusion_result")
+        if isinstance(fusion_result, dict):
+            risk_level = str(fusion_result.get("risk_level") or "").strip()
+            if risk_level in {"low", "medium", "high"}:
+                return risk_level
+    return None
+
+
+def extract_rag_emotion(payload: DialogueReplyRequest) -> str | None:
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    explicit = str(metadata.get("rag_emotion_hint") or "").strip()
+    if explicit:
+        return explicit
+
+    affect_snapshot = metadata.get("affect_snapshot")
+    if isinstance(affect_snapshot, dict):
+        text_result = affect_snapshot.get("text_result")
+        if isinstance(text_result, dict):
+            label = str(text_result.get("label") or "").strip()
+            if label:
+                return label
+        fusion_result = affect_snapshot.get("fusion_result")
+        if isinstance(fusion_result, dict):
+            emotion_state = str(fusion_result.get("emotion_state") or "").strip()
+            if emotion_state:
+                return emotion_state
+    return None
+
+
+def request_rag_cards(
+    settings: OrchestratorSettings,
+    payload: DialogueReplyRequest,
+) -> RAGRetrieveResponse:
+    rag_request = RAGRetrieveRequest(
+        session_id=payload.session_id,
+        trace_id=payload.trace_id,
+        query_text=payload.content_text,
+        current_stage=payload.current_stage,
+        risk_level=extract_rag_risk_level(payload),
+        emotion=extract_rag_emotion(payload),
+    )
+    request = urllib_request.Request(
+        url=f"{settings.rag_service_base_url.rstrip('/')}/internal/rag/retrieve",
+        data=json.dumps(rag_request.model_dump(mode='json')).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    opener = urllib_request.build_opener(urllib_request.ProxyHandler({}))
+
+    try:
+        with opener.open(request, timeout=settings.dialogue_service_timeout_seconds) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"rag-service http {exc.code}: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError(f"rag-service unavailable: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("rag-service returned invalid json") from exc
+
+    try:
+        return RAGRetrieveResponse.model_validate(raw_payload)
+    except ValidationError as exc:
+        raise RuntimeError(f"invalid rag response: {exc}") from exc
+
+
+def attach_rag_context(
+    settings: OrchestratorSettings,
+    payload: DialogueReplyRequest,
+) -> DialogueReplyRequest:
+    try:
+        rag_response = request_rag_cards(settings, payload)
+    except RuntimeError:
+        return payload
+
+    metadata = dict(payload.metadata or {})
+    metadata["knowledge_cards"] = [card.model_dump(mode="json") for card in rag_response.results]
+    metadata["knowledge_filters_applied"] = rag_response.filters_applied
+    metadata["knowledge_candidate_count"] = rag_response.candidate_count
+
+    return payload.model_copy(update={"metadata": metadata})
 
 
 def request_dialogue_summary(

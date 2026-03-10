@@ -112,6 +112,17 @@ class DialogueSummaryResponse(BaseModel):
     generated_at: datetime
 
 
+class KnowledgeCardContext(BaseModel):
+    source_id: str
+    title: str
+    category: str
+    summary: str
+    recommended_phrases: list[str] = Field(default_factory=list)
+    followup_questions: list[str] = Field(default_factory=list)
+    contraindications: list[str] = Field(default_factory=list)
+    score: float | None = None
+
+
 class LLMDialogueFields(BaseModel):
     reply: str
     emotion: str
@@ -226,7 +237,9 @@ def build_dialogue_system_prompt() -> str:
         "If current_stage=assess, prefer intervene. If current_stage=intervene, "
         "prefer reassess. If current_stage=engage and the user mentions sleep, "
         "anxiety, stress, or pressure, prefer assess. Use short knowledge_refs "
-        "only when clearly relevant. If metadata.short_term_memory contains recent "
+        "only when clearly relevant. If metadata.knowledge_cards is present, keep "
+        "knowledge_refs inside the provided source_id set and ground the reply in "
+        "those cards instead of inventing unrelated advice. If metadata.short_term_memory contains recent "
         "turns, use it to preserve continuity and answer factual recall questions "
         "about the last few turns directly. avatar_style should be warm_support, "
         "calm_guarded, or rational_guide."
@@ -244,12 +257,46 @@ def build_summary_system_prompt() -> str:
     )
 
 
+def extract_knowledge_cards(metadata: dict[str, Any] | None) -> list[KnowledgeCardContext]:
+    if not isinstance(metadata, dict):
+        return []
+
+    raw_cards = metadata.get("knowledge_cards")
+    if not isinstance(raw_cards, list):
+        return []
+
+    cards: list[KnowledgeCardContext] = []
+    for item in raw_cards:
+        if not isinstance(item, dict):
+            continue
+        try:
+            cards.append(KnowledgeCardContext.model_validate(item))
+        except ValidationError:
+            continue
+    return cards
+
+
 def build_dialogue_user_prompt(payload: DialogueReplyRequest) -> str:
+    metadata = dict(payload.metadata or {})
+    cards = extract_knowledge_cards(metadata)
+    metadata.pop("knowledge_cards", None)
     return json.dumps(
         {
             "current_stage": payload.current_stage,
             "user_text": payload.content_text,
-            "metadata": payload.metadata,
+            "metadata": metadata,
+            "knowledge_cards": [
+                {
+                    "source_id": card.source_id,
+                    "title": card.title,
+                    "category": card.category,
+                    "summary": card.summary,
+                    "recommended_phrases": card.recommended_phrases,
+                    "followup_questions": card.followup_questions,
+                    "contraindications": card.contraindications,
+                }
+                for card in cards
+            ],
         },
         ensure_ascii=False,
     )
@@ -386,6 +433,75 @@ def build_dialogue_reply(
         knowledge_refs=llm_fields.knowledge_refs,
         avatar_style=llm_fields.avatar_style,
         safety_flags=llm_fields.safety_flags,
+    )
+
+
+def choose_grounding_snippet(
+    card: KnowledgeCardContext,
+    *,
+    stage: str,
+    next_action: str,
+) -> str | None:
+    if next_action == "ask_followup" or stage in {"engage", "assess", "reassess"}:
+        for question in card.followup_questions:
+            text = question.strip()
+            if text:
+                return text
+    for phrase in card.recommended_phrases:
+        text = phrase.strip()
+        if text:
+            return text
+    return None
+
+
+def append_grounding_text(reply: str, snippet: str) -> str:
+    base = reply.strip()
+    if not base:
+        return snippet
+    if snippet in base:
+        return base
+    if base[-1] not in "。！？!?":
+        base = f"{base}。"
+    return f"{base}{snippet}"
+
+
+def apply_rag_grounding(
+    payload: DialogueReplyRequest,
+    llm_fields: LLMDialogueFields,
+) -> LLMDialogueFields:
+    cards = extract_knowledge_cards(payload.metadata)
+    if not cards:
+        return llm_fields
+
+    allowed_ids = {card.source_id for card in cards}
+    normalized_refs = [ref for ref in llm_fields.knowledge_refs if ref in allowed_ids]
+    primary_card = cards[0]
+    if normalized_refs:
+        primary_card = next((card for card in cards if card.source_id == normalized_refs[0]), cards[0])
+    else:
+        normalized_refs = [primary_card.source_id]
+
+    reply = llm_fields.reply
+    snippet = choose_grounding_snippet(
+        primary_card,
+        stage=llm_fields.stage,
+        next_action=llm_fields.next_action,
+    )
+    if snippet:
+        reply = append_grounding_text(reply, snippet)
+
+    safety_flags = list(llm_fields.safety_flags)
+    if "rag_grounded_response" not in safety_flags:
+        safety_flags.append("rag_grounded_response")
+    if llm_fields.knowledge_refs != normalized_refs:
+        safety_flags.append("rag_refs_injected")
+
+    return llm_fields.model_copy(
+        update={
+            "reply": reply,
+            "knowledge_refs": normalized_refs,
+            "safety_flags": safety_flags,
+        }
     )
 
 
@@ -550,6 +666,7 @@ def create_app() -> FastAPI:
             if affect_conflict is not None:
                 return build_affect_conflict_reply(payload, affect_conflict)
             llm_fields = generate_dialogue_fields(settings, payload)
+            llm_fields = apply_rag_grounding(payload, llm_fields)
             return build_dialogue_reply(payload, llm_fields)
         except Exception as exc:
             if isinstance(exc, HTTPException):

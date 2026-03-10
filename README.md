@@ -85,6 +85,9 @@ Current repository state:
   the retrieval-ready baseline for later RAG indexing, filtering, and safety guards
 - step 44 now adds a standalone `rag-service` baseline that loads the curated card set,
   applies metadata filtering, and returns scored `source_id`-bearing retrieval results
+- step 45 now routes retrieved knowledge cards through `apps/orchestrator` into
+  `services/dialogue-service`, so assistant replies carry grounded `knowledge_refs` and
+  card-consistent follow-up language instead of pure model freeform output
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -150,6 +153,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_high_risk_precheck.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_fallback_reply.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_conflict_clarification.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_rag_grounding.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_timeline.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_export.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_trace_lineage.py`

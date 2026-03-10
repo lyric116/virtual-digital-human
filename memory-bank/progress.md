@@ -21,6 +21,39 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 45 Dialogue RAG Grounding
+
+### Scope
+
+Completed implementation plan step 45 by routing rag-service retrieval through orchestrator into dialogue-service, grounding reply content against the retrieved cards, and making the same sleep query resolve to different knowledge_refs and follow-up language under low versus medium risk hints.
+
+### Outputs
+
+- apps/orchestrator/main.py
+- services/dialogue-service/main.py
+- data/kb/knowledge_cards.jsonl
+- scripts/verify_dialogue_rag_grounding.py
+- tests/test_orchestrator_mock_reply.py
+- tests/test_dialogue_service.py
+- docs/05-dialogue-state-llm.md
+- docs/06-rag-kb.md
+- apps/orchestrator/README.md
+- services/dialogue-service/README.md
+- README.md
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run python -m py_compile apps/orchestrator/main.py services/dialogue-service/main.py scripts/verify_dialogue_rag_grounding.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_knowledge_cards.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_rag_service.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_rag_grounding.py
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_orchestrator_mock_reply.py tests/test_dialogue_service.py tests/test_rag_service.py tests/test_knowledge_cards.py tests/test_environment_inventory.py tests/test_shared_contracts.py
+- UV_CACHE_DIR=.uv-cache uv run pytest with 186 passed
+
+### Next
+
+- Step 46: add explicit high-risk retrieval guardrails so only handoff-safe knowledge can appear once risk reaches high.
+
 ## 2026-03-10 - Step 44 RAG Retrieval Baseline
 
 ### Scope

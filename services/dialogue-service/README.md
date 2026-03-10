@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This service now covers implementation plan steps 23, 24, 27, 29, and 42:
+This service now covers implementation plan steps 23, 24, 27, 29, 42, and 45:
 
 - own the dialogue reply schema
 - validate all dialogue payloads against that schema
@@ -10,6 +10,7 @@ This service now covers implementation plan steps 23, 24, 27, 29, and 42:
 - generate compact staged dialogue summaries for longer sessions
 - return a safe fallback dialogue reply when the upstream LLM path fails
 - short-circuit multimodal conflict turns into clarification-first replies
+- ground normal replies with retrieved knowledge cards when orchestrator provides them
 
 ## Files
 
@@ -44,6 +45,12 @@ Required environment variables:
 
 - `POST /internal/dialogue/respond` now calls the configured LLM and converts its JSON
   output into the shared `DialogueReplyResponse` contract.
+- If orchestrator provides `metadata.knowledge_cards`, the prompt now includes those
+  cards explicitly and the service constrains `knowledge_refs` to the provided
+  `source_id` set.
+- When the model omits or invents `knowledge_refs`, the service now injects the top
+  retrieved `source_id` and appends one matching suggestion or follow-up so the reply is
+  actually grounded in the retrieved card.
 - `metadata.short_term_memory` is now part of the prompt contract so the service can
   answer simple factual recall questions over the last few turns.
 - `POST /internal/dialogue/summarize` uses the same LLM boundary to compress recent turns
@@ -65,3 +72,6 @@ Required environment variables:
   frontend still receives a persisted fallback assistant reply.
 - `scripts/verify_dialogue_conflict_clarification.py` proves a real gateway turn with
   multimodal conflict evidence now persists `affect.snapshot` and produces a clarification reply.
+- `scripts/verify_dialogue_rag_grounding.py` proves the same user query can produce
+  different `knowledge_refs` and different grounded reply text when the risk hint
+  changes from `low` to `medium`.

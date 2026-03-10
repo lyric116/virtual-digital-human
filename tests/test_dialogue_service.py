@@ -129,6 +129,49 @@ def test_dialogue_service_extracts_json_from_fenced_response(monkeypatch):
     assert "high_risk_expression" in response.safety_flags
 
 
+def test_dialogue_service_applies_rag_grounding_and_injects_refs():
+    module = load_dialogue_module()
+    payload = module.DialogueReplyRequest(
+        session_id="sess_fake_001",
+        trace_id="trace_fake_001",
+        user_message_id="msg_user_001",
+        content_text="晚上睡不着，脑子一直转。",
+        current_stage="intervene",
+        metadata={
+            "source": "test",
+            "knowledge_cards": [
+                {
+                    "source_id": "sleep_worry_container",
+                    "title": "睡前担忧暂存",
+                    "category": "sleep_support",
+                    "summary": "当用户睡前反复想事情时，用担忧暂存法帮助把问题从睡前转移到白天。",
+                    "recommended_phrases": ["我们先把问题暂存到明天一个固定时间，而不是让它们占满今晚。"],
+                    "followup_questions": ["你愿意把明天处理这些事的时间定在什么时候？"],
+                    "contraindications": ["avoid_promising_immediate_sleep"],
+                    "score": 0.81,
+                }
+            ],
+        },
+    )
+    llm_fields = module.LLMDialogueFields(
+        reply="谢谢你愿意说出来。",
+        emotion="anxious",
+        risk_level="medium",
+        stage="intervene",
+        next_action="ask_followup",
+        knowledge_refs=[],
+        avatar_style="warm_support",
+        safety_flags=[],
+    )
+
+    grounded = module.apply_rag_grounding(payload, llm_fields)
+
+    assert grounded.knowledge_refs == ["sleep_worry_container"]
+    assert "你愿意把明天处理这些事的时间定在什么时候" in grounded.reply
+    assert "rag_grounded_response" in grounded.safety_flags
+    assert "rag_refs_injected" in grounded.safety_flags
+
+
 def test_dialogue_service_generates_structured_summary(monkeypatch):
     module = load_dialogue_module()
     fake_client, fake_completions = make_fake_client(

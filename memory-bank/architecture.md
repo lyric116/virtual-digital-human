@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - RAG grounding now spans orchestrator and dialogue
+
+- Step 45 keeps the source-of-truth split intact: apps/orchestrator owns the call to services/rag-service and passes compact knowledge_cards into metadata, while services/dialogue-service consumes only that injected context and never reads data/kb/knowledge_cards.jsonl directly.
+- Dialogue grounding is now server-enforced rather than prompt-only: if the model omits or invents knowledge_refs, services/dialogue-service injects the top retrieved source_id and appends one matching suggestion or follow-up so the final reply remains traceable to the retrieved card set.
+- The curated card corpus now carries real low-versus-medium differentiation for sleep and breathing support, which makes risk-hinted retrieval verifiable before step 46 adds the stricter high-risk handoff-only guardrail.
+
 ## 2026-03-10 - RAG service now owns the first retrieval boundary
 
 - Step 44 establishes services/rag-service/main.py as the first executable retrieval boundary: it loads data/kb/knowledge_cards.jsonl at startup, builds an in-memory sparse vector index, and exposes internal retrieval results without coupling retrieval to dialogue generation yet.

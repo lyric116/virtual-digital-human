@@ -180,6 +180,7 @@ def test_orchestrator_uses_configured_dialogue_service_timeout(monkeypatch):
     settings = module.OrchestratorSettings(
         orchestrator_host="127.0.0.1",
         orchestrator_port=8010,
+        rag_service_base_url="http://127.0.0.1:8070",
         dialogue_service_base_url="http://127.0.0.1:8030",
         dialogue_service_timeout_seconds=45.0,
     )
@@ -190,6 +191,76 @@ def test_orchestrator_uses_configured_dialogue_service_timeout(monkeypatch):
     )
 
     assert captured["timeout"] == 45.0
+
+
+def test_orchestrator_injects_rag_cards_into_dialogue_request(monkeypatch):
+    module = load_orchestrator_module()
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __init__(self, body: bytes):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return self.body
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            raw_body = request.data.decode("utf-8")
+            captured[request.full_url] = raw_body
+            if request.full_url.endswith("/internal/rag/retrieve"):
+                return FakeResponse(
+                    b'{"session_id":"sess_fake_001","trace_id":"trace_fake_001","query_text":"'
+                    b'\\u665a\\u4e0a\\u7761\\u4e0d\\u7740","current_stage":"intervene",'
+                    b'"risk_level":"medium","emotion":"anxious","top_k":3,'
+                    b'"generated_at":"2026-03-10T12:00:00Z","index_card_count":11,'
+                    b'"candidate_count":2,"filters_applied":["stage:intervene","risk_level:medium"],'
+                    b'"results":[{"source_id":"sleep_worry_container","id":"sleep_worry_container",'
+                    b'"title":"\\u7761\\u524d\\u62c5\\u5fe7\\u6682\\u5b58","category":"sleep_support",'
+                    b'"summary":"summary","score":0.81,"stage":["intervene"],"risk_level":["medium"],'
+                    b'"emotion":["anxious"],"recommended_phrases":["\\u6211\\u4eec\\u5148\\u628a\\u95ee\\u9898'
+                    b'\\u6682\\u5b58\\u5230\\u660e\\u5929\\u4e00\\u4e2a\\u56fa\\u5b9a\\u65f6\\u95f4\\u3002"],'
+                    b'"followup_questions":["\\u4f60\\u613f\\u610f\\u628a\\u660e\\u5929\\u5904\\u7406'
+                    b'\\u8fd9\\u4e9b\\u4e8b\\u7684\\u65f6\\u95f4\\u5b9a\\u5728\\u4ec0\\u4e48\\u65f6\\u5019\\uff1f"],'
+                    b'"contraindications":["x"],"source":"internal_curated_v1"}]}'
+                )
+            return FakeResponse(
+                b'{"session_id":"sess_fake_001","trace_id":"trace_fake_001","message_id":"msg_assistant_001",'
+                b'"reply":"\\u8c22\\u8c22\\u4f60\\u613f\\u610f\\u8bf4\\u51fa\\u6765\\u3002","emotion":"anxious",'
+                b'"risk_level":"medium","stage":"intervene","next_action":"ask_followup",'
+                b'"knowledge_refs":["sleep_worry_container"],"avatar_style":"warm_support","safety_flags":[]}'
+            )
+
+    monkeypatch.setattr(module.urllib_request, "build_opener", lambda *args: FakeOpener())
+    payload = module.DialogueReplyRequest(
+        session_id="sess_fake_001",
+        trace_id="trace_fake_001",
+        user_message_id="msg_user_001",
+        content_text="晚上睡不着，脑子一直转。",
+        current_stage="intervene",
+        metadata={"source": "test", "rag_risk_level_hint": "medium", "rag_emotion_hint": "anxious"},
+    )
+    settings = module.OrchestratorSettings(
+        orchestrator_host="127.0.0.1",
+        orchestrator_port=8010,
+        rag_service_base_url="http://127.0.0.1:8070",
+        dialogue_service_base_url="http://127.0.0.1:8030",
+        dialogue_service_timeout_seconds=30.0,
+    )
+
+    response = module.request_dialogue_reply(settings, payload)
+
+    assert response.knowledge_refs == ["sleep_worry_container"]
+    dialogue_body = captured["http://127.0.0.1:8030/internal/dialogue/respond"]
+    assert "knowledge_cards" in dialogue_body
+    assert "sleep_worry_container" in dialogue_body
+    assert "knowledge_filters_applied" in dialogue_body
 
 
 def test_orchestrator_routes_translate_downstream_runtime_errors(monkeypatch):

@@ -96,6 +96,25 @@ LLM 只负责“怎么说”，不独占“是否高风险”的判断权。
   - 冲突样例“文本中性 + 音频低能量 + 视频稳定”必须先进入澄清追问
   - 导出 JSON 中必须同时看到 `affect.snapshot` 和带冲突字段的 `dialogue.reply`
 
+当前仓库在步骤 45 已将知识检索结果真正接入对话服务：
+
+- 触发位置：`apps/orchestrator` 在转发 `dialogue/respond` 之前先调用 `rag-service`
+- 检索条件：
+  - `current_stage`
+  - `risk_level`
+  - `content_text`
+  - 可选 `emotion`
+- 注入方式：
+  - 检索结果以 `metadata.knowledge_cards` 写入对话请求
+  - 只保留 `source_id`、`summary`、`recommended_phrases`、`followup_questions`、`contraindications`
+- 对话服务动作：
+  - prompt 中显式告知模型只能引用当前提供的 `source_id`
+  - 若模型未返回合法 `knowledge_refs`，服务端会自动注入首张卡片的 `source_id`
+  - 回复尾部会补一条与主卡片一致的建议句或追问句，避免变成“检索了但没用”
+- 当前验证：
+  - 同一条睡眠输入在 `low` 与 `medium` 风险下必须得到不同 `knowledge_refs`
+  - 回复内容也必须分别落到对应卡片的话术上，而不是只改一个 id
+
 ## 6. Prompt 结构
 
 建议拆成 5 段：
