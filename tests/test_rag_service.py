@@ -99,6 +99,31 @@ def test_rag_retrieval_keeps_high_risk_results_inside_handoff_cards():
     assert payload["results"]
     assert all(card["category"] == "handoff_support" for card in payload["results"])
     assert all(card["source_id"] for card in payload["results"])
+    assert "risk_guardrail:high_only_safe_categories" in payload["filters_applied"]
+
+
+def test_rag_high_risk_guardrail_bypasses_non_handoff_stage_filter():
+    module = load_rag_module()
+    index = module.build_knowledge_index(ROOT / "data" / "kb" / "knowledge_cards.jsonl")
+    settings = build_settings(module)
+    payload = module.retrieve_knowledge_cards(
+        index,
+        module.RAGRetrieveRequest(
+            session_id="sess_rag_high_guard",
+            trace_id="trace_rag_high_guard",
+            query_text="我现在真的不想活了，但还没有联系任何人。",
+            current_stage="assess",
+            risk_level="high",
+            emotion="distressed",
+            top_k=2,
+        ),
+        settings,
+    )
+
+    assert payload["results"]
+    assert all(card["category"] == "handoff_support" for card in payload["results"])
+    assert "risk_guardrail:high_only_safe_categories" in payload["filters_applied"]
+    assert "stage:bypassed_for_high_risk_guardrail" in payload["filters_applied"]
 
 
 def test_rag_service_routes_and_docs_are_present():

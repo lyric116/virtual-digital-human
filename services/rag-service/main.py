@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).resolve().parents[2]
 TOKEN_PATTERN = re.compile(r"[\u4e00-\u9fff]+|[a-z0-9']+")
 DEFAULT_CARDS_PATH = "data/kb/knowledge_cards.jsonl"
+HIGH_RISK_ALLOWED_CATEGORIES = {"handoff_support", "safety_support"}
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -300,6 +301,20 @@ def filter_candidates(
 ) -> tuple[list[IndexedKnowledgeCard], list[str]]:
     filters_applied: list[str] = []
     candidates = index.entries
+
+    if risk_level == "high":
+        candidates = [
+            entry for entry in candidates if entry.card.category in HIGH_RISK_ALLOWED_CATEGORIES
+        ]
+        filters_applied.append("risk_guardrail:high_only_safe_categories")
+        if current_stage:
+            filters_applied.append("stage:bypassed_for_high_risk_guardrail")
+
+        filtered = [entry for entry in candidates if risk_level in entry.card.risk_level]
+        if filtered:
+            candidates = filtered
+            filters_applied.append(f"risk_level:{risk_level}")
+        return candidates, filters_applied
 
     if current_stage:
         candidates = [entry for entry in candidates if current_stage in entry.card.stage]

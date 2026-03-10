@@ -34,13 +34,14 @@ The current retrieval baseline is intentionally simple:
 - score the remaining cards against the query text
 - return `source_id` plus short reusable support content
 
-This step does not add:
+This baseline still does not add rerank models, but it now does add one critical
+guardrail:
 
-- rerank models
-- dialogue injection
-- high-risk retrieval guardrails beyond the current card metadata
-
-Those stay in later steps.
+- if `risk_level=high`, retrieval is restricted to `handoff_support` and
+  `safety_support`
+- the usual stage filter is bypassed for that path so `assess` or `intervene` does not
+  accidentally suppress urgent handoff cards
+- `filters_applied` records both decisions for downstream inspection
 
 ## Current Coverage
 
@@ -60,6 +61,9 @@ Each returned card includes:
 - `recommended_phrases`
 - `followup_questions`
 - `contraindications`
+
+For high-risk requests, returned cards must stay inside the allowed safe categories even
+when the caller sends a non-handoff `current_stage`.
 
 ## Run
 

@@ -245,7 +245,7 @@ does not yet inject results into dialogue-service.
 | `generated_at` | string | Yes | Retrieval generation time. |
 | `index_card_count` | integer | Yes | Number of indexed cards currently loaded. |
 | `candidate_count` | integer | Yes | Candidate count after metadata filtering. |
-| `filters_applied` | array[string] | Yes | Filters that shaped the candidate set, for example `stage:intervene`. |
+| `filters_applied` | array[string] | Yes | Filters that shaped the candidate set, for example `stage:intervene`. High-risk guarded retrieval may emit `risk_guardrail:high_only_safe_categories` and `stage:bypassed_for_high_risk_guardrail`. |
 | `results` | array[object] | Yes | Retrieved knowledge cards. |
 | `results[].source_id` | string | Yes | Stable card identifier used later by dialogue and logging. |
 | `results[].title` | string | Yes | Human-readable card title. |

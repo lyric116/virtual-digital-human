@@ -76,7 +76,7 @@ def main() -> None:
                 "session_id": "sess_verify_rag_3",
                 "trace_id": "trace_verify_rag_3",
                 "query_text": "我现在真的不想活了，想结束生命。",
-                "current_stage": "handoff",
+                "current_stage": "assess",
                 "risk_level": "high",
                 "emotion": "distressed",
                 "top_k": 2,
@@ -103,6 +103,10 @@ def main() -> None:
         if query["name"] == "high_risk_handoff":
             if any(card["category"] != "handoff_support" for card in payload["results"]):
                 raise RuntimeError("high_risk_handoff: non-handoff card leaked into results")
+            if "risk_guardrail:high_only_safe_categories" not in payload["filters_applied"]:
+                raise RuntimeError("high_risk_handoff: missing high-risk guardrail flag")
+            if "stage:bypassed_for_high_risk_guardrail" not in payload["filters_applied"]:
+                raise RuntimeError("high_risk_handoff: stage was not bypassed for high risk")
 
         summaries.append(
             {

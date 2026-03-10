@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - High-Risk Retrieval Guardrail
+
+- rag-service now treats risk_level=high as a hard retrieval boundary: it filters to handoff_support and future safety_support categories before scoring, and it bypasses ordinary current_stage filtering so urgent safety cards are not excluded by assess/intervene metadata.
+- The retrieval contract now relies on filters_applied as an auditable safety trace; high-risk guarded queries must emit risk_guardrail:high_only_safe_categories and stage:bypassed_for_high_risk_guardrail so downstream services and reviewers can distinguish protected retrieval from normal stage-based retrieval.
+
 ## 2026-03-10 - RAG grounding now spans orchestrator and dialogue
 
 - Step 45 keeps the source-of-truth split intact: apps/orchestrator owns the call to services/rag-service and passes compact knowledge_cards into metadata, while services/dialogue-service consumes only that injected context and never reads data/kb/knowledge_cards.jsonl directly.

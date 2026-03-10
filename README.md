@@ -88,6 +88,9 @@ Current repository state:
 - step 45 now routes retrieved knowledge cards through `apps/orchestrator` into
   `services/dialogue-service`, so assistant replies carry grounded `knowledge_refs` and
   card-consistent follow-up language instead of pure model freeform output
+- step 46 now enforces a high-risk RAG guardrail so retrieval bypasses ordinary stage
+  filtering and only returns `handoff_support` or future `safety_support` cards when
+  `risk_level=high`
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists
@@ -162,6 +165,7 @@ Frontend shell preview:
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_camera_capture.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_affect_service.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_rag_service.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_rag_grounding.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_emotion_panel.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_final_transcript.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_audio_partial_transcript.py`

@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 46 High-Risk RAG Guardrail
+
+### Scope
+
+Completed implementation plan step 46 by enforcing a retrieval-side high-risk guardrail in rag-service so urgent queries bypass ordinary stage filtering and only return handoff-safe knowledge cards.
+
+### Outputs
+
+- services/rag-service/main.py now restricts high-risk retrieval to handoff_support and future safety_support categories before similarity scoring.
+- tests/test_rag_service.py now verifies that a high-risk query sent from current_stage=assess still returns only handoff cards and records the guardrail flags.
+- scripts/verify_rag_service.py now exercises the guarded path with a non-handoff stage and fails if ordinary support cards leak into the results.
+- docs/06-rag-kb.md, services/rag-service/README.md, docs/shared_contracts.md, and README.md now document the high-risk retrieval boundary.
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run python -m py_compile services/rag-service/main.py scripts/verify_rag_service.py
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_rag_service.py tests/test_knowledge_cards.py -q
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_knowledge_cards.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_rag_service.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+
+### Next
+
+- Step 47: connect high-risk retrieval guardrails to dialogue-level response restrictions and logging if the implementation plan requires further safety hardening.
+
 ## 2026-03-10 - Step 45 Dialogue RAG Grounding
 
 ### Scope
