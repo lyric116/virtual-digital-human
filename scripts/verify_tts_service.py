@@ -68,23 +68,28 @@ def post_json(url: str, payload: dict) -> dict:
         method="POST",
     )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=60) as response:
+    with opener.open(request, timeout=90) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def fetch_bytes(url: str) -> bytes:
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(url, timeout=60) as response:
+    with opener.open(url, timeout=90) as response:
         return response.read()
 
 
 def stop_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
     process.terminate()
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.wait(timeout=5)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            return
 
 
 def main() -> None:
@@ -136,7 +141,7 @@ def main() -> None:
             audio_bytes = fetch_bytes(payload["audio_url"])
             if not audio_bytes:
                 raise RuntimeError(f"tts audio bytes were empty for sample {index}")
-            if payload["audio_format"] != "mp3":
+            if payload["audio_format"] not in {"mp3", "wav"}:
                 raise RuntimeError(f"unexpected tts audio format: {payload['audio_format']}")
             durations.append(int(payload["duration_ms"]))
             results.append(
@@ -144,6 +149,9 @@ def main() -> None:
                     "index": index,
                     "voice_id": payload["voice_id"],
                     "audio_format": payload["audio_format"],
+                    "provider_used": payload.get("provider_used"),
+                    "fallback_used": payload.get("fallback_used"),
+                    "fallback_reason": payload.get("fallback_reason"),
                     "duration_ms": payload["duration_ms"],
                     "byte_size": payload["byte_size"],
                     "audio_url": payload["audio_url"],

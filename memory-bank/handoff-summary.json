@@ -5,9 +5,9 @@
     "title": "fix: harden gateway async pipeline and live verifiers"
   },
   "plan_status": {
-    "completed_through_step": 27,
-    "next_step": 28,
-    "next_step_title": "high-risk rule precheck"
+    "completed_through_step": 35,
+    "next_step": "35A",
+    "next_step_title": "enterprise 3D avatar offline validation"
   },
   "project_goal": "Build a multimodal emotional-support virtual digital human system with text/voice/camera input, ASR, stage-controlled LLM response, avatar output, and replay/evaluation.",
   "model_policy": {
@@ -23,14 +23,24 @@
     },
     "dialogue": {
       "provider": "OpenAI-compatible",
-      "model": "gpt-5.4",
+      "model": "gpt-5.2",
       "env_keys": [
         "LLM_PROVIDER",
         "LLM_BASE_URL",
         "LLM_API_KEY",
         "LLM_MODEL"
       ],
-      "notes": "Use gpt-5.4 for dialogue and summary generation."
+      "notes": "Use gpt-5.2 for dialogue and summary generation."
+    },
+    "tts": {
+      "provider": "edge_tts",
+      "fallback": "local wav generation",
+      "env_keys": [
+        "TTS_PROVIDER",
+        "TTS_EDGE_TIMEOUT_SECONDS",
+        "TTS_ENABLE_WAVE_FALLBACK"
+      ],
+      "notes": "Frontend playback must trust returned audio_format because wav fallback is allowed."
     }
   },
   "major_workstreams": [
@@ -41,12 +51,14 @@
     "MAGICDATA-based public Chinese ASR evaluation lane",
     "Frontend shell, gateway, realtime session flow, export, and trace continuity",
     "Recording controls, audio upload, preview/final ASR transcript flow",
-    "Dialogue-service schema gate, real LLM integration, stage machine, short-term memory, and dialogue summary",
-    "Post-review hardening for async IO, websocket delivery, MIME handling, env parsing, and verifier topology"
+    "Dialogue-service schema gate, real LLM integration, stage machine, short-term memory, dialogue summary, and high-risk/fallback hardening",
+    "TTS service, frontend playback, static avatar baseline, mouth drive, dual-avatar switching, and expression presets",
+    "Post-review hardening for async IO, websocket delivery, MIME handling, env parsing, verifier topology, and TTS fallback stability"
   ],
   "completed_steps": [
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-    "18B", "18C", 19, 20, 21, 22, "22A", 23, 24, 25, 26, 27
+    "18B", "18C", 19, 20, 21, 22, "22A", 23, 24, 25, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35
   ],
   "enterprise_data": {
     "manifest_path": "data/manifests/val_manifest.jsonl",
@@ -73,17 +85,19 @@
     "asr_service": "services/asr-service/main.py"
   },
   "last_verified_state": {
-    "full_test_result": "122 passed",
+    "full_test_result": "142 passed",
     "notes": [
       "Latest stability pass fixed blocking gateway work inside async routes.",
       "WebSocket duplicate/loss edge cases were fixed.",
       "Parameterized MIME types like audio/webm;codecs=opus are now normalized.",
-      "Live verifier scripts now boot dialogue-service when orchestrator depends on it."
+      "Live verifier scripts now boot dialogue-service when orchestrator depends on it.",
+      "TTS now falls back to a local wav asset when edge_tts times out.",
+      "Dialogue live verifiers are confirmed with gpt-5.2 when run serially."
     ]
   },
   "resume_rules": [
     "Read handoff-summary.md, then progress.md and architecture.md.",
-    "Continue from implementation plan step 28 unless redirected.",
+    "Continue from implementation plan step 35A unless redirected.",
     "Use uv run for Python commands.",
     "Run tests before every commit.",
     "Commit and push only after passing checks.",

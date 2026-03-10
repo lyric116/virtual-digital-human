@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - dialogue now targets gpt-5.2 and tts has a local fallback boundary
+
+- Dialogue and summary generation now target gpt-5.2 through the LLM_* contract, and the real verifier set must continue to run serially because this shared provider has much higher latency than the earlier baseline.
+- services/tts-service is no longer a pure remote edge_tts wrapper: it now owns a second provider_used mode called wave_fallback, so downstream playback and regression tooling must trust the returned audio_format instead of assuming mp3.
+- Live verifier scripts that boot local uvicorn services must treat cleanup as best-effort; otherwise successful behavioral checks can still report failure because child process shutdown takes longer than the verifier timeout.
+
 ## 2026-03-10 - Stage semantics now reach the avatar layer
 
 - Step 35 keeps the avatar layer rule-based: apps/web now resolves stage, emotion, and risk_level into a small fixed preset set instead of trying to infer continuous expressions from raw text or audio.

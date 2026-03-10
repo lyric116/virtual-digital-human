@@ -21,6 +21,10 @@ ORCHESTRATOR_MAIN = ROOT / "apps" / "orchestrator" / "main.py"
 DIALOGUE_MAIN = ROOT / "services" / "dialogue-service" / "main.py"
 TTS_MAIN = ROOT / "services" / "tts-service" / "main.py"
 HARNESS = ROOT / "scripts" / "web_tts_playback_harness.js"
+CONNECT_TIMEOUT_MS = "10000"
+REPLY_TIMEOUT_MS = "45000"
+PLAYBACK_START_TIMEOUT_MS = "60000"
+PLAYBACK_COMPLETE_TIMEOUT_MS = "80000"
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -88,12 +92,18 @@ def wait_for_health(url: str, label: str) -> None:
 
 
 def stop_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
     process.terminate()
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.wait(timeout=5)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # Cleanup failure should not hide the original verifier result.
+            return
 
 
 def main() -> None:
@@ -226,13 +236,13 @@ def main() -> None:
                 "--tts-base-url",
                 tts_base_url,
                 "--connect-timeout-ms",
-                "8000",
+                CONNECT_TIMEOUT_MS,
                 "--reply-timeout-ms",
-                "30000",
+                REPLY_TIMEOUT_MS,
                 "--playback-start-timeout-ms",
-                "30000",
+                PLAYBACK_START_TIMEOUT_MS,
                 "--playback-complete-timeout-ms",
-                "32000",
+                PLAYBACK_COMPLETE_TIMEOUT_MS,
             ],
             cwd=ROOT,
             capture_output=True,

@@ -21,6 +21,39 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - gpt-5.2 confirmation and tts fallback hardening
+
+### Scope
+
+Confirmed the .env dialogue model switch to gpt-5.2 with real live verifiers, fixed the step-27 summary verifier race by adding a gateway summary fallback, and hardened steps 30-35 by adding local wav fallback for tts-service plus safer verifier shutdown handling.
+
+### Outputs
+
+- apps/api-gateway/main.py summary refresh now falls back locally when remote summary generation fails
+- services/tts-service/main.py now uses edge_tts first and falls back to a locally generated wav asset when remote synthesis times out or fails
+- scripts/verify_dialogue_summary_memory.py now waits for persisted summaries instead of checking too early
+- scripts/verify_tts_service.py, scripts/verify_web_tts_playback.py, scripts/verify_web_avatar_switch.py, scripts/verify_web_avatar_mouth_drive.py, and scripts/verify_web_avatar_baseline.py now avoid cleanup errors masking successful live results
+- README.md, docs/environment.md, docs/05-dialogue-state-llm.md, docs/07-tts-avatar.md, docs/shared_contracts.md, and handoff summary files now describe gpt-5.2 plus mp3-or-wav TTS behavior
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_api_gateway_session_create.py tests/test_tts_service.py tests/test_web_tts_playback.py tests/test_web_avatar_switch.py tests/test_web_avatar_mouth_drive.py tests/test_web_avatar_baseline.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_llm_samples.py -> passed with gpt-5.2
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_schema_validation.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_stage_machine.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_short_term_memory.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_dialogue_summary_memory.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_mock_reply.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_tts_service.py -> passed via wav fallback
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_tts_playback.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_switch.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_avatar_mouth_drive.py -> passed
+- UV_CACHE_DIR=.uv-cache uv run pytest -> 142 passed
+
+### Next
+
+- Continue implementation_plan with step 35A after keeping dialogue live verifiers serialized and leaving qwen3-asr-flash limited to ASR
+
 ## 2026-03-10 - Step 35 avatar expression presets
 
 ### Scope

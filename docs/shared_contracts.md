@@ -231,6 +231,9 @@ converted into one playable speech asset.
 | `audio_url` | string | Yes | URL that can be fetched directly for playback. |
 | `duration_ms` | integer | Yes | Expected playback duration. |
 | `byte_size` | integer | Yes | Stored audio byte size. |
+| `provider_used` | string | Yes | Actual provider path used for this asset, currently `edge_tts` or `wave_fallback`. |
+| `fallback_used` | boolean | Yes | Whether the local fallback path generated the asset. |
+| `fallback_reason` | string | No | Machine-readable fallback reason when `fallback_used=true`. |
 | `generated_at` | string | Yes | Asset generation time. |
 
 ## Avatar Command

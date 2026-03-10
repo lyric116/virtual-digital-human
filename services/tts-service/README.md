@@ -34,19 +34,20 @@ Required environment variables:
 - `TTS_PROVIDER`
 - `TTS_VOICE_A`
 - `TTS_AUDIO_FORMAT`
+- `TTS_EDGE_TIMEOUT_SECONDS`
+- `TTS_ENABLE_WAVE_FALLBACK`
 - `TTS_STORAGE_ROOT`
 
 ## Notes
 
-- Current step-30 baseline uses `edge_tts` with one Chinese voice and writes local `mp3`
-  files under `TTS_STORAGE_ROOT`.
+- Current step-30 baseline uses `edge_tts` first and falls back to a locally generated
+  `wav` asset when the remote path times out or fails.
 - Voice aliases such as `companion_female_01` are mapped to concrete `edge-tts` voice ids
   inside the service.
 - `TTS_CORS_ORIGINS` must include the frontend preview origin because step 31 lets the
   browser call `POST /internal/tts/synthesize` directly.
-- `TTS_AUDIO_FORMAT` may still be configured as `wav` elsewhere, but the current
-  `edge_tts` baseline always returns actual `mp3` output and reports that in the
-  response payload.
+- The response payload is authoritative for playback: successful remote synthesis usually
+  returns `mp3`, while the local fallback path returns `wav`.
 - `scripts/verify_tts_service.py` runs three fixed Chinese samples and confirms that the
   service returns playable audio URLs with increasing durations for longer text.
 - `scripts/verify_web_tts_playback.py` starts the full frontend dialogue chain and checks

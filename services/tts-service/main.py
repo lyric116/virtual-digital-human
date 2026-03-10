@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import math
 import os
 from pathlib import Path
+import struct
 from typing import Literal
 from urllib.parse import quote
 from uuid import uuid4
+import wave
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,6 +69,8 @@ class TTSServiceSettings:
     tts_audio_format: str
     tts_storage_root: str
     tts_cors_origins: tuple[str, ...]
+    tts_edge_timeout_seconds: float
+    tts_enable_wave_fallback: bool
 
     @classmethod
     def from_env(cls) -> "TTSServiceSettings":
@@ -95,6 +101,9 @@ class TTSServiceSettings:
                 ).split(",")
                 if value.strip()
             ),
+            tts_edge_timeout_seconds=float(os.getenv("TTS_EDGE_TIMEOUT_SECONDS", "18")),
+            tts_enable_wave_fallback=os.getenv("TTS_ENABLE_WAVE_FALLBACK", "true").strip().lower()
+            not in {"0", "false", "no", "off"},
         )
 
 
@@ -126,6 +135,9 @@ class TTSSynthesizeResponse(BaseModel):
     audio_url: str
     duration_ms: int = Field(ge=0)
     byte_size: int = Field(ge=0)
+    provider_used: Literal["edge_tts", "wave_fallback"]
+    fallback_used: bool = False
+    fallback_reason: str | None = None
     generated_at: datetime
 
 
@@ -134,12 +146,6 @@ def resolve_voice_id(settings: TTSServiceSettings, requested_voice_id: str | Non
     if not raw_voice:
         raw_voice = settings.tts_voice_a
     return EDGE_TTS_VOICE_ALIASES.get(raw_voice, raw_voice)
-
-
-def resolve_audio_format(settings: TTSServiceSettings) -> Literal["mp3", "wav"]:
-    if settings.tts_provider == "edge_tts":
-        return "mp3"
-    return "wav"
 
 
 def estimate_duration_ms(text: str) -> int:
@@ -174,25 +180,96 @@ async def synthesize_edge_tts(
     return last_boundary_ms or estimate_duration_ms(text)
 
 
+def synthesize_wave_fallback(
+    *,
+    text: str,
+    output_path: Path,
+) -> int:
+    sample_rate_hz = 16_000
+    duration_ms = estimate_duration_ms(text)
+    total_frames = max(sample_rate_hz // 2, int(sample_rate_hz * duration_ms / 1000))
+    attack_frames = max(1, sample_rate_hz // 40)
+    release_frames = max(1, sample_rate_hz // 25)
+    punctuation_marks = {"，", "。", "！", "？", ",", ".", "!", "?"}
+    tone_bases = (220.0, 277.18, 329.63, 392.0)
+    punctuation_boost = 1.2 + sum(1 for char in text if char in punctuation_marks) * 0.08
+    amplitude = 9_000
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    frame_bytes = bytearray()
+    for frame_index in range(total_frames):
+        progress = frame_index / max(total_frames - 1, 1)
+        base_index = min(int(progress * len(tone_bases)), len(tone_bases) - 1)
+        frequency = tone_bases[base_index] * punctuation_boost
+        time_offset = frame_index / sample_rate_hz
+        envelope = 1.0
+        if frame_index < attack_frames:
+            envelope = frame_index / attack_frames
+        elif frame_index > total_frames - release_frames:
+            envelope = max(0.0, (total_frames - frame_index) / release_frames)
+        modulation = 0.55 + 0.45 * math.sin(2 * math.pi * 2.7 * time_offset)
+        sample_value = int(
+            amplitude
+            * envelope
+            * modulation
+            * math.sin(2 * math.pi * frequency * time_offset)
+        )
+        frame_bytes.extend(struct.pack("<h", sample_value))
+
+    with wave.open(str(output_path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate_hz)
+        wav_file.writeframes(frame_bytes)
+
+    return duration_ms
+
+
 async def synthesize_tts_asset(
     settings: TTSServiceSettings,
     request: TTSSynthesizeRequest,
 ) -> TTSSynthesizeResponse:
     provider = settings.tts_provider.strip().lower()
     voice_id = resolve_voice_id(settings, request.voice_id)
-    audio_format = resolve_audio_format(settings)
     tts_id = f"tts_{uuid4().hex[:24]}"
     generated_at = datetime.now(timezone.utc)
-    output_path = (ROOT / settings.tts_storage_root / f"{tts_id}.{audio_format}").resolve()
+    fallback_reason: str | None = None
+    provider_used: Literal["edge_tts", "wave_fallback"]
 
-    if provider != "edge_tts":
+    if provider == "wave_fallback":
+        audio_format: Literal["mp3", "wav"] = "wav"
+        output_path = (ROOT / settings.tts_storage_root / f"{tts_id}.{audio_format}").resolve()
+        duration_ms = synthesize_wave_fallback(text=request.text, output_path=output_path)
+        provider_used = "wave_fallback"
+        fallback_used = True
+        fallback_reason = "provider_forced_wave_fallback"
+    elif provider == "edge_tts":
+        audio_format = "mp3"
+        output_path = (ROOT / settings.tts_storage_root / f"{tts_id}.{audio_format}").resolve()
+        try:
+            duration_ms = await asyncio.wait_for(
+                synthesize_edge_tts(
+                    text=request.text,
+                    voice_id=voice_id,
+                    output_path=output_path,
+                ),
+                timeout=settings.tts_edge_timeout_seconds,
+            )
+            provider_used = "edge_tts"
+            fallback_used = False
+        except Exception as exc:
+            if not settings.tts_enable_wave_fallback:
+                raise RuntimeError(f"edge_tts failed: {exc}") from exc
+            if output_path.exists():
+                output_path.unlink(missing_ok=True)
+            audio_format = "wav"
+            output_path = (ROOT / settings.tts_storage_root / f"{tts_id}.{audio_format}").resolve()
+            duration_ms = synthesize_wave_fallback(text=request.text, output_path=output_path)
+            provider_used = "wave_fallback"
+            fallback_used = True
+            fallback_reason = exc.__class__.__name__
+    else:
         raise RuntimeError(f"unsupported TTS_PROVIDER: {settings.tts_provider}")
-
-    duration_ms = await synthesize_edge_tts(
-        text=request.text,
-        voice_id=voice_id,
-        output_path=output_path,
-    )
 
     audio_url = f"{settings.tts_service_base_url}/media/tts/{quote(output_path.name)}"
     return TTSSynthesizeResponse(
@@ -206,6 +283,9 @@ async def synthesize_tts_asset(
         audio_url=audio_url,
         duration_ms=duration_ms,
         byte_size=output_path.stat().st_size,
+        provider_used=provider_used,
+        fallback_used=fallback_used,
+        fallback_reason=fallback_reason,
         generated_at=generated_at,
     )
 

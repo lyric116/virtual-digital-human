@@ -104,7 +104,7 @@ code or deployment files.
 | `LLM_PROVIDER` | Yes | `openai_compatible` | Logical provider name used by dialogue service. |
 | `LLM_BASE_URL` | Yes | `https://api.openai.com/v1` | Base URL for the selected LLM provider. For the current dialogue path, point this to the OpenAI-compatible endpoint that serves your configured reasoning model. |
 | `LLM_API_KEY` | Yes | empty | API key for the selected LLM provider. |
-| `LLM_MODEL` | Yes | `gpt-5.4` | Model identifier for structured dialogue generation and summary generation. |
+| `LLM_MODEL` | Yes | `gpt-5.2` | Model identifier for structured dialogue generation and summary generation. |
 | `LLM_TIMEOUT_SECONDS` | Yes | `60` | End-to-end timeout per LLM request. |
 | `LLM_CONTEXT_WINDOW` | Yes | `8192` | Minimum supported context budget for prompts and history. |
 | `DIALOGUE_FORCE_FAILURE_MODE` | No | empty | Verifier-only fault injection switch for step 29. Supported values: `timeout`, `empty`, `invalid_json`, `invalid_fields`. |
@@ -136,13 +136,15 @@ code or deployment files.
 | `TTS_SERVICE_PORT` | Yes | `8040` | HTTP port for the standalone TTS service. |
 | `TTS_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8040` | Public base URL used when the TTS service returns `audio_url`. |
 | `TTS_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173` | Browser origins allowed to call the TTS service directly during frontend preview. |
-| `TTS_PROVIDER` | Yes | `set-your-tts-provider` | Logical provider name for TTS. |
+| `TTS_PROVIDER` | Yes | `edge_tts` | Logical provider name for TTS. |
 | `TTS_BASE_URL` | No | empty | API endpoint for TTS if a remote provider is used. |
 | `TTS_API_KEY` | No | empty | API key for the TTS provider. |
 | `TTS_MODEL` | No | empty | TTS model identifier. |
 | `TTS_VOICE_A` | Yes | `companion_female_01` | Voice id for avatar A. |
 | `TTS_VOICE_B` | Yes | `coach_male_01` | Voice id for avatar B. |
-| `TTS_AUDIO_FORMAT` | Yes | `mp3` | Preferred output format consumed by avatar playback. The current step-30 `edge_tts` baseline always returns actual `mp3`. |
+| `TTS_AUDIO_FORMAT` | Yes | `mp3` | Preferred output format consumed by avatar playback. The service may still return `wav` when the local fallback path takes over. |
+| `TTS_EDGE_TIMEOUT_SECONDS` | Yes | `18` | Maximum wait time for the remote `edge_tts` path before the service falls back locally. |
+| `TTS_ENABLE_WAVE_FALLBACK` | Yes | `true` | Whether `tts-service` should generate a local fallback `wav` asset when the remote path times out or fails. |
 | `TTS_MODEL_PATH` | No | empty | Local path for self-hosted TTS weights. |
 | `TTS_STORAGE_ROOT` | Yes | `data/derived/tts_audio` | Local directory used by the TTS service to store generated speech assets. |
 

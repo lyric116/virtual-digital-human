@@ -656,6 +656,69 @@ def should_refresh_dialogue_summary(
     return existing_summary.get("user_turn_count") != user_turn_count
 
 
+def truncate_summary_fragment(value: str, *, limit: int = 28) -> str:
+    normalized = " ".join(str(value).split()).strip()
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit].rstrip()}..."
+
+
+def classify_summary_fallback_reason(exc: Exception) -> str:
+    message = str(exc).strip().lower()
+    if "not configured" in message:
+        return "not_configured"
+    if isinstance(exc, TimeoutError) or "timed out" in message or "timeout" in message:
+        return "timeout"
+    if "invalid" in message or "json" in message:
+        return "invalid_output"
+    return "upstream_error"
+
+
+def build_dialogue_summary_fallback(
+    session: dict[str, Any],
+    *,
+    user_turn_count: int,
+    previous_summary: str | None,
+    recent_messages: list[dict[str, Any]],
+) -> DialogueSummaryResponse:
+    recent_user_fragments: list[str] = []
+    seen_fragments: set[str] = set()
+    for message in recent_messages:
+        if message.get("role") != "user":
+            continue
+        fragment = truncate_summary_fragment(str(message.get("content_text", "")).strip(), limit=20)
+        if not fragment or fragment in seen_fragments:
+            continue
+        seen_fragments.add(fragment)
+        recent_user_fragments.append(fragment)
+
+    recent_user_fragments = recent_user_fragments[-2:]
+    parts: list[str] = []
+    if previous_summary:
+        parts.append(truncate_summary_fragment(previous_summary, limit=32))
+
+    if len(recent_user_fragments) >= 2:
+        parts.append(
+            f"用户近期提到{recent_user_fragments[0]}，并继续围绕{recent_user_fragments[1]}"
+        )
+    elif len(recent_user_fragments) == 1:
+        parts.append(f"用户近期提到{recent_user_fragments[0]}")
+    else:
+        parts.append("用户近期仍在描述当前困扰")
+
+    summary_text = "；".join(dict.fromkeys(part for part in parts if part)).strip()
+    summary_text = f"{summary_text}，当前进入 {session['stage']} 阶段。"
+
+    return DialogueSummaryResponse(
+        session_id=session["session_id"],
+        trace_id=session["trace_id"],
+        summary_text=summary_text,
+        current_stage=session["stage"],
+        user_turn_count=user_turn_count,
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
 class PostgresSessionRepository:
     def __init__(self, settings: GatewaySettings):
         self.database_url = settings.database_url
@@ -2214,25 +2277,43 @@ def maybe_refresh_dialogue_summary(
     ):
         return None
 
-    summary_response = request_dialogue_summary(
-        settings,
-        assistant_result["session"],
-        user_turn_count=user_turn_count,
-        previous_summary=(
-            str(existing_summary.get("summary_text")).strip()
-            if isinstance(existing_summary, dict) and existing_summary.get("summary_text")
-            else None
-        ),
-        recent_messages=repository.get_recent_dialogue_context(
-            session_id,
-            limit=SUMMARY_CONTEXT_LIMIT,
-        ),
+    previous_summary = (
+        str(existing_summary.get("summary_text")).strip()
+        if isinstance(existing_summary, dict) and existing_summary.get("summary_text")
+        else None
     )
+    recent_messages = repository.get_recent_dialogue_context(
+        session_id,
+        limit=SUMMARY_CONTEXT_LIMIT,
+    )
+    summary_source = "llm"
+    summary_fallback_reason: str | None = None
+    try:
+        summary_response = request_dialogue_summary(
+            settings,
+            assistant_result["session"],
+            user_turn_count=user_turn_count,
+            previous_summary=previous_summary,
+            recent_messages=recent_messages,
+        )
+    except RuntimeError as exc:
+        summary_response = build_dialogue_summary_fallback(
+            assistant_result["session"],
+            user_turn_count=user_turn_count,
+            previous_summary=previous_summary,
+            recent_messages=recent_messages,
+        )
+        summary_source = "fallback"
+        summary_fallback_reason = classify_summary_fallback_reason(exc)
+
     summary_payload = {
         **summary_response.model_dump(mode="json"),
         "summary_version": 1,
         "generated_from_message_id": assistant_result["message"]["message_id"],
+        "summary_source": summary_source,
     }
+    if summary_fallback_reason:
+        summary_payload["summary_fallback_reason"] = summary_fallback_reason
     updated_session = repository.update_dialogue_summary(session_id, summary_payload)
     return {
         "session": updated_session,

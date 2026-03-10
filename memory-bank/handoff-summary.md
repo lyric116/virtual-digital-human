@@ -37,7 +37,7 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
 - Do not use `rm` for rollback; use git rollback to a known-good commit.
 - `qwen3-asr-flash` is allowed only for ASR.
 - Dialogue and summary generation must use `LLM_*` config and currently target
-  `gpt-5.4`.
+  `gpt-5.2`.
 - ASR config must use only `ASR_API_KEY`, `ASR_BASE_URL`, and `ASR_MODEL`.
 - Public Chinese ASR evaluation uses MAGICDATA and must stay separate from the
   enterprise transcript workflow.
@@ -89,10 +89,12 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
   transcript path, ASR postprocess, ASR baseline gating.
 - Step 23-27: dialogue-service schema gate, real LLM reply path, gateway stage
   machine, short-term memory, dialogue summary layer.
+- Step 28-35: high-risk precheck, dialogue fallback reply, TTS playback, static
+  avatar baseline, mouth drive, dual avatar switch, and stage-driven expression presets.
 
 ### 6. Recent fixes
 
-- Removed `qwen-plus` as dialogue baseline and switched dialogue to `gpt-5.4`.
+- Removed `qwen-plus` as dialogue baseline and switched dialogue to `gpt-5.2`.
 - Fixed gateway async blocking and moved blocking work off the event loop.
 - Fixed websocket event duplicate/loss edge cases.
 - Fixed MIME normalization for real browser audio types like
@@ -110,7 +112,7 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
 - Orchestrator: `apps/orchestrator/main.py`
 - Dialogue: `services/dialogue-service/main.py`
 - ASR: `services/asr-service/main.py`
-- Tests: `122 passed` on the last full run
+- Tests: `142 passed` on the last full run
 
 ## Current Model / Provider Policy
 
@@ -120,8 +122,12 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
   - env: `ASR_API_KEY`, `ASR_BASE_URL`, `ASR_MODEL`
 - Dialogue and summary:
   - provider path: OpenAI-compatible
-  - model: `gpt-5.4`
+  - model: `gpt-5.2`
   - env: `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`
+- TTS:
+  - provider path: `edge_tts`
+  - fallback path: local generated `wav`
+  - env: `TTS_PROVIDER`, `TTS_EDGE_TIMEOUT_SECONDS`, `TTS_ENABLE_WAVE_FALLBACK`
 
 ## Important Files To Read First
 
@@ -149,8 +155,8 @@ transcript -> dialogue -> realtime UI -> persistence -> export -> evaluation.
 1. Read this file.
 2. Read `memory-bank/progress.md` from newest to older entries as needed.
 3. Read `memory-bank/architecture.md` for stable constraints.
-4. Continue from implementation plan step `28` unless the user redirects.
-5. Keep `qwen3-asr-flash` limited to ASR and `gpt-5.4` limited to dialogue.
+4. Continue from implementation plan step `35A` unless the user redirects.
+5. Keep `qwen3-asr-flash` limited to ASR and `gpt-5.2` limited to dialogue.
 6. Use `uv run` for Python commands.
 7. Run tests before commit.
 8. Commit and push only after passing checks.
@@ -162,4 +168,3 @@ docker compose -f infra/compose/docker-compose.yml up -d
 UV_CACHE_DIR=.uv-cache uv run pytest
 UV_CACHE_DIR=.uv-cache uv run python scripts/verify_infra_stack.py --compose-file infra/compose/docker-compose.yml
 ```
-

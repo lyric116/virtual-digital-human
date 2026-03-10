@@ -20,6 +20,7 @@ GATEWAY_MAIN = ROOT / "apps" / "api-gateway" / "main.py"
 ORCHESTRATOR_MAIN = ROOT / "apps" / "orchestrator" / "main.py"
 DIALOGUE_MAIN = ROOT / "services" / "dialogue-service" / "main.py"
 TURN_WAIT_TIMEOUT_SECONDS = 70
+SUMMARY_WAIT_TIMEOUT_SECONDS = 90
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -79,6 +80,26 @@ def wait_for_message_count(base_url: str, session_id: str, count: int) -> dict:
             return payload
         time.sleep(0.5)
     raise RuntimeError(f"session {session_id} did not reach {count} messages in time")
+
+
+def wait_for_dialogue_summary(base_url: str, session_id: str) -> dict:
+    deadline = time.time() + SUMMARY_WAIT_TIMEOUT_SECONDS
+    while time.time() < deadline:
+        payload = get_json(f"{base_url}/api/session/{session_id}/state")
+        summary = ((payload.get("session") or {}).get("metadata") or {}).get("dialogue_summary")
+        if isinstance(summary, dict) and str(summary.get("summary_text", "")).strip():
+            return payload
+        time.sleep(0.5)
+    raise RuntimeError("dialogue summary was not generated after three user turns")
+
+
+def stop_process(process: subprocess.Popen[str]) -> None:
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
 
 
 def resolve_database_url(env: dict[str, str]) -> str:
@@ -223,11 +244,12 @@ def main() -> None:
             )
             state = wait_for_message_count(gateway_base_url, session_id, index * 2)
 
+        state = wait_for_dialogue_summary(gateway_base_url, session_id)
         session_metadata = state["session"].get("metadata") or {}
         summary = session_metadata.get("dialogue_summary") or {}
         summary_text = str(summary.get("summary_text", "")).strip()
         if not summary_text:
-            raise RuntimeError("dialogue summary was not generated after three user turns")
+            raise RuntimeError("dialogue summary was still empty after summary wait")
         if summary.get("user_turn_count") != 3:
             raise RuntimeError(
                 f"unexpected summary user_turn_count: {summary.get('user_turn_count')}"
@@ -271,12 +293,9 @@ def main() -> None:
             )
         )
     finally:
-        gateway.terminate()
-        gateway.wait(timeout=5)
-        orchestrator.terminate()
-        orchestrator.wait(timeout=5)
-        dialogue_service.terminate()
-        dialogue_service.wait(timeout=5)
+        stop_process(gateway)
+        stop_process(orchestrator)
+        stop_process(dialogue_service)
 
 
 if __name__ == "__main__":

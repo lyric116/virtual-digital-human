@@ -35,15 +35,23 @@ def build_settings(module):
         tts_audio_format="wav",
         tts_storage_root="data/derived/test_tts_audio",
         tts_cors_origins=("http://127.0.0.1:4173",),
+        tts_edge_timeout_seconds=18.0,
+        tts_enable_wave_fallback=True,
     )
 
 
-def test_tts_service_resolves_voice_alias_and_estimates_duration():
+def test_tts_service_resolves_voice_alias_and_estimates_duration(tmp_path):
     module = load_tts_module()
 
     assert module.resolve_voice_id(build_settings(module), "companion_female_01") == "zh-CN-XiaoxiaoNeural"
     assert module.resolve_voice_id(build_settings(module), "zh-CN-YunxiNeural") == "zh-CN-YunxiNeural"
     assert module.estimate_duration_ms("短句") < module.estimate_duration_ms("这是一个明显更长的中文句子。")
+    duration_ms = module.synthesize_wave_fallback(
+        text="这是一个本地兜底音频。",
+        output_path=tmp_path / "fallback.wav",
+    )
+    assert duration_ms >= module.estimate_duration_ms("这是一个本地兜底音频。")
+    assert (tmp_path / "fallback.wav").exists()
 
 
 def test_tts_service_synthesizes_contract_with_mocked_edge_tts(tmp_path, monkeypatch):
@@ -76,6 +84,43 @@ def test_tts_service_synthesizes_contract_with_mocked_edge_tts(tmp_path, monkeyp
     assert response.duration_ms == 2345
     assert response.byte_size == len(b"fake-mp3-data")
     assert response.audio_url.endswith(".mp3")
+    assert response.provider_used == "edge_tts"
+    assert response.fallback_used is False
+
+
+def test_tts_service_falls_back_to_wave_when_edge_tts_fails(tmp_path, monkeypatch):
+    module = load_tts_module()
+    settings = build_settings(module)
+    settings.tts_storage_root = str(tmp_path)
+    settings.tts_edge_timeout_seconds = 0.01
+    settings.tts_enable_wave_fallback = True
+
+    async def fake_synthesize_edge_tts(*, text, voice_id, output_path):
+        raise TimeoutError("edge_tts upstream timeout")
+
+    monkeypatch.setattr(module, "synthesize_edge_tts", fake_synthesize_edge_tts)
+
+    response = asyncio.run(
+        module.synthesize_tts_asset(
+            settings,
+            module.TTSSynthesizeRequest(
+                text="这是回退路径测试。",
+                voice_id="coach_male_01",
+                session_id="sess_fake_002",
+                trace_id="trace_fake_002",
+                message_id="msg_assistant_002",
+            ),
+        )
+    )
+
+    assert response.audio_format == "wav"
+    assert response.voice_id == "zh-CN-YunxiNeural"
+    assert response.duration_ms >= module.estimate_duration_ms("这是回退路径测试。")
+    assert response.byte_size > 0
+    assert response.audio_url.endswith(".wav")
+    assert response.provider_used == "wave_fallback"
+    assert response.fallback_used is True
+    assert response.fallback_reason == "TimeoutError"
 
 
 def test_tts_service_app_and_readme_document_endpoints():

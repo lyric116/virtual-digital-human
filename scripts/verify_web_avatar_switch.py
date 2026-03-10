@@ -88,12 +88,17 @@ def wait_for_health(url: str, label: str) -> None:
 
 
 def stop_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
     process.terminate()
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.wait(timeout=5)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            return
 
 
 def run_harness(*, gateway_base_url: str, gateway_ws_url: str, tts_base_url: str, avatar_id: str) -> dict:

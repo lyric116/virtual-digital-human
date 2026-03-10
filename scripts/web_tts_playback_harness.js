@@ -18,10 +18,10 @@ function parseArgs(argv) {
     dialogueEmotion: "anxious",
     dialogueRiskLevel: "medium",
     replyText: "谢谢你愿意说出来。我们先慢一点，把今晚最难受的部分说清楚。",
-    connectTimeoutMs: 5000,
-    replyTimeoutMs: 8000,
-    playbackStartTimeoutMs: 8000,
-    playbackCompleteTimeoutMs: 8000,
+    connectTimeoutMs: 10000,
+    replyTimeoutMs: 45000,
+    playbackStartTimeoutMs: 60000,
+    playbackCompleteTimeoutMs: 80000,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -72,22 +72,22 @@ function parseArgs(argv) {
       continue;
     }
     if (current === "--connect-timeout-ms") {
-      args.connectTimeoutMs = Number(argv[index + 1] || "5000");
+      args.connectTimeoutMs = Number(argv[index + 1] || "10000");
       index += 1;
       continue;
     }
     if (current === "--reply-timeout-ms") {
-      args.replyTimeoutMs = Number(argv[index + 1] || "8000");
+      args.replyTimeoutMs = Number(argv[index + 1] || "45000");
       index += 1;
       continue;
     }
     if (current === "--playback-start-timeout-ms") {
-      args.playbackStartTimeoutMs = Number(argv[index + 1] || "8000");
+      args.playbackStartTimeoutMs = Number(argv[index + 1] || "60000");
       index += 1;
       continue;
     }
     if (current === "--playback-complete-timeout-ms") {
-      args.playbackCompleteTimeoutMs = Number(argv[index + 1] || "8000");
+      args.playbackCompleteTimeoutMs = Number(argv[index + 1] || "80000");
       index += 1;
     }
   }

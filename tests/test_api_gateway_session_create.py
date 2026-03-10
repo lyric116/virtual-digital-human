@@ -852,6 +852,93 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
     assert repository.event_calls[-1]["payload"]["user_turn_count"] == 3
 
 
+def test_dispatch_pipeline_falls_back_when_dialogue_summary_request_fails(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    repository.user_turn_count = 3
+    repository.session_metadata = {
+        "dialogue_summary": {
+            "summary_text": "用户之前提到睡眠和课堂分心。",
+            "user_turn_count": 0,
+        }
+    }
+    connection_registry = module.ConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+
+    def fake_request_dialogue_reply(
+        settings,
+        session,
+        message,
+        *,
+        short_term_memory=None,
+        dialogue_summary=None,
+    ):
+        return module.DialogueReplyResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            message_id="msg_assistant_004",
+            reply="我们先继续把注意力放回最主要的压力点。",
+            emotion="anxious",
+            risk_level="medium",
+            stage="intervene",
+            next_action="intervene",
+            knowledge_refs=["breathing_478"],
+            avatar_style="warm_support",
+            safety_flags=[],
+        )
+
+    def boom_summary(*args, **kwargs):
+        raise RuntimeError("dialogue-service http 502: invalid summary")
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
+    monkeypatch.setattr(module, "request_dialogue_summary", boom_summary)
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "assess",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_fake_002",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "继续吧，帮我收一下重点。",
+                    "submitted_at": "2026-03-07T14:02:00Z",
+                },
+            },
+        )
+    )
+
+    summary_payload = repository.summary_update_calls[0]["summary_payload"]
+    assert summary_payload["summary_source"] == "fallback"
+    assert summary_payload["summary_fallback_reason"] == "invalid_output"
+    assert summary_payload["generated_from_message_id"] == "msg_assistant_004"
+    assert "当前进入 intervene 阶段" in summary_payload["summary_text"]
+    assert repository.event_calls[-1]["event_type"] == "dialogue.summary.updated"
+
+
 def test_connection_registry_does_not_requeue_when_any_connection_receives_event():
     module = load_gateway_module()
     registry = module.ConnectionRegistry()

@@ -45,6 +45,9 @@ Current repository state:
   hotword cleanup before returning the final transcript text
 - `services/tts-service` now synthesizes one assistant reply into one playable Chinese
   single-voice speech asset and returns a local `audio_url`
+- the TTS path now uses `edge_tts` first and falls back to a local `wav` asset when the
+  remote path times out, so frontend playback should always trust the returned
+  `audio_format`
 - the frontend now consumes `services/tts-service` directly so one assistant reply can be
   spoken with synced subtitle text and replay controls in the avatar panel
 - the avatar stage now has one static 2D baseline character that switches between idle
