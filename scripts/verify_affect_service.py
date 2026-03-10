@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify deterministic affect snapshots for steps 37-39 without live model services."""
+"""Verify deterministic affect snapshots for steps 37-40 without live model services."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from pathlib import Path
 import sys
 import tempfile
 import wave
+
+import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +66,19 @@ def write_pattern_wav(
         wav_file.setsampwidth(2)
         wav_file.setframerate(sample_rate_hz)
         wav_file.writeframes(bytes(pcm))
+
+
+def write_face_like_frame(path: Path) -> None:
+    frame = np.full((64, 64), 0.12, dtype=np.float32)
+    frame[16:48, 18:46] = 0.72
+    frame[26:31, 23:28] = 0.18
+    frame[26:31, 36:41] = 0.20
+    frame[38:42, 27:37] = 0.28
+    np.save(path, frame)
+
+
+def write_blank_frame(path: Path) -> None:
+    np.save(path, np.full((64, 64), 0.08, dtype=np.float32))
 
 
 def main() -> None:
@@ -147,8 +162,12 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         fast_path = Path(temp_dir) / "fast_high.wav"
         slow_path = Path(temp_dir) / "slow_low.wav"
+        face_path = Path(temp_dir) / "face_like.npy"
+        blank_path = Path(temp_dir) / "blank.npy"
         write_pattern_wav(fast_path, amplitude=0.58, tone_ms=90, silence_ms=20, cycles=28)
         write_pattern_wav(slow_path, amplitude=0.08, tone_ms=80, silence_ms=520, cycles=6)
+        write_face_like_frame(face_path)
+        write_blank_frame(blank_path)
 
         fast_audio_snapshot = module.generate_affect_snapshot(
             settings,
@@ -166,6 +185,24 @@ def main() -> None:
                 trace_id="trace_verify_affect_audio_slow",
                 current_stage="assess",
                 metadata={"audio_path_16k_mono": str(slow_path)},
+            ),
+        )
+        face_video_snapshot = module.generate_affect_snapshot(
+            settings,
+            module.AffectAnalyzeRequest(
+                session_id="sess_verify_affect_video_face",
+                trace_id="trace_verify_affect_video_face",
+                current_stage="assess",
+                metadata={"video_frame_path": str(face_path)},
+            ),
+        )
+        blank_video_snapshot = module.generate_affect_snapshot(
+            settings,
+            module.AffectAnalyzeRequest(
+                session_id="sess_verify_affect_video_blank",
+                trace_id="trace_verify_affect_video_blank",
+                current_stage="assess",
+                metadata={"video_frame_path": str(blank_path)},
             ),
         )
     enterprise_strong_audio_snapshot = module.generate_affect_snapshot(
@@ -196,6 +233,20 @@ def main() -> None:
             },
         ),
     )
+    enterprise_video_snapshot = module.generate_affect_snapshot(
+        settings,
+        module.AffectAnalyzeRequest(
+            session_id="sess_verify_affect_enterprise_video",
+            trace_id="trace_verify_affect_enterprise_video",
+            current_stage="assess",
+            metadata={
+                "source": "enterprise_validation_manifest",
+                "dataset": "noxi",
+                "record_id": "noxi/001_2016-03-17_Paris/speaker_a/1",
+                "face3d_path": "data/val/3D_FV_files/NoXI/001_2016-03-17_Paris/Expert_video/1.npy",
+            },
+        ),
+    )
 
     if anxious_snapshot.text_result.label != "anxious":
         raise RuntimeError("anxious snapshot did not classify text lane as anxious")
@@ -219,6 +270,12 @@ def main() -> None:
         raise RuntimeError("enterprise strong audio sample did not classify as a high-energy proxy")
     if enterprise_weak_audio_snapshot.audio_result.label != "slow_low_energy_proxy":
         raise RuntimeError("enterprise weak audio sample did not classify as slow_low_energy_proxy")
+    if face_video_snapshot.video_result.label != "stable_gaze_proxy":
+        raise RuntimeError("face-like synthetic frame did not classify as stable_gaze_proxy")
+    if blank_video_snapshot.video_result.label != "face_not_detected_proxy":
+        raise RuntimeError("blank synthetic frame did not classify as face_not_detected_proxy")
+    if enterprise_video_snapshot.video_result.label not in {"stable_gaze_proxy", "face_present_proxy"}:
+        raise RuntimeError("enterprise face3d sample did not classify as a valid face-present proxy")
 
     print(
         json.dumps(
@@ -232,6 +289,9 @@ def main() -> None:
                 "slow_audio_snapshot": slow_audio_snapshot.model_dump(mode="json"),
                 "enterprise_strong_audio_snapshot": enterprise_strong_audio_snapshot.model_dump(mode="json"),
                 "enterprise_weak_audio_snapshot": enterprise_weak_audio_snapshot.model_dump(mode="json"),
+                "face_video_snapshot": face_video_snapshot.model_dump(mode="json"),
+                "blank_video_snapshot": blank_video_snapshot.model_dump(mode="json"),
+                "enterprise_video_snapshot": enterprise_video_snapshot.model_dump(mode="json"),
             },
             ensure_ascii=False,
             indent=2,

@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-10 - Affect Video Baseline
+
+- Affect-service video analysis now has a split path: offline synthetic frames and enterprise face3d inputs can produce stable_gaze_proxy or face_not_detected_proxy, while the live browser path still uses camera-state placeholders.
+- The project still does not depend on a heavy video decoder or real face detector in the online loop; step 40 deliberately fixes the contract and offline verification path first.
+- Fusion can now distinguish between a real no-face result and a generic camera-live placeholder because face_not_detected_proxy no longer counts as active video evidence.
+
 ## 2026-03-10 - Affect Audio Baseline
 
 - Affect-service audio analysis now has a two-tier path: real local audio files go through deterministic feature extraction, while live browser capture without a bound file stays on a non-blocking placeholder path.

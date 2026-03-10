@@ -150,6 +150,32 @@ step-39 的回归验证分两部分：
 - `visual_withdrawal_score`
 - `face_confidence`
 
+### 当前 step-40 基线
+
+当前仓库先不上真实人脸检测模型，而是实现了一个不阻塞主链路的最小视觉状态层：
+
+- 在线路径
+  - 没有绑定可分析帧文件时，继续沿用摄像头状态占位
+  - `previewing + uploaded_video_frame_count > 0` -> `face_present_proxy`
+  - `previewing` -> `camera_live`
+  - `stopped / denied / error` -> `camera_offline`
+- 离线路径
+  - 当请求里绑定 `video_frame_path` 时，读取本地 `.npy` 帧数组并输出：
+    - `stable_gaze_proxy`
+    - `gaze_away_proxy`
+    - `face_not_detected_proxy`
+  - 当请求里绑定企业 `face3d_path` 时，使用 3D 轨迹稳定度输出：
+    - `stable_gaze_proxy`
+    - `face_present_proxy`
+
+step-40 的回归验证包括：
+
+- 1 条合成“有人脸”帧 -> `stable_gaze_proxy`
+- 1 条合成“无人脸”帧 -> `face_not_detected_proxy`
+- 1 条企业 `face3d_path` 样本 -> 确认离线样本可接入且不会中断流程
+
+这一步的目标不是得到准确的人脸分析，而是先把视频路挂点、离线验证路径和最小状态语义固定下来。
+
 ## 7. 融合策略
 
 ### 时间对齐

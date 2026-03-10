@@ -52,6 +52,9 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
   coarse labels such as `anxious`, `low_mood`, `guarded`, and `neutral`
 - step 39: the same panel can now also render baseline audio labels such as
   `fast_high_energy_proxy`, `steady_high_energy_proxy`, and `slow_low_energy_proxy`
+- step 40: the emotion panel can now also render baseline video labels such as
+  `stable_gaze_proxy` and `face_not_detected_proxy` while the live browser path still
+  falls back to camera-state placeholders
 
 ## Files
 

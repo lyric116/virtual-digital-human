@@ -220,7 +220,7 @@ the same outer shape.
 | `text_result.confidence` | number | Yes | Placeholder confidence in step 37, real confidence later. |
 | `text_result.detail` | string | Yes | Human-readable explanation shown in the UI. |
 | `audio_result.*` | object | Yes | Same shape as `text_result` for the audio lane; current labels may include `live_capture_proxy`, `awaiting_audio_features`, `fast_high_energy_proxy`, `steady_high_energy_proxy`, `slow_low_energy_proxy`, or `steady_speech_proxy`. |
-| `video_result.*` | object | Yes | Same shape as `text_result` for the video lane. |
+| `video_result.*` | object | Yes | Same shape as `text_result` for the video lane; current labels may include `stable_gaze_proxy`, `gaze_away_proxy`, `face_not_detected_proxy`, `face_present_proxy`, `camera_live`, or `camera_offline`. |
 | `fusion_result.emotion_state` | string | Yes | Unified affect state shown in the panel. |
 | `fusion_result.risk_level` | string | Yes | `low`, `medium`, or `high`. |
 | `fusion_result.confidence` | number | Yes | Fused confidence value. |

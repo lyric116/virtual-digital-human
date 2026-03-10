@@ -8,6 +8,8 @@ import sys
 import tempfile
 import wave
 
+import numpy as np
+
 
 ROOT = Path(__file__).resolve().parents[1]
 AFFECT_MAIN = ROOT / "services" / "affect-service" / "main.py"
@@ -71,6 +73,20 @@ def write_pattern_wav(
         wav_file.setsampwidth(2)
         wav_file.setframerate(sample_rate_hz)
         wav_file.writeframes(bytes(pcm))
+
+
+def write_face_like_frame(path: Path) -> None:
+    frame = np.full((64, 64), 0.12, dtype=np.float32)
+    frame[16:48, 18:46] = 0.72
+    frame[26:31, 23:28] = 0.18
+    frame[26:31, 36:41] = 0.20
+    frame[38:42, 27:37] = 0.28
+    np.save(path, frame)
+
+
+def write_blank_frame(path: Path) -> None:
+    frame = np.full((64, 64), 0.08, dtype=np.float32)
+    np.save(path, frame)
 
 
 def test_affect_service_returns_anxious_snapshot_with_live_video_audio_state():
@@ -243,6 +259,59 @@ def test_affect_service_handles_enterprise_audio_samples_with_distinct_energy_le
     assert weak_response.audio_result.label == "slow_low_energy_proxy"
     assert strong_response.source_context.record_id.endswith("speaker_a/1")
     assert weak_response.source_context.record_id.endswith("speaker_b/2")
+
+
+def test_affect_service_distinguishes_face_present_and_face_missing_frames():
+    module = load_affect_module()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        face_path = Path(temp_dir) / "face_like.npy"
+        blank_path = Path(temp_dir) / "blank.npy"
+        write_face_like_frame(face_path)
+        write_blank_frame(blank_path)
+
+        face_response = module.generate_affect_snapshot(
+            build_settings(module),
+            module.AffectAnalyzeRequest(
+                session_id="sess_affect_video_face",
+                trace_id="trace_affect_video_face",
+                current_stage="assess",
+                metadata={"video_frame_path": str(face_path)},
+            ),
+        )
+        blank_response = module.generate_affect_snapshot(
+            build_settings(module),
+            module.AffectAnalyzeRequest(
+                session_id="sess_affect_video_blank",
+                trace_id="trace_affect_video_blank",
+                current_stage="assess",
+                metadata={"video_frame_path": str(blank_path)},
+            ),
+        )
+
+    assert face_response.video_result.label == "stable_gaze_proxy"
+    assert blank_response.video_result.label == "face_not_detected_proxy"
+    assert "center_focus" in " ".join(face_response.video_result.evidence)
+
+
+def test_affect_service_handles_enterprise_face3d_video_binding():
+    module = load_affect_module()
+    response = module.generate_affect_snapshot(
+        build_settings(module),
+        module.AffectAnalyzeRequest(
+            session_id="sess_affect_enterprise_video_001",
+            trace_id="trace_affect_enterprise_video_001",
+            current_stage="assess",
+            metadata={
+                "dataset": "noxi",
+                "record_id": "noxi/001_2016-03-17_Paris/speaker_a/1",
+                "face3d_path": "data/val/3D_FV_files/NoXI/001_2016-03-17_Paris/Expert_video/1.npy",
+            },
+        ),
+    )
+
+    assert response.video_result.label in {"stable_gaze_proxy", "face_present_proxy"}
+    assert "mean_motion" in " ".join(response.video_result.evidence)
+    assert response.source_context.record_id.endswith("speaker_a/1")
 
 
 def test_affect_service_app_and_readme_document_endpoints():

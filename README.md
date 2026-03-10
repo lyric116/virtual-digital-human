@@ -73,6 +73,9 @@ Current repository state:
 - `services/affect-service` step 39 now upgrades the audio lane from a pure capture
   placeholder into deterministic baseline feature summaries based on energy, pause
   ratio, and segment rate when a local audio file is bound
+- `services/affect-service` step 40 now upgrades the video lane with offline visual
+  baseline states for synthetic frames and enterprise `face3d_path` samples while the
+  live browser path remains non-blocking camera-state analysis
 - standalone ASR batch write-back is now available through
   `scripts/write_asr_drafts.py transcribe-service`, and the transcript workflow contains
   real `draft_ready` records plus generated manual review checklists

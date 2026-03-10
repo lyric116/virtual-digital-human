@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-10 - Step 40 Video Baseline States
+
+### Scope
+
+Implemented step 40 by upgrading affect-service video-lane analysis with deterministic offline frame states for synthetic frame fixtures and enterprise face3d bindings, while keeping the live browser path on non-blocking camera-state placeholders.
+
+### Outputs
+
+- Added offline video-frame analysis for synthetic .npy frames with stable_gaze_proxy and face_not_detected_proxy outputs.
+- Added enterprise face3d-based offline verification so one real validation sample can drive a video-lane result without coupling the online path to enterprise video decoding.
+- Extended the web emotion panel harness so the frontend can render distinct baseline video labels without changing the affect snapshot contract.
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_affect_service.py tests/test_web_emotion_panel.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_affect_service.py
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_emotion_panel.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+
+### Next
+
+- Implement step 41 fusion rules using the now-upgraded text, audio, and video lane outputs.
+
 ## 2026-03-10 - Step 39 Audio Feature Baseline
 
 ### Scope

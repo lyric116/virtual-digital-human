@@ -42,11 +42,15 @@ def main() -> None:
     enterprise_payload = run_harness("enterprise-sample")
     audio_high_payload = run_harness("audio-high-energy")
     audio_low_payload = run_harness("audio-low-energy")
+    video_face_payload = run_harness("video-face")
+    video_blank_payload = run_harness("video-no-face")
 
     live_after = live_payload["afterAffect"]
     enterprise_after = enterprise_payload["afterAffect"]
     audio_high_after = audio_high_payload["afterAffect"]
     audio_low_after = audio_low_payload["afterAffect"]
+    video_face_after = video_face_payload["afterAffect"]
+    video_blank_after = video_blank_payload["afterAffect"]
 
     if live_after["emotionPanelState"] != "ready":
         raise RuntimeError("emotion panel did not reach ready state")
@@ -68,6 +72,10 @@ def main() -> None:
         raise RuntimeError("audio high-energy mode did not render the expected audio label")
     if audio_low_after["audioSignal"] != "slow_low_energy_proxy":
         raise RuntimeError("audio low-energy mode did not render the expected audio label")
+    if video_face_after["videoSignal"] != "stable_gaze_proxy":
+        raise RuntimeError("video face mode did not render the expected video label")
+    if video_blank_after["videoSignal"] != "face_not_detected_proxy":
+        raise RuntimeError("video no-face mode did not render the expected video label")
 
     print(
         json.dumps(
@@ -76,6 +84,8 @@ def main() -> None:
                 "enterprise": enterprise_after,
                 "audio_high": audio_high_after,
                 "audio_low": audio_low_after,
+                "video_face": video_face_after,
+                "video_blank": video_blank_after,
             },
             ensure_ascii=False,
             indent=2,

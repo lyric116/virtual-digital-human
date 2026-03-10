@@ -19,7 +19,9 @@ and true fusion logic are replaced in later steps.
 - audio lane: when a real audio file path is bound, deterministic feature labels such as
   `fast_high_energy_proxy`, `steady_high_energy_proxy`, `slow_low_energy_proxy`, or
   `steady_speech_proxy`; otherwise it falls back to live capture placeholders
-- video lane: camera-state proxy labels such as `face_present_proxy` or `camera_offline`
+- video lane: when a synthetic or offline-bound frame path exists, deterministic visual
+  labels such as `stable_gaze_proxy` or `face_not_detected_proxy`; otherwise it falls
+  back to camera-state proxy labels such as `face_present_proxy` or `camera_offline`
 - fusion lane: deterministic `emotion_state`, `risk_level`, `confidence`, and `conflict`
 - source context: always returns `origin`, `dataset`, `record_id`, and `note` so the UI
   can already reserve fields for enterprise validation sample binding
@@ -64,6 +66,24 @@ Enterprise audio verification for step 39 uses:
 
 - `recola/group-2/speaker_a/1` as a stronger speech-energy sample
 - `noxi/001_2016-03-17_Paris/speaker_b/2` as a weak, pause-heavy sample
+
+## Step-40 Video Rules
+
+- real frame analysis only runs when `metadata.video_frame_path` points to a local
+  `.npy` frame array used by offline regression fixtures
+- enterprise offline validation can also bind `metadata.face3d_path`; this does not make
+  the online browser path depend on enterprise video files
+- current deterministic visual labels:
+  - `stable_gaze_proxy`
+  - `gaze_away_proxy`
+  - `face_not_detected_proxy`
+  - fallback `face_present_proxy`, `camera_live`, `camera_offline`
+
+Step-40 verification uses:
+
+- one synthetic face-like frame -> `stable_gaze_proxy`
+- one blank frame -> `face_not_detected_proxy`
+- one enterprise `face3d_path` sample -> valid face-present or stable-gaze proxy
 
 ## Local Run
 

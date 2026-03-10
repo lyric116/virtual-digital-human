@@ -70,6 +70,18 @@ def test_web_emotion_panel_can_render_distinct_audio_lane_labels():
     assert high_after["audioSignal"] != low_after["audioSignal"]
 
 
+def test_web_emotion_panel_can_render_distinct_video_lane_labels():
+    face_payload = run_harness("video-face")
+    blank_payload = run_harness("video-no-face")
+
+    face_after = face_payload["afterAffect"]
+    blank_after = blank_payload["afterAffect"]
+
+    assert face_after["videoSignal"] == "stable_gaze_proxy"
+    assert blank_after["videoSignal"] == "face_not_detected_proxy"
+    assert face_after["videoSignal"] != blank_after["videoSignal"]
+
+
 def test_web_emotion_panel_docs_are_present():
     web_readme = WEB_README.read_text(encoding="utf-8")
     affect_readme = AFFECT_README.read_text(encoding="utf-8")

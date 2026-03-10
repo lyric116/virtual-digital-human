@@ -254,6 +254,26 @@ function buildAffectPayload(requestPayload, mode) {
     evidence: ["audio_upload_state:idle"],
     detail: "音频路先显示占位结果，后续再接真实特征。",
   };
+  const videoModes = {
+    "video-face": {
+      label: "stable_gaze_proxy",
+      confidence: 0.74,
+      evidence: ["frame_std:0.220", "center_focus:0.190"],
+      detail: "视频路显示稳定中心区域和较低左右不对称。",
+    },
+    "video-no-face": {
+      label: "face_not_detected_proxy",
+      confidence: 0.71,
+      evidence: ["frame_std:0.010", "center_focus:0.008"],
+      detail: "视频路未检测到足够明显的人脸中心区域。",
+    },
+  };
+  const selectedVideo = videoModes[mode] || {
+    label: "camera_offline",
+    confidence: 0.18,
+    evidence: ["camera_state:idle"],
+    detail: "视频路当前离线，先保留挂载位。",
+  };
 
   return {
     session_id: requestPayload.session_id,
@@ -276,11 +296,11 @@ function buildAffectPayload(requestPayload, mode) {
       detail: selectedAudio.detail,
     },
     video_result: {
-      status: "offline",
-      label: "camera_offline",
-      confidence: 0.18,
-      evidence: ["camera_state:idle"],
-      detail: "视频路当前离线，先保留挂载位。",
+      status: selectedVideo.label === "camera_offline" ? "offline" : "ready",
+      label: selectedVideo.label,
+      confidence: selectedVideo.confidence,
+      evidence: selectedVideo.evidence,
+      detail: selectedVideo.detail,
     },
     fusion_result: {
       emotion_state: fusionEmotion,

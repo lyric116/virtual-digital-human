@@ -218,6 +218,34 @@ def resolve_audio_analysis_path(payload: AffectAnalyzeRequest) -> Path | None:
     return None
 
 
+def resolve_video_frame_analysis_path(payload: AffectAnalyzeRequest) -> Path | None:
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    raw_value = metadata.get("video_frame_path") or metadata.get("image_path")
+    if not raw_value:
+        return None
+
+    candidate = Path(str(raw_value))
+    if not candidate.is_absolute():
+        candidate = ROOT / candidate
+    if candidate.exists() and candidate.is_file():
+        return candidate
+    return None
+
+
+def resolve_face3d_analysis_path(payload: AffectAnalyzeRequest) -> Path | None:
+    metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
+    raw_value = metadata.get("face3d_path")
+    if not raw_value:
+        return None
+
+    candidate = Path(str(raw_value))
+    if not candidate.is_absolute():
+        candidate = ROOT / candidate
+    if candidate.exists() and candidate.is_file():
+        return candidate
+    return None
+
+
 def load_audio_samples(path: Path) -> tuple[np.ndarray, int]:
     with wave.open(str(path), "rb") as wav_file:
         sample_rate_hz = wav_file.getframerate()
@@ -283,6 +311,63 @@ def summarize_audio_features(path: Path) -> dict[str, float | int | str]:
         "segment_rate": segment_rate,
         "energy_band": energy_band,
         "tempo_band": tempo_band,
+    }
+
+
+def load_video_frame_array(path: Path) -> np.ndarray:
+    if path.suffix.lower() != ".npy":
+        raise RuntimeError(f"unsupported video frame format: {path.suffix}")
+
+    frame = np.load(path)
+    if frame.ndim == 3:
+        frame = frame.mean(axis=2)
+    if frame.ndim != 2:
+        raise RuntimeError(f"unsupported video frame shape: {frame.shape}")
+
+    frame = frame.astype(np.float32)
+    if float(frame.max()) > 1.5:
+        frame /= 255.0
+    return np.clip(frame, 0.0, 1.0)
+
+
+def summarize_video_frame_features(path: Path) -> dict[str, float]:
+    frame = load_video_frame_array(path)
+    height, width = frame.shape
+    center = frame[height // 4 : (height * 3) // 4, width // 4 : (width * 3) // 4]
+    left_eye = frame[height // 3 : height // 2, width // 4 : width // 2]
+    right_eye = frame[height // 3 : height // 2, width // 2 : (width * 3) // 4]
+
+    global_mean = float(frame.mean())
+    frame_std = float(frame.std())
+    center_mean = float(center.mean()) if center.size else global_mean
+    center_focus = center_mean - global_mean
+    left_eye_mean = float(left_eye.mean()) if left_eye.size else center_mean
+    right_eye_mean = float(right_eye.mean()) if right_eye.size else center_mean
+    eye_asymmetry = abs(left_eye_mean - right_eye_mean)
+
+    return {
+        "global_mean": global_mean,
+        "frame_std": frame_std,
+        "center_focus": center_focus,
+        "eye_asymmetry": eye_asymmetry,
+    }
+
+
+def summarize_face3d_features(path: Path) -> dict[str, float]:
+    array = np.load(path).astype(np.float32)
+    if array.ndim < 2 or array.size == 0:
+        raise RuntimeError("face3d feature array is empty or malformed")
+
+    reshaped = array.reshape(array.shape[0], -1)
+    if reshaped.shape[0] <= 1:
+        mean_motion = 0.0
+    else:
+        mean_motion = float(np.linalg.norm(reshaped[1:] - reshaped[:-1], axis=1).mean())
+
+    return {
+        "frame_count": float(reshaped.shape[0]),
+        "feature_dim": float(reshaped.shape[1]),
+        "mean_motion": mean_motion,
     }
 
 
@@ -450,6 +535,73 @@ def analyze_video_lane(payload: AffectAnalyzeRequest) -> AffectLaneResult:
     capture_state = payload.capture_state or {}
     camera_state = str(capture_state.get("camera_state") or "idle")
     uploaded_video_frame_count = int(capture_state.get("uploaded_video_frame_count") or 0)
+    video_frame_path = resolve_video_frame_analysis_path(payload)
+    face3d_path = resolve_face3d_analysis_path(payload)
+
+    if video_frame_path is not None:
+        summary = summarize_video_frame_features(video_frame_path)
+        frame_std = float(summary["frame_std"])
+        center_focus = float(summary["center_focus"])
+        eye_asymmetry = float(summary["eye_asymmetry"])
+
+        if frame_std < 0.05 or center_focus < 0.03:
+            return AffectLaneResult(
+                status="ready",
+                label="face_not_detected_proxy",
+                confidence=0.71,
+                evidence=[
+                    f"path:{video_frame_path.name}",
+                    f"frame_std:{frame_std:.3f}",
+                    f"center_focus:{center_focus:.3f}",
+                ],
+                detail="视频路未检测到足够明显的人脸中心区域，当前按无人脸处理。",
+            )
+        if eye_asymmetry > 0.10:
+            return AffectLaneResult(
+                status="ready",
+                label="gaze_away_proxy",
+                confidence=0.66,
+                evidence=[
+                    f"path:{video_frame_path.name}",
+                    f"eye_asymmetry:{eye_asymmetry:.3f}",
+                    f"center_focus:{center_focus:.3f}",
+                ],
+                detail="视频路检测到中心区域存在明显左右不对称，先按回避视线代理状态处理。",
+            )
+        return AffectLaneResult(
+            status="ready",
+            label="stable_gaze_proxy",
+            confidence=0.74,
+            evidence=[
+                f"path:{video_frame_path.name}",
+                f"frame_std:{frame_std:.3f}",
+                f"center_focus:{center_focus:.3f}",
+                f"eye_asymmetry:{eye_asymmetry:.3f}",
+            ],
+            detail="视频路检测到稳定中心区域和较低左右不对称，先按稳定注视代理状态处理。",
+        )
+
+    if face3d_path is not None:
+        summary = summarize_face3d_features(face3d_path)
+        mean_motion = float(summary["mean_motion"])
+        frame_count = int(summary["frame_count"])
+        label = "stable_gaze_proxy" if mean_motion <= 0.33 else "face_present_proxy"
+        detail = (
+            "企业离线 3D 特征显示人脸轨迹较稳定，视频路先按稳定注视代理状态处理。"
+            if label == "stable_gaze_proxy"
+            else "企业离线 3D 特征已绑定，视频路确认存在可跟踪人脸。"
+        )
+        return AffectLaneResult(
+            status="ready",
+            label=label,
+            confidence=0.63 if label == "stable_gaze_proxy" else 0.58,
+            evidence=[
+                f"path:{face3d_path.name}",
+                f"frame_count:{frame_count}",
+                f"mean_motion:{mean_motion:.3f}",
+            ],
+            detail=detail,
+        )
 
     if camera_state == "previewing" and uploaded_video_frame_count > 0:
         return AffectLaneResult(
@@ -493,7 +645,7 @@ def analyze_fusion(
 ) -> AffectFusionResult:
     text = normalize_text(payload.text_input)
     audio_active = audio_result.status == "ready"
-    video_active = video_result.status == "ready"
+    video_active = video_result.status == "ready" and video_result.label != "face_not_detected_proxy"
 
     if text_result.label == "distressed":
         return AffectFusionResult(
