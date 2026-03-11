@@ -140,6 +140,9 @@ class FakeAudioElement extends FakeElement {
     this.src = "";
     this.currentTime = 0;
     this._endedTimer = null;
+    this.rejectInternalHost = options.rejectInternalHost === true;
+    this.emitLateErrorAfterEnded = options.emitLateErrorAfterEnded === true;
+    this._lateErrorTimer = null;
   }
 
   load() {}
@@ -149,9 +152,20 @@ class FakeAudioElement extends FakeElement {
       clearTimeout(this._endedTimer);
       this._endedTimer = null;
     }
+    if (this._lateErrorTimer) {
+      clearTimeout(this._lateErrorTimer);
+      this._lateErrorTimer = null;
+    }
   }
 
   play() {
+    if (this.rejectInternalHost && this.src.includes("://tts-service")) {
+      const error = new Error("Failed to load because no supported source was found.");
+      setTimeout(() => {
+        this.emit("error", { currentTarget: this, error });
+      }, 0);
+      return Promise.reject(error);
+    }
     this.emit("play", { currentTarget: this });
     if (this._endedTimer) {
       clearTimeout(this._endedTimer);
@@ -160,13 +174,22 @@ class FakeAudioElement extends FakeElement {
     this._endedTimer = setTimeout(() => {
       this._endedTimer = null;
       this.emit("ended", { currentTarget: this });
+      if (this.emitLateErrorAfterEnded) {
+        this._lateErrorTimer = setTimeout(() => {
+          this._lateErrorTimer = null;
+          this.emit("error", {
+            currentTarget: this,
+            error: new Error("Failed to load because no supported source was found."),
+          });
+        }, 40);
+      }
     }, playbackDurationMs);
     return Promise.resolve();
   }
 }
 
 class FakeDocument {
-  constructor() {
+  constructor(options = {}) {
     this.readyState = "complete";
     this.body = { dataset: {} };
     this.listeners = new Map();
@@ -228,7 +251,14 @@ class FakeDocument {
       this.idMap.set(id, new FakeElement({ id, textContent, value }));
     });
 
-    this.idMap.set("avatar-audio-player", new FakeAudioElement({ id: "avatar-audio-player" }));
+    this.idMap.set(
+      "avatar-audio-player",
+      new FakeAudioElement({
+        id: "avatar-audio-player",
+        rejectInternalHost: options.rejectInternalHost === true,
+        emitLateErrorAfterEnded: options.emitLateErrorAfterEnded === true,
+      }),
+    );
   }
 
   getElementById(id) {
@@ -271,7 +301,7 @@ function resolveMockVoice(requestedVoiceId) {
   return "zh-CN-XiaoxiaoNeural";
 }
 
-function createMockRuntime(apiBaseUrl, ttsBaseUrl, replyText, defaultAvatarId, dialogueConfig) {
+function createMockRuntime(apiBaseUrl, ttsBaseUrl, replyText, defaultAvatarId, dialogueConfig, mode) {
   let currentSocket = null;
   const runtimeEvents = [];
   let sessionPayload = {
@@ -438,6 +468,9 @@ function createMockRuntime(apiBaseUrl, ttsBaseUrl, replyText, defaultAvatarId, d
     if (url === `${ttsBaseUrl}/internal/tts/synthesize`) {
       const payload = JSON.parse(options.body || "{}");
       const resolvedVoiceId = resolveMockVoice(payload.voice_id);
+      const audioUrl = mode === "mock_internal_audio_url"
+        ? "http://tts-service:8040/media/tts/tts_mock_001.mp3"
+        : `${ttsBaseUrl}/media/tts/tts_mock_001.mp3`;
       return {
         ok: true,
         status: 200,
@@ -450,7 +483,7 @@ function createMockRuntime(apiBaseUrl, ttsBaseUrl, replyText, defaultAvatarId, d
             voice_id: resolvedVoiceId,
             subtitle: payload.subtitle || payload.text,
             audio_format: "mp3",
-            audio_url: `${ttsBaseUrl}/media/tts/tts_mock_001.mp3`,
+            audio_url: audioUrl,
             duration_ms: Math.max(1600, (payload.text || "").length * 180),
             byte_size: 1024,
             generated_at: "2026-03-09T10:10:03Z",
@@ -532,8 +565,11 @@ function collectSnapshot(document) {
   };
 }
 
-function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl, ttsBaseUrl }) {
-  const document = new FakeDocument();
+function executeApp({ fetchImpl, WebSocketImpl, apiBaseUrl, wsUrl, ttsBaseUrl, mode }) {
+  const document = new FakeDocument({
+    rejectInternalHost: mode === "mock_internal_audio_url",
+    emitLateErrorAfterEnded: mode === "mock_late_audio_error",
+  });
   const window = {
     document,
     fetch: fetchImpl,
@@ -617,6 +653,7 @@ async function main() {
     apiBaseUrl: args.apiBaseUrl,
     wsUrl: args.wsUrl,
     ttsBaseUrl: args.ttsBaseUrl,
+    mode: args.mode,
   });
 
   if (args.avatarId === "coach_male_01" && runtime.avatarOptionCoach) {
@@ -654,6 +691,9 @@ async function main() {
     args.playbackCompleteTimeoutMs,
     "tts playback did not complete",
   );
+  if (args.mode === "mock_late_audio_error") {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
 
   const afterPlaybackEnd = collectSnapshot(runtime.document);
   runtime.window.__virtualHumanConsoleController.shutdownForTest();

@@ -12,7 +12,7 @@ from urllib.parse import quote
 from uuid import uuid4
 import wave
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
@@ -230,6 +230,8 @@ def synthesize_wave_fallback(
 async def synthesize_tts_asset(
     settings: TTSServiceSettings,
     request: TTSSynthesizeRequest,
+    *,
+    public_base_url: str | None = None,
 ) -> TTSSynthesizeResponse:
     provider = settings.tts_provider.strip().lower()
     voice_id = resolve_voice_id(settings, request.voice_id)
@@ -273,7 +275,8 @@ async def synthesize_tts_asset(
     else:
         raise RuntimeError(f"unsupported TTS_PROVIDER: {settings.tts_provider}")
 
-    audio_url = f"{settings.tts_service_base_url}/media/tts/{quote(output_path.name)}"
+    resolved_base_url = (public_base_url or settings.tts_service_base_url).rstrip("/")
+    audio_url = f"{resolved_base_url}/media/tts/{quote(output_path.name)}"
     return TTSSynthesizeResponse(
         tts_id=tts_id,
         session_id=request.session_id,
@@ -321,9 +324,14 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.post("/internal/tts/synthesize", response_model=TTSSynthesizeResponse)
-    async def synthesize(payload: TTSSynthesizeRequest) -> TTSSynthesizeResponse:
+    async def synthesize(request: Request, payload: TTSSynthesizeRequest) -> TTSSynthesizeResponse:
         try:
-            return await synthesize_tts_asset(settings, payload)
+            public_base_url = str(request.base_url).rstrip("/")
+            return await synthesize_tts_asset(
+                settings,
+                payload,
+                public_base_url=public_base_url,
+            )
         except HTTPException:
             raise
         except Exception as exc:

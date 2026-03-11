@@ -405,6 +405,57 @@
     return `confidence: ${value.toFixed(2)}`;
   }
 
+  function resolvePlayableTtsAudioUrl(audioUrl, appConfig) {
+    if (typeof audioUrl !== "string" || !audioUrl.trim()) {
+      return null;
+    }
+    const normalized = audioUrl.trim();
+    if (normalized.startsWith("data:") || normalized.startsWith("blob:")) {
+      return normalized;
+    }
+
+    try {
+      const publicBaseUrl = new URL(appConfig.ttsBaseUrl);
+      const candidateUrl = new URL(normalized, publicBaseUrl);
+      const internalHosts = new Set(["tts-service", "0.0.0.0", "::"]);
+      if (
+        candidateUrl.pathname.startsWith("/media/tts/")
+        && internalHosts.has(candidateUrl.hostname.toLowerCase())
+      ) {
+        return new URL(
+          `${candidateUrl.pathname}${candidateUrl.search}${candidateUrl.hash}`,
+          publicBaseUrl,
+        ).toString();
+      }
+      return candidateUrl.toString();
+    } catch (error) {
+      return normalized;
+    }
+  }
+
+  function sameAudioSource(left, right) {
+    if (!left || !right) {
+      return false;
+    }
+    try {
+      return new URL(left).toString() === new URL(right).toString();
+    } catch (error) {
+      return left === right;
+    }
+  }
+
+  function getAudioPlaybackRetryMessage(error) {
+    const rawMessage = error instanceof Error ? error.message : String(error || "");
+    const normalized = rawMessage.toLowerCase();
+    if (normalized.includes("supported source")) {
+      return "语音资源已生成，但浏览器未能加载音频资源，可点击 Replay Voice 重试。";
+    }
+    if (normalized.includes("user didn't interact") || normalized.includes("notallowederror")) {
+      return "语音资源已生成，但浏览器拦截了自动播放，可点击 Replay Voice 继续。";
+    }
+    return "语音资源已生成，但当前未能开始播放，可点击 Replay Voice 重试。";
+  }
+
   function getNavigatorLike(rootWindow) {
     if (rootWindow && rootWindow.navigator) {
       return rootWindow.navigator;
@@ -791,38 +842,44 @@
   }
 
   function renderTimeline(elements, state) {
+    let markup = "";
+    let plainText = "";
+    let renderKey = "History | 等待会话历史...";
+
     if (!state.timelineEntries.length) {
-      const emptyMarkup = [
+      markup = [
         '<article class="timeline-item system timeline-empty">',
         '<span class="timeline-role">History</span>',
         "<p>等待会话历史...</p>",
         "</article>",
       ].join("");
-      elements.chatTimelineList.innerHTML = emptyMarkup;
-      if (typeof elements.chatTimelineList.querySelector !== "function") {
-        elements.chatTimelineList.textContent = "History | 等待会话历史...";
-      }
-      if (typeof elements.chatTimelineList.dataset === "object" && elements.chatTimelineList.dataset) {
-        elements.chatTimelineList.dataset.timelineText = "History | 等待会话历史...";
-      }
-      return;
+      plainText = "History | 等待会话历史...";
+    } else {
+      markup = state.timelineEntries.map(function (entry) {
+        const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "not started";
+        return [
+          `<article class="timeline-item ${escapeHtml(entry.kind)}">`,
+          `<span class="timeline-role">${escapeHtml(entry.label)}</span>`,
+          `<p>${escapeHtml(entry.text)}</p>`,
+          `<small class="timeline-meta">${escapeHtml(timestampLabel)}</small>`,
+          "</article>",
+        ].join("");
+      }).join("");
+
+      plainText = state.timelineEntries.map(function (entry) {
+        const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "not started";
+        return `${entry.label} | ${timestampLabel} | ${entry.text}`;
+      }).join("\n");
+      renderKey = plainText;
     }
 
-    const markup = state.timelineEntries.map(function (entry) {
-      const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "not started";
-      return [
-        `<article class="timeline-item ${escapeHtml(entry.kind)}">`,
-        `<span class="timeline-role">${escapeHtml(entry.label)}</span>`,
-        `<p>${escapeHtml(entry.text)}</p>`,
-        `<small class="timeline-meta">${escapeHtml(timestampLabel)}</small>`,
-        "</article>",
-      ].join("");
-    }).join("");
-
-    const plainText = state.timelineEntries.map(function (entry) {
-      const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "not started";
-      return `${entry.label} | ${timestampLabel} | ${entry.text}`;
-    }).join("\n");
+    if (
+      typeof elements.chatTimelineList.dataset === "object"
+      && elements.chatTimelineList.dataset
+      && elements.chatTimelineList.dataset.timelineRenderKey === renderKey
+    ) {
+      return;
+    }
 
     elements.chatTimelineList.innerHTML = markup;
     if (typeof elements.chatTimelineList.querySelector !== "function") {
@@ -830,7 +887,94 @@
     }
     if (typeof elements.chatTimelineList.dataset === "object" && elements.chatTimelineList.dataset) {
       elements.chatTimelineList.dataset.timelineText = plainText;
+      elements.chatTimelineList.dataset.timelineRenderKey = renderKey;
     }
+  }
+
+  function renderAvatarMouthState(rootDocument, elements, state) {
+    if (elements.avatarMouthShape && typeof elements.avatarMouthShape.dataset === "object") {
+      elements.avatarMouthShape.dataset.mouthState = state.avatarMouthState;
+    }
+    if (elements.avatarMouthStateValue) {
+      elements.avatarMouthStateValue.textContent = state.avatarMouthState;
+    }
+    if (elements.avatarMouthDetailValue) {
+      elements.avatarMouthDetailValue.textContent = getAvatarMouthDetail(state);
+    }
+    if (rootDocument.body && typeof rootDocument.body.dataset === "object") {
+      rootDocument.body.dataset.avatarMouthState = state.avatarMouthState;
+      rootDocument.body.dataset.avatarMouthTransitionCount = String(state.avatarMouthTransitionCount);
+    }
+  }
+
+  function renderAffectPanel(rootDocument, elements, state) {
+    const affectSnapshot = state.affectSnapshot || createInitialAffectSnapshot();
+    if (elements.emotionPanelStatus) {
+      elements.emotionPanelStatus.textContent = affectSnapshot.panelMessage;
+    }
+    if (elements.textSignalValue) {
+      elements.textSignalValue.textContent = affectSnapshot.text.label;
+    }
+    if (elements.textSignalConfidence) {
+      elements.textSignalConfidence.textContent = formatConfidence(affectSnapshot.text.confidence);
+    }
+    if (elements.textSignalDetail) {
+      elements.textSignalDetail.textContent = affectSnapshot.text.detail;
+    }
+    if (elements.audioSignalValue) {
+      elements.audioSignalValue.textContent = affectSnapshot.audio.label;
+    }
+    if (elements.audioSignalConfidence) {
+      elements.audioSignalConfidence.textContent = formatConfidence(affectSnapshot.audio.confidence);
+    }
+    if (elements.audioSignalDetail) {
+      elements.audioSignalDetail.textContent = affectSnapshot.audio.detail;
+    }
+    if (elements.videoSignalValue) {
+      elements.videoSignalValue.textContent = affectSnapshot.video.label;
+    }
+    if (elements.videoSignalConfidence) {
+      elements.videoSignalConfidence.textContent = formatConfidence(affectSnapshot.video.confidence);
+    }
+    if (elements.videoSignalDetail) {
+      elements.videoSignalDetail.textContent = affectSnapshot.video.detail;
+    }
+    if (elements.fusionEmotionValue) {
+      elements.fusionEmotionValue.textContent = affectSnapshot.fusion.emotionState;
+    }
+    elements.fusionRiskValue.textContent = (
+      affectSnapshot.fusion.riskLevel && affectSnapshot.fusion.riskLevel !== "pending"
+        ? affectSnapshot.fusion.riskLevel
+        : state.lastReplyRiskLevel
+    );
+    if (elements.fusionConfidenceValue) {
+      elements.fusionConfidenceValue.textContent = formatConfidence(affectSnapshot.fusion.confidence);
+    }
+    if (elements.fusionConflictValue) {
+      elements.fusionConflictValue.textContent = affectSnapshot.fusion.conflict
+        ? `conflict: ${affectSnapshot.fusion.conflictReason || "true"}`
+        : "conflict: false";
+    }
+    if (elements.fusionDetailValue) {
+      elements.fusionDetailValue.textContent = affectSnapshot.fusion.detail;
+    }
+    elements.fusionStageValue.textContent = `stage: ${state.stage} / next: ${state.lastReplyNextAction}`;
+    if (elements.emotionSourceOriginValue) {
+      elements.emotionSourceOriginValue.textContent = affectSnapshot.sourceContext.origin;
+    }
+    if (elements.emotionSourceDatasetValue) {
+      elements.emotionSourceDatasetValue.textContent = affectSnapshot.sourceContext.dataset;
+    }
+    if (elements.emotionSourceRecordValue) {
+      elements.emotionSourceRecordValue.textContent = affectSnapshot.sourceContext.recordId;
+    }
+    if (elements.emotionSourceNoteValue) {
+      elements.emotionSourceNoteValue.textContent = affectSnapshot.sourceContext.note;
+    }
+    if (rootDocument.body && typeof rootDocument.body.dataset === "object") {
+      rootDocument.body.dataset.affectPanelState = affectSnapshot.panelState;
+    }
+    return affectSnapshot;
   }
 
   function renderSessionState(rootDocument, elements, state, appConfig) {
@@ -1026,15 +1170,7 @@
     if (elements.avatarExpressionDetailValue) {
       elements.avatarExpressionDetailValue.textContent = avatarExpressionPreset.detail;
     }
-    if (elements.avatarMouthShape && typeof elements.avatarMouthShape.dataset === "object") {
-      elements.avatarMouthShape.dataset.mouthState = state.avatarMouthState;
-    }
-    if (elements.avatarMouthStateValue) {
-      elements.avatarMouthStateValue.textContent = state.avatarMouthState;
-    }
-    if (elements.avatarMouthDetailValue) {
-      elements.avatarMouthDetailValue.textContent = getAvatarMouthDetail(state);
-    }
+    renderAvatarMouthState(rootDocument, elements, state);
     if (elements.avatarSpeechStateValue) {
       elements.avatarSpeechStateValue.textContent = state.ttsPlaybackState;
     }
@@ -2365,8 +2501,8 @@
           await playResult;
         }
       } catch (error) {
-        state.ttsPlaybackState = "error";
-        state.ttsPlaybackMessage = error instanceof Error ? error.message : String(error);
+        state.ttsPlaybackState = "ready";
+        state.ttsPlaybackMessage = getAudioPlaybackRetryMessage(error);
         pushConnectionLog(state, "avatar audio playback failed");
         renderSessionState(rootDocument, elements, state, appConfig);
       }
@@ -2402,7 +2538,7 @@
           return;
         }
 
-        state.ttsAudioUrl = payload.audio_url;
+        state.ttsAudioUrl = resolvePlayableTtsAudioUrl(payload.audio_url, appConfig);
         state.ttsAudioFormat = payload.audio_format || "pending";
         state.ttsVoiceId = payload.voice_id || "pending";
         state.ttsDurationMs = typeof payload.duration_ms === "number" ? payload.duration_ms : 0;
@@ -2434,7 +2570,7 @@
               Math.min(Math.max(state.ttsDurationMs, 700), 1800),
             );
           }
-          elements.avatarAudioPlayer.src = payload.audio_url;
+          elements.avatarAudioPlayer.src = state.ttsAudioUrl;
           if (typeof elements.avatarAudioPlayer.load === "function") {
             elements.avatarAudioPlayer.load();
           }
@@ -4038,8 +4174,18 @@
         }
       });
       elements.avatarAudioPlayer.addEventListener("error", function () {
-        state.ttsPlaybackState = "error";
-        state.ttsPlaybackMessage = "语音播放失败。";
+        const activeSource = elements.avatarAudioPlayer.currentSrc || elements.avatarAudioPlayer.src || "";
+        if (!state.ttsAudioUrl) {
+          return;
+        }
+        if (state.ttsPlaybackState === "completed" || state.ttsPlaybackState === "idle") {
+          return;
+        }
+        if (activeSource && !sameAudioSource(activeSource, state.ttsAudioUrl)) {
+          return;
+        }
+        state.ttsPlaybackState = "ready";
+        state.ttsPlaybackMessage = "语音资源已生成，但浏览器未能加载音频资源，可点击 Replay Voice 重试。";
         stopAvatarMouthAnimation();
         renderSessionState(rootDocument, elements, state, appConfig);
       });

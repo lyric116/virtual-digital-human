@@ -5,6 +5,8 @@ import importlib.util
 from pathlib import Path
 import sys
 
+from starlette.requests import Request
+
 
 ROOT = Path(__file__).resolve().parents[1]
 TTS_MAIN = ROOT / "services" / "tts-service" / "main.py"
@@ -140,15 +142,73 @@ def test_tts_service_route_translates_runtime_error(monkeypatch):
     app = module.create_app()
     route = next(route for route in app.routes if route.path == "/internal/tts/synthesize")
 
-    async def boom(settings, payload):
+    async def boom(settings, payload, *, public_base_url=None):
         raise RuntimeError("tts upstream unavailable")
 
     monkeypatch.setattr(module, "synthesize_tts_asset", boom)
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/internal/tts/synthesize",
+            "root_path": "",
+            "headers": [],
+            "query_string": b"",
+            "client": ("testclient", 50000),
+            "server": ("testserver", 80),
+        },
+    )
 
     try:
-        asyncio.run(route.endpoint(module.TTSSynthesizeRequest(text="普通文本")))
+        asyncio.run(route.endpoint(request, module.TTSSynthesizeRequest(text="普通文本")))
     except module.HTTPException as exc:
         assert exc.status_code == 502
         assert exc.detail == "tts upstream unavailable"
     else:
         raise AssertionError("expected tts route to translate runtime error")
+
+
+def test_tts_service_route_uses_request_base_url_for_audio_url(monkeypatch):
+    module = load_tts_module()
+    app = module.create_app()
+    route = next(route for route in app.routes if route.path == "/internal/tts/synthesize")
+    captured = {}
+
+    async def fake_synthesize(settings, payload, *, public_base_url=None):
+        captured["public_base_url"] = public_base_url
+        return module.TTSSynthesizeResponse(
+            tts_id="tts_route_001",
+            session_id=payload.session_id,
+            trace_id=payload.trace_id,
+            message_id=payload.message_id,
+            voice_id="zh-CN-XiaoxiaoNeural",
+            subtitle=payload.text,
+            audio_format="wav",
+            audio_url=f"{public_base_url}/media/tts/tts_route_001.wav",
+            duration_ms=1200,
+            byte_size=128,
+            provider_used="wave_fallback",
+            fallback_used=True,
+            fallback_reason="provider_forced_wave_fallback",
+            generated_at=module.datetime.now(module.timezone.utc),
+        )
+
+    monkeypatch.setattr(module, "synthesize_tts_asset", fake_synthesize)
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/internal/tts/synthesize",
+            "root_path": "",
+            "headers": [],
+            "query_string": b"",
+            "client": ("testclient", 50000),
+            "server": ("testserver", 80),
+        },
+    )
+    response = asyncio.run(route.endpoint(request, module.TTSSynthesizeRequest(text="普通文本")))
+
+    assert captured["public_base_url"] == "http://testserver"
+    assert response.audio_url == "http://testserver/media/tts/tts_route_001.wav"

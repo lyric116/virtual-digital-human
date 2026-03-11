@@ -46,6 +46,9 @@ Required environment variables:
   inside the service.
 - `TTS_CORS_ORIGINS` must include the frontend preview origin because step 31 lets the
   browser call `POST /internal/tts/synthesize` directly.
+- `/internal/tts/synthesize` now derives `audio_url` from the incoming HTTP request
+  base URL, so browser callers receive a host that is reachable from the browser
+  instead of an internal Docker-only service hostname.
 - The response payload is authoritative for playback: successful remote synthesis usually
   returns `mp3`, while the local fallback path returns `wav`.
 - `scripts/verify_tts_service.py` runs three fixed Chinese samples and confirms that the

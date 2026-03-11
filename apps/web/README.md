@@ -132,7 +132,14 @@ Then open:
   from the same live events that feed the timeline
 - after one valid assistant reply, the frontend requests one TTS asset, attempts
   autoplay, and still keeps subtitle text visible even if TTS synthesis or playback fails
+- the frontend now rewrites Docker-internal TTS media URLs such as `http://tts-service:8040/...`
+  back to `window.__APP_CONFIG__.ttsBaseUrl` before playback, so the browser does not try
+  to fetch audio from an internal-only hostname
+- autoplay is expected to be on for the Docker web container baseline; the web entrypoint
+  now defaults `WEB_AUTOPLAY_ASSISTANT_AUDIO=true`
 - `Replay Voice` reuses the latest successful `audio_url` without re-running dialogue generation
+- transient autoplay/load failures now leave the speech state in `ready` with a retry
+  message instead of surfacing the raw browser media error as a terminal state
 - both avatars are intentionally static; only preset-driven facial/posture states plus
   coarse mouth motion are implemented, without continuous expressions or body gestures yet
 - avatar switching updates the selected role immediately, and a new session binds the

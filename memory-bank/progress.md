@@ -21,6 +21,24 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-11 - 2026-03-11 - Frontend TTS Playback Now Uses Browser-Reachable Audio URLs
+
+### Scope
+
+frontend tts playback, tts-service, docker web runtime
+
+### Outputs
+
+- Updated tts-service to derive audio_url from the incoming request base URL, added frontend normalization for Docker-internal TTS media hosts, changed the Docker web entrypoint default to WEB_AUTOPLAY_ASSISTANT_AUDIO=true, and downgraded transient autoplay/media-load failures from terminal error state to retryable ready state.
+
+### Checks
+
+- Verified node --check for apps/web/app.js and scripts/web_tts_playback_harness.js, targeted pytest for TTS/web playback (11 passed), and full pytest (223 passed).
+
+### Next
+
+- Recreate the web and tts-service containers, then re-run one browser dialogue reply to confirm autoplay and post-playback state are correct under Docker.
+
 ## 2026-03-11 - 2026-03-11 - Compose Runtime Env Loading Fixed For Nested Stacks
 
 ### Scope
