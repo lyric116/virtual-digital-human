@@ -103,13 +103,15 @@ Then open:
 
 ## Runtime Notes
 
+- `apps/web/config.js` is the deployment injection hook; hosted previews should
+  overwrite it instead of trying to make the browser read `.env` directly
 - `window.__APP_CONFIG__.apiBaseUrl` defaults to `http://127.0.0.1:8000`
 - `window.__APP_CONFIG__.wsUrl` defaults to `ws://127.0.0.1:8000/ws`
 - `window.__APP_CONFIG__.ttsBaseUrl` defaults to `http://127.0.0.1:8040`
 - `window.__APP_CONFIG__.affectBaseUrl` defaults to `http://127.0.0.1:8060`
 - `.env.example` exposes `WEB_PUBLIC_API_BASE_URL`, `WEB_PUBLIC_WS_URL`,
-  `WEB_PUBLIC_TTS_BASE_URL`, `WEB_PUBLIC_AFFECT_BASE_URL`, `GATEWAY_CORS_ORIGINS`,
-  `TTS_CORS_ORIGINS`, and `AFFECT_CORS_ORIGINS` for local browser preview
+  `WEB_PUBLIC_TTS_BASE_URL`, and `WEB_PUBLIC_AFFECT_BASE_URL` as the canonical values
+  that should be injected into `config.js` or `window.__APP_CONFIG__` during deployment
 - `Replay Export` uses the latest cached export JSON and rebuilds one session locally
   without calling gateway, orchestrator, dialogue, affect, or TTS services
 - pause and reset remain disabled

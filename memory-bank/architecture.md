@@ -63,6 +63,13 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-11 - Core compose strategy for step 51
+
+- docker-compose.core.yml now treats Python services as local-development containers: image python:3.11-slim, command python -m uvicorn, bind mount of the repo root to /app, and read-only bind mount of .venv/lib/python3.11/site-packages into /usr/local/lib/python3.11/site-packages.
+- apps/api-gateway exposes GET /api/runtime/config so the static browser shell can discover public API, WS, TTS, and affect endpoints without hardcoding deployment-only values.
+- ConnectionRegistry pending events are now bounded by TTL and max queue size, and gateway background dialogue tasks are tracked and cancelled on shutdown instead of being unmanaged create_task fire-and-forget work.
+- scripts/verify_core_compose_stack.py enforces a compose-up timeout so docker startup failures surface as explicit verifier errors instead of indefinite hangs.
+
 ## 2026-03-11 - Config injection and safe grounding boundaries
 
 - The static apps/web shell reads runtime endpoints from window.__APP_CONFIG__, not directly from .env, so deployment must inject WEB_PUBLIC_* values into that object. RAG retrieval must not return grounding cards for low or medium risk when only stage/risk boosts match without meaningful token overlap; only the explicit high-risk guardrail path may bypass semantic overlap for safety handoff cards.

@@ -4,6 +4,7 @@
 .pytest_cache/
 __pycache__/
 *.pyc
+infra/docker/python-service/site-packages.tar.gz
 
 data/external/
 data/val/

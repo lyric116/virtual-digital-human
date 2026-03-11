@@ -228,6 +228,10 @@ Frontend shell preview:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_latency_report.py`
 - Generate and verify the current 10-turn stability regression:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_ten_turn_stability.py`
+- Build and verify the containerized core text loop:
+  - `docker compose -f infra/compose/docker-compose.core.yml up -d --build`
+  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_core_compose_stack.py --compose-file infra/compose/docker-compose.core.yml`
+  - current step-51 core stack uses `python:3.11-slim` plus bind mounts for `../..` and local `.venv/lib/python3.11/site-packages`, so run `uv sync` first
 - Verify the curated RAG knowledge-card dataset before retrieval work:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_knowledge_cards.py`
 - Import external ASR draft results from a JSONL file:
@@ -258,6 +262,10 @@ For DashScope ASR with the current service, use:
 - `ASR_MODEL=qwen3-asr-flash`
 
 `qwen3-asr-flash` now runs against DashScope's native multimodal generation endpoint.
+
+For the dockerized browser shell, inject `WEB_PUBLIC_*` values into `apps/web/config.js`
+or provide them through `infra/docker/web/entrypoint.sh`; the static browser app does not
+read `.env` directly.
 The service keeps the older OpenAI-compatible route only as a fallback path when native
 calls fail.
 

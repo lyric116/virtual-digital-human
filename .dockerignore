@@ -1,0 +1,17 @@
+.git
+.venv
+.uv-cache
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+node_modules
+coverage.xml
+htmlcov
+.pytest_cache/
+data/external/
+data/derived/
+data/manifests/
+data/val/

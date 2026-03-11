@@ -47,6 +47,7 @@ This gateway currently covers steps 8, 10, 11, 12, 13, 14, 15, 17, 19, 20, 25, 2
 ## Endpoints
 
 - `GET /health`
+- `GET /api/runtime/config`
 - `POST /api/session/create`
 - `GET /api/session/{session_id}/state`
 - `GET /api/session/{session_id}/export`
@@ -66,6 +67,9 @@ From repository root:
 
 ## Notes
 
+- `GET /api/runtime/config` returns the current browser-facing API/WS URLs plus the
+  direct affect/TTS service URLs derived from gateway settings, so containerized or
+  templated web shells can resolve runtime endpoints from one place.
 - `POST /api/session/{session_id}/text` now writes both the accepted user message and the
   assistant reply into the `messages` table defined in
   `infra/docker/postgres/init/001_base_schema.sql`.
@@ -74,12 +78,17 @@ From repository root:
 - `GET /api/session/{session_id}/export` reads the current session, ordered messages,
   derived stage history, and persisted `system_events` rows to build the downloadable
   export payload used by the web shell.
+- `GET /api/session/{session_id}/export` now also writes one best-effort JSON snapshot
+  under `SESSION_EXPORT_DIR` so deployments can keep a local export artifact without an
+  extra wrapper job.
 - The gateway calls the orchestrator through `ORCHESTRATOR_BASE_URL`.
 - `GATEWAY_CORS_ORIGINS` controls which local frontend preview origins can call the API
   from the browser.
 - The realtime endpoint currently emits `session.connection.ready`, `session.heartbeat`,
   `message.accepted`, `transcript.partial`, `transcript.final`, `dialogue.reply`, and
   `session.error`.
+- Background dialogue pipeline work is now tracked in `app.state.background_tasks` and
+  cancelled on shutdown instead of being left as anonymous fire-and-forget tasks.
 - `system_events` now carries the end-to-end trace baseline: `session.created`,
   `message.accepted`, `transcript.partial`, `transcript.final`, `affect.snapshot`,
   `knowledge.retrieved`, `dialogue.reply`, `dialogue.summary.updated`, plus

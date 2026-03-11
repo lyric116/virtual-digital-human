@@ -30,6 +30,7 @@ project/
 部署时重点维护：
 
 - `infra/compose/docker-compose.yml`
+- `infra/compose/docker-compose.core.yml`
 - `infra/docker/*`
 - `.env.example`
 - `README.md`
@@ -56,6 +57,11 @@ project/
 - 先基础设施，后业务服务
 - 健康检查通过后再开放网关
 - 提供 `demo mode` 和 `live mode` 两套 Compose 配置
+- 当前仓库已具备一个文本闭环 `core` Compose：
+  - `infra/compose/docker-compose.core.yml`
+  - 覆盖 `web / gateway / orchestrator / dialogue-service / rag-service / affect-service / tts-service / postgres / redis / minio`
+  - 当前 step-51 版本为本地开发型 Compose：Python 服务基于 `python:3.11-slim`，并绑定本地仓库源码和 `.venv/lib/python3.11/site-packages`
+  - 这意味着启动前必须先在宿主机完成 `uv sync`
 
 ## 5. 环境变量清单
 

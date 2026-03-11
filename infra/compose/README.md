@@ -16,6 +16,7 @@ PostgreSQL auto-loads init SQL from:
 Primary file:
 
 - `infra/compose/docker-compose.yml`
+- `infra/compose/docker-compose.core.yml`
 
 ## Usage
 
@@ -31,6 +32,33 @@ Run the verification workflow:
 
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_infra_stack.py --compose-file infra/compose/docker-compose.yml`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_db_schema.py --compose-file infra/compose/docker-compose.yml`
+
+## Core Stack
+
+The current step-51 core stack adds the browser shell and the text-loop services needed
+by the current codebase:
+
+- `web`
+- `gateway`
+- `orchestrator`
+- `dialogue-service`
+- `rag-service`
+- `affect-service`
+- `tts-service`
+- `postgres`
+- `redis`
+- `minio`
+
+Bring up the stack:
+
+- `docker compose -f infra/compose/docker-compose.core.yml up -d --build`
+- before first start, ensure local Python deps are present with `uv sync`
+- current step-51 core stack mounts the repo root to `/app` and mounts `.venv/lib/python3.11/site-packages` read-only into each Python service container
+
+Run the end-to-end verification workflow:
+
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_core_compose_stack.py --compose-file infra/compose/docker-compose.core.yml`
+- if Docker cannot create networks or containers in the current environment, the verifier now times out instead of hanging indefinitely
 
 The verification workflow checks:
 

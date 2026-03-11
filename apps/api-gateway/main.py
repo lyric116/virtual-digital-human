@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -27,6 +27,9 @@ ALLOWED_INPUT_MODES = {"text", "audio", "video"}
 SCHEMA_VERSION = "v1alpha1"
 HEARTBEAT_INTERVAL_MS = 5000
 DEFAULT_MEDIA_STORAGE_ROOT = "data/derived/live_media"
+DEFAULT_SESSION_EXPORT_DIR = "data/exports"
+DEFAULT_PENDING_EVENT_TTL_SECONDS = 90
+DEFAULT_MAX_PENDING_EVENTS_PER_SESSION = 64
 MIME_EXTENSION_MAP = {
     "audio/webm": ".webm",
     "audio/wav": ".wav",
@@ -97,7 +100,17 @@ class GatewaySettings:
     affect_service_base_url: str
     asr_service_base_url: str
     asr_timeout_seconds: float
-    media_storage_root: str
+    gateway_public_base_url: str = "http://127.0.0.1:8000"
+    gateway_ws_path: str = "/ws"
+    tts_service_base_url: str = "http://127.0.0.1:8040"
+    media_storage_root: str = DEFAULT_MEDIA_STORAGE_ROOT
+    session_export_dir: str = DEFAULT_SESSION_EXPORT_DIR
+
+    def public_ws_url(self) -> str:
+        parsed = urllib_parse.urlparse(self.gateway_public_base_url.rstrip("/"))
+        scheme = "wss" if parsed.scheme == "https" else "ws"
+        path = self.gateway_ws_path if self.gateway_ws_path.startswith("/") else f"/{self.gateway_ws_path}"
+        return urllib_parse.urlunparse((scheme, parsed.netloc, path, "", "", ""))
 
     @classmethod
     def from_env(cls) -> "GatewaySettings":
@@ -117,6 +130,8 @@ class GatewaySettings:
             or "companion_female_01",
             gateway_host=os.getenv("GATEWAY_HOST", "0.0.0.0"),
             gateway_port=int(os.getenv("GATEWAY_PORT", "8000")),
+            gateway_public_base_url=os.getenv("GATEWAY_PUBLIC_BASE_URL", "http://127.0.0.1:8000"),
+            gateway_ws_path=os.getenv("GATEWAY_WS_PATH", "/ws"),
             cors_origins=parse_csv_env(
                 os.getenv("GATEWAY_CORS_ORIGINS"),
                 ["http://127.0.0.1:4173", "http://localhost:4173"],
@@ -132,6 +147,12 @@ class GatewaySettings:
                 f"{'127.0.0.1' if os.getenv('AFFECT_SERVICE_HOST', '127.0.0.1') in {'0.0.0.0', '::'} else os.getenv('AFFECT_SERVICE_HOST', '127.0.0.1')}"
                 f":{os.getenv('AFFECT_SERVICE_PORT', '8060')}"
             ),
+            tts_service_base_url=(
+                os.getenv("TTS_SERVICE_BASE_URL")
+                or f"http://"
+                f"{'127.0.0.1' if os.getenv('TTS_SERVICE_HOST', '127.0.0.1') in {'0.0.0.0', '::'} else os.getenv('TTS_SERVICE_HOST', '127.0.0.1')}"
+                f":{os.getenv('TTS_SERVICE_PORT', '8040')}"
+            ),
             asr_service_base_url=(
                 f"http://"
                 f"{'127.0.0.1' if os.getenv('ASR_SERVICE_HOST', '127.0.0.1') in {'0.0.0.0', '::'} else os.getenv('ASR_SERVICE_HOST', '127.0.0.1')}"
@@ -139,6 +160,7 @@ class GatewaySettings:
             ),
             asr_timeout_seconds=float(os.getenv("ASR_TIMEOUT_SECONDS", "60")),
             media_storage_root=os.getenv("MEDIA_STORAGE_ROOT", DEFAULT_MEDIA_STORAGE_ROOT),
+            session_export_dir=os.getenv("SESSION_EXPORT_DIR", DEFAULT_SESSION_EXPORT_DIR),
         )
 
 
@@ -311,6 +333,15 @@ class SessionExportResponse(BaseModel):
     messages: list[MessageHistoryResponse] = Field(default_factory=list)
     stage_history: list[SessionStageHistoryResponse] = Field(default_factory=list)
     events: list[SystemEventHistoryResponse] = Field(default_factory=list)
+
+
+class RuntimeConfigResponse(BaseModel):
+    api_base_url: str
+    ws_url: str
+    affect_base_url: str
+    tts_base_url: str
+    default_avatar_id: str
+    session_export_dir: str
 
 
 class DialogueReplyRequest(BaseModel):
@@ -592,10 +623,28 @@ class SessionRepository(Protocol):
         ...
 
 
+@dataclass
+class PendingRealtimeEvent:
+    envelope: dict[str, Any]
+    enqueued_at: datetime
+
+
 class ConnectionRegistry:
     def __init__(self) -> None:
         self._connections: dict[str, list[WebSocket]] = {}
-        self._pending_events: dict[str, list[dict[str, Any]]] = {}
+        self._pending_events: dict[str, list[PendingRealtimeEvent]] = {}
+
+    def _prune_pending_events(self, session_id: str, *, now: datetime | None = None) -> None:
+        queue = self._pending_events.get(session_id)
+        if not queue:
+            return
+        reference_time = now or datetime.now(timezone.utc)
+        ttl_cutoff = reference_time - timedelta(seconds=DEFAULT_PENDING_EVENT_TTL_SECONDS)
+        queue[:] = [item for item in queue if item.enqueued_at >= ttl_cutoff]
+        if len(queue) > DEFAULT_MAX_PENDING_EVENTS_PER_SESSION:
+            queue[:] = queue[-DEFAULT_MAX_PENDING_EVENTS_PER_SESSION :]
+        if not queue:
+            del self._pending_events[session_id]
 
     async def add(self, session_id: str, websocket: WebSocket) -> None:
         connections = self._connections.setdefault(session_id, [])
@@ -627,16 +676,18 @@ class ConnectionRegistry:
                 return
 
         queue = self._pending_events.setdefault(session_id, [])
-        queue.append(envelope)
+        queue.append(PendingRealtimeEvent(envelope=envelope, enqueued_at=datetime.now(timezone.utc)))
+        self._prune_pending_events(session_id)
 
     async def flush(self, session_id: str, websocket: WebSocket) -> None:
+        self._prune_pending_events(session_id)
         queue = self._pending_events.get(session_id, [])
         if not queue:
             return
 
         while queue:
-            envelope = queue[0]
-            await websocket.send_json(envelope)
+            pending_event = queue[0]
+            await websocket.send_json(pending_event.envelope)
             queue.pop(0)
 
         if session_id in self._pending_events and not self._pending_events[session_id]:
@@ -2394,6 +2445,7 @@ def create_session_state_record(
 
 def create_session_export_record(
     repository: SessionRepository,
+    settings: GatewaySettings | None,
     session_id: str,
 ) -> dict[str, Any] | JSONResponse:
     result = repository.get_session_export(session_id)
@@ -2407,7 +2459,42 @@ def create_session_export_record(
                 retryable=False,
             ),
         )
+    if settings is not None:
+        try:
+            persist_session_export_snapshot(settings, result)
+        except OSError:
+            pass
     return result
+
+
+def resolve_local_output_path(root_path: str, filename: str) -> Path:
+    configured_root = Path(root_path)
+    output_root = configured_root if configured_root.is_absolute() else ROOT / configured_root
+    output_root.mkdir(parents=True, exist_ok=True)
+    return output_root / filename
+
+
+def persist_session_export_snapshot(settings: GatewaySettings, payload: dict[str, Any]) -> Path:
+    export_path = resolve_local_output_path(
+        settings.session_export_dir,
+        f"{payload['session_id']}.json",
+    )
+    export_path.write_text(
+        json.dumps(jsonable_encoder(payload), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return export_path
+
+
+def build_runtime_config_record(settings: GatewaySettings) -> RuntimeConfigResponse:
+    return RuntimeConfigResponse(
+        api_base_url=settings.gateway_public_base_url.rstrip("/"),
+        ws_url=settings.public_ws_url(),
+        affect_base_url=settings.affect_service_base_url.rstrip("/"),
+        tts_base_url=settings.tts_service_base_url.rstrip("/"),
+        default_avatar_id=settings.default_avatar_id,
+        session_export_dir=settings.session_export_dir,
+    )
 
 
 def create_client_runtime_event_record(
@@ -3132,6 +3219,36 @@ async def dispatch_message_pipeline(
         await app.state.connection_registry.enqueue_event(session_id, envelope)
 
 
+def schedule_background_task(app: FastAPI, coro: Any, *, task_name: str) -> asyncio.Task[Any]:
+    background_tasks: set[asyncio.Task[Any]] = getattr(app.state, "background_tasks", set())
+    task_ref: dict[str, asyncio.Task[Any]] = {}
+
+    async def managed_coro() -> Any:
+        try:
+            return await coro
+        finally:
+            task = task_ref.get("task")
+            if task is not None:
+                background_tasks.discard(task)
+                app.state.background_tasks = background_tasks
+
+    task = asyncio.create_task(managed_coro(), name=task_name)
+    task_ref["task"] = task
+    background_tasks.add(task)
+    app.state.background_tasks = background_tasks
+
+    def finalize(completed_task: asyncio.Task[Any]) -> None:
+        try:
+            completed_task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            return
+
+    task.add_done_callback(finalize)
+    return task
+
+
 def create_app(repository: SessionRepository | None = None) -> FastAPI:
     bootstrap_runtime_env()
     settings = GatewaySettings.from_env()
@@ -3147,10 +3264,15 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.session_repository = repository or PostgresSessionRepository(settings)
     app.state.connection_registry = ConnectionRegistry()
+    app.state.background_tasks = set()
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/runtime/config", response_model=RuntimeConfigResponse)
+    def get_runtime_config(request: Request) -> RuntimeConfigResponse:
+        return build_runtime_config_record(request.app.state.settings)
 
     @app.post(
         "/api/session/create",
@@ -3172,7 +3294,11 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         response_model=SessionExportResponse,
     )
     def get_session_export(session_id: str, request: Request) -> Any:
-        return create_session_export_record(request.app.state.session_repository, session_id)
+        return create_session_export_record(
+            request.app.state.session_repository,
+            request.app.state.settings,
+            session_id,
+        )
 
     @app.post(
         "/api/session/{session_id}/text",
@@ -3188,7 +3314,11 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         result = await asyncio.to_thread(create_text_message_record, repository, session_id, payload)
         if isinstance(result, JSONResponse):
             return result
-        asyncio.create_task(dispatch_message_pipeline(request.app, session_id, result))
+        schedule_background_task(
+            request.app,
+            dispatch_message_pipeline(request.app, session_id, result),
+            task_name=f"dispatch_message_pipeline:{session_id}:text",
+        )
         return result["message"]
 
     @app.post(
@@ -3323,7 +3453,11 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         transcript_event = build_transcript_final_event(result)
         await asyncio.to_thread(request.app.state.session_repository.record_system_event, transcript_event)
         await request.app.state.connection_registry.enqueue_event(session_id, transcript_event)
-        asyncio.create_task(dispatch_message_pipeline(request.app, session_id, result))
+        schedule_background_task(
+            request.app,
+            dispatch_message_pipeline(request.app, session_id, result),
+            task_name=f"dispatch_message_pipeline:{session_id}:audio",
+        )
         return {
             **result["message"],
             "media_id": result["audio"]["media_id"],
@@ -3406,6 +3540,17 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             return
         finally:
             await registry.remove(session_id, websocket)
+
+    @app.on_event("shutdown")
+    async def shutdown_background_tasks() -> None:
+        background_tasks: set[asyncio.Task[Any]] = app.state.background_tasks
+        if not background_tasks:
+            return
+        tasks = list(background_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        background_tasks.clear()
 
     return app
 

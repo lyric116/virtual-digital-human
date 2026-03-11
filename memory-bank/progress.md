@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-11 - Step 51 core compose stack and review fixes
+
+### Scope
+
+Closed the remaining review-driven gateway fixes, added a step-51 core compose stack for the text loop, and hardened the docker verifier so it fails fast instead of hanging when container startup is blocked.
+
+### Outputs
+
+- apps/api-gateway runtime config endpoint, bounded pending-event queue, tracked background tasks, and export snapshot persistence
+- dockerized web shell assets plus docker-compose.core.yml for web, gateway, orchestrator, dialogue, rag, affect, tts, postgres, redis, and minio
+- documentation updates clarifying that the core compose stack mounts the local repo and .venv site-packages for Python services
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run ruff check .
+- UV_CACHE_DIR=.uv-cache uv run pytest
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_core_compose_stack.py --compose-file infra/compose/docker-compose.core.yml --compose-up-timeout-seconds 5 --down-after (expected explicit timeout in current agent docker environment)
+
+### Next
+
+- If docker container creation works on the local machine, rerun scripts/verify_core_compose_stack.py without the short timeout for a full live compose proof
+- Continue implementation plan from step 52 after the core compose stack is validated end-to-end locally
+
 ## 2026-03-11 - Fix review regressions
 
 ### Scope

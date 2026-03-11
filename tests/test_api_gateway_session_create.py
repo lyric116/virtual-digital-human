@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
 from pathlib import Path
@@ -1408,7 +1408,10 @@ def test_connection_registry_flush_keeps_queue_when_send_fails():
     module = load_gateway_module()
     registry = module.ConnectionRegistry()
     registry._pending_events["sess_fake_001"] = [
-        {"event_id": "evt_001", "event_type": "message.accepted"}
+        module.PendingRealtimeEvent(
+            envelope={"event_id": "evt_001", "event_type": "message.accepted"},
+            enqueued_at=datetime.now(timezone.utc),
+        )
     ]
 
     class BrokenWebSocket:
@@ -1422,7 +1425,49 @@ def test_connection_registry_flush_keeps_queue_when_send_fails():
     else:
         raise AssertionError("expected flush to propagate websocket send failure")
 
-    assert registry._pending_events["sess_fake_001"][0]["event_id"] == "evt_001"
+    assert registry._pending_events["sess_fake_001"][0].envelope["event_id"] == "evt_001"
+
+
+def test_connection_registry_prunes_expired_pending_events():
+    module = load_gateway_module()
+    registry = module.ConnectionRegistry()
+    registry._pending_events["sess_fake_001"] = [
+        module.PendingRealtimeEvent(
+            envelope={"event_id": "evt_old", "event_type": "message.accepted"},
+            enqueued_at=datetime.now(timezone.utc)
+            - timedelta(seconds=module.DEFAULT_PENDING_EVENT_TTL_SECONDS + 5),
+        )
+    ]
+
+    asyncio.run(
+        registry.enqueue_event(
+            "sess_fake_001",
+            {"event_id": "evt_new", "event_type": "message.accepted"},
+        )
+    )
+
+    assert len(registry._pending_events["sess_fake_001"]) == 1
+    assert registry._pending_events["sess_fake_001"][0].envelope["event_id"] == "evt_new"
+
+
+def test_connection_registry_caps_pending_event_queue(monkeypatch):
+    module = load_gateway_module()
+    monkeypatch.setattr(module, "DEFAULT_MAX_PENDING_EVENTS_PER_SESSION", 3)
+    registry = module.ConnectionRegistry()
+
+    for index in range(5):
+        asyncio.run(
+            registry.enqueue_event(
+                "sess_fake_001",
+                {"event_id": f"evt_{index}", "event_type": "message.accepted"},
+            )
+        )
+
+    assert [item.envelope["event_id"] for item in registry._pending_events["sess_fake_001"]] == [
+        "evt_2",
+        "evt_3",
+        "evt_4",
+    ]
 
 
 def test_submit_text_route_schedules_background_pipeline(monkeypatch):
@@ -1442,14 +1487,16 @@ def test_submit_text_route_schedules_background_pipeline(monkeypatch):
     async def fake_dispatch_message_pipeline(app_or_request, session_id, result):
         scheduled["awaited"] = True
 
-    def fake_create_task(coro):
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "dispatch_message_pipeline", fake_dispatch_message_pipeline)
+
+    def fake_schedule_background_task(app_value, coro, *, task_name: str):
+        scheduled["task_name"] = task_name
         scheduled["coro"] = coro
         coro.close()
         return SimpleNamespace()
 
-    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(module, "dispatch_message_pipeline", fake_dispatch_message_pipeline)
-    monkeypatch.setattr(module.asyncio, "create_task", fake_create_task)
+    monkeypatch.setattr(module, "schedule_background_task", fake_schedule_background_task)
 
     response = asyncio.run(
         route.endpoint(
@@ -1460,6 +1507,7 @@ def test_submit_text_route_schedules_background_pipeline(monkeypatch):
     )
 
     assert response["message_id"] == "msg_fake_001"
+    assert scheduled["task_name"] == "dispatch_message_pipeline:sess_fake_001:text"
     assert "coro" in scheduled
     assert "awaited" not in scheduled
 
@@ -1519,11 +1567,6 @@ def test_finalize_audio_route_schedules_background_pipeline(monkeypatch):
     async def fake_dispatch_message_pipeline(app_or_request, session_id, result):
         scheduled["awaited"] = True
 
-    def fake_create_task(coro):
-        scheduled["coro"] = coro
-        coro.close()
-        return SimpleNamespace()
-
     def fake_request_asr_transcription(settings, *, body: bytes, mime_type: str):
         return module.ASRServiceTranscriptionResponse(
             request_id="req_asr_001",
@@ -1541,8 +1584,15 @@ def test_finalize_audio_route_schedules_background_pipeline(monkeypatch):
 
     monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
     monkeypatch.setattr(module, "dispatch_message_pipeline", fake_dispatch_message_pipeline)
-    monkeypatch.setattr(module.asyncio, "create_task", fake_create_task)
     monkeypatch.setattr(module, "request_asr_transcription", fake_request_asr_transcription)
+
+    def fake_schedule_background_task(app_value, coro, *, task_name: str):
+        scheduled["task_name"] = task_name
+        scheduled["coro"] = coro
+        coro.close()
+        return SimpleNamespace()
+
+    monkeypatch.setattr(module, "schedule_background_task", fake_schedule_background_task)
 
     async def fake_body() -> bytes:
         return b"webm-bytes"
@@ -1561,6 +1611,7 @@ def test_finalize_audio_route_schedules_background_pipeline(monkeypatch):
 
     assert response["message_id"] == "msg_audio_001"
     assert response["mime_type"] == "audio/webm"
+    assert scheduled["task_name"] == "dispatch_message_pipeline:sess_fake_001:audio"
     assert "coro" in scheduled
     assert "awaited" not in scheduled
 
@@ -1581,6 +1632,7 @@ def test_gateway_app_and_readme_document_endpoints():
     paths = {route.path for route in app.routes}
 
     assert "/health" in paths
+    assert "/api/runtime/config" in paths
     assert "/api/session/create" in paths
     assert "/api/session/{session_id}/state" in paths
     assert "/api/session/{session_id}/export" in paths
@@ -1588,6 +1640,7 @@ def test_gateway_app_and_readme_document_endpoints():
     assert "/ws/session/{session_id}" in paths
 
     content = GATEWAY_README.read_text(encoding="utf-8")
+    assert "GET /api/runtime/config" in content
     assert "POST /api/session/create" in content
     assert "GET /api/session/{session_id}/state" in content
     assert "GET /api/session/{session_id}/export" in content
@@ -1654,7 +1707,7 @@ def test_session_export_record_returns_messages_stage_history_and_events():
     module = load_gateway_module()
     repository = FakeSessionRepository()
 
-    body = module.create_session_export_record(repository, "sess_fake_001")
+    body = module.create_session_export_record(repository, None, "sess_fake_001")
 
     assert isinstance(body, dict)
     assert body["session_id"] == "sess_fake_001"
@@ -1666,3 +1719,54 @@ def test_session_export_record_returns_messages_stage_history_and_events():
     assert body["stage_history"][1]["stage"] == "assess"
     assert body["events"][0]["event_type"] == "session.created"
     assert body["events"][1]["event_type"] == "dialogue.reply"
+
+
+def test_session_export_record_persists_snapshot_when_export_dir_is_configured(tmp_path):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    settings = module.GatewaySettings.from_env()
+    settings.session_export_dir = str(tmp_path)
+
+    body = module.create_session_export_record(repository, settings, "sess_fake_001")
+
+    assert isinstance(body, dict)
+    export_file = tmp_path / "sess_fake_001.json"
+    assert export_file.exists()
+    persisted = json.loads(export_file.read_text(encoding="utf-8"))
+    assert persisted["session_id"] == "sess_fake_001"
+    assert persisted["events"][0]["event_type"] == "session.created"
+
+
+def test_runtime_config_record_uses_public_urls():
+    module = load_gateway_module()
+    settings = module.GatewaySettings.from_env()
+    settings.gateway_public_base_url = "https://demo.example.com/api"
+    settings.gateway_ws_path = "/ws/session"
+    settings.affect_service_base_url = "https://demo.example.com/affect"
+    settings.tts_service_base_url = "https://demo.example.com/tts"
+    settings.session_export_dir = "exports/runtime"
+
+    payload = module.build_runtime_config_record(settings)
+
+    assert payload.api_base_url == "https://demo.example.com/api"
+    assert payload.ws_url == "wss://demo.example.com/ws/session"
+    assert payload.affect_base_url == "https://demo.example.com/affect"
+    assert payload.tts_base_url == "https://demo.example.com/tts"
+    assert payload.session_export_dir == "exports/runtime"
+
+
+def test_schedule_background_task_tracks_and_cleans_completed_tasks():
+    module = load_gateway_module()
+    app = SimpleNamespace(state=SimpleNamespace(background_tasks=set()))
+
+    async def run_case():
+        async def sample_coro():
+            return "ok"
+
+        task = module.schedule_background_task(app, sample_coro(), task_name="sample")
+        assert task in app.state.background_tasks
+        await asyncio.sleep(0)
+        await task
+        assert not app.state.background_tasks
+
+    asyncio.run(run_case())
