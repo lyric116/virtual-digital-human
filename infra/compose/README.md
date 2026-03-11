@@ -17,6 +17,7 @@ Primary file:
 
 - `infra/compose/docker-compose.yml`
 - `infra/compose/docker-compose.core.yml`
+- `infra/compose/docker-compose.full.yml`
 
 ## Usage
 
@@ -66,3 +67,22 @@ The verification workflow checks:
 2. container health
 3. persistence after restart for PostgreSQL, Redis, and MinIO
 4. PostgreSQL baseline schema application and insert verification
+
+## Full Stack
+
+The next deployment layer adds the remaining model-facing services needed by the
+voice + avatar chain:
+
+- `asr-service`
+- `avatar-driver-service`
+
+Primary file:
+
+- `infra/compose/docker-compose.full.yml`
+
+Current expectation:
+
+- use `docker compose -f infra/compose/docker-compose.full.yml config` to validate the
+  expanded deployment file
+- use the same local repo bind mount + `.venv` site-packages mount strategy as the core
+  stack until final packaging replaces it with production images

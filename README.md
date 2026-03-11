@@ -232,6 +232,8 @@ Frontend shell preview:
   - `docker compose -f infra/compose/docker-compose.core.yml up -d --build`
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_core_compose_stack.py --compose-file infra/compose/docker-compose.core.yml`
   - current step-51 core stack uses `python:3.11-slim` plus bind mounts for `../..` and local `.venv/lib/python3.11/site-packages`, so run `uv sync` first
+- Prepare the full deployment compose, including `asr-service` and `avatar-driver-service`:
+  - `docker compose -f infra/compose/docker-compose.full.yml config`
 - Verify the curated RAG knowledge-card dataset before retrieval work:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_knowledge_cards.py`
 - Import external ASR draft results from a JSONL file:

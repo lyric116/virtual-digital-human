@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-11 - Step 52 full compose deployment config
+
+### Scope
+
+Added the expanded deployment compose for the voice and avatar chain by extending the local-development container strategy from the core stack to asr-service and avatar-driver-service.
+
+### Outputs
+
+- infra/compose/docker-compose.full.yml with asr-service, avatar-driver-service, and gateway ASR wiring
+- static verification coverage for the full compose asset via tests/test_full_compose.py and docker compose config
+- README and deployment docs updated to distinguish core compose from full compose
+
+### Checks
+
+- docker compose -f infra/compose/docker-compose.full.yml config
+- UV_CACHE_DIR=.uv-cache uv run ruff check .
+- UV_CACHE_DIR=.uv-cache uv run pytest
+
+### Next
+
+- If local Docker container creation is available, run a full voice session against docker-compose.full.yml to close the live validation gap
+- Continue implementation plan to step 53 final acceptance checklist after full compose live validation
+
 ## 2026-03-11 - Step 51 core compose stack and review fixes
 
 ### Scope

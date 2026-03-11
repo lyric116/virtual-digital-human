@@ -62,6 +62,9 @@ project/
   - 覆盖 `web / gateway / orchestrator / dialogue-service / rag-service / affect-service / tts-service / postgres / redis / minio`
   - 当前 step-51 版本为本地开发型 Compose：Python 服务基于 `python:3.11-slim`，并绑定本地仓库源码和 `.venv/lib/python3.11/site-packages`
   - 这意味着启动前必须先在宿主机完成 `uv sync`
+- 当前 step-52 已补齐完整部署配置：
+  - `infra/compose/docker-compose.full.yml`
+  - 在 `core` 基础上加入 `asr-service` 与 `avatar-driver-service`
 
 ## 5. 环境变量清单
 

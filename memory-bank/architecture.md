@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-11 - Full compose deployment layer
+
+- infra/compose/docker-compose.full.yml extends the core stack by adding asr-service on port 8020 and avatar-driver-service on port 8050 while keeping the same local-development container pattern: python:3.11-slim plus repo and .venv bind mounts.
+- gateway deployment config in the full compose file now sets ASR_SERVICE_HOST=asr-service and ASR_SERVICE_PORT=8020 so audio finalize and preview routes resolve to the dedicated ASR container instead of localhost defaults.
+- The current agent environment can validate docker compose config generation but still cannot complete live container creation, so compose verifiers now need explicit timeouts and local-machine reruns for final proof.
+
 ## 2026-03-11 - Core compose strategy for step 51
 
 - docker-compose.core.yml now treats Python services as local-development containers: image python:3.11-slim, command python -m uvicorn, bind mount of the repo root to /app, and read-only bind mount of .venv/lib/python3.11/site-packages into /usr/local/lib/python3.11/site-packages.
