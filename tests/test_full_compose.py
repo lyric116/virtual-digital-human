@@ -20,3 +20,12 @@ def test_full_compose_includes_model_services():
         "../../.venv/lib/python3.11/site-packages:/usr/local/lib/python3.11/site-packages:ro",
     ]:
         assert token in content
+
+
+def test_full_compose_loads_repo_root_env_file_for_model_services():
+    content = FULL_COMPOSE.read_text(encoding="utf-8")
+
+    assert "env_file:" in content
+    assert "- ../../.env" in content
+    assert "ASR_API_KEY:" not in content
+    assert "LLM_API_KEY:" not in content

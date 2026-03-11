@@ -21,6 +21,24 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-11 - 2026-03-11 - Compose Runtime Env Loading Fixed For Nested Stacks
+
+### Scope
+
+deployment, compose, runtime configuration
+
+### Outputs
+
+- Updated core/full compose stacks to load ../../.env for runtime service configuration; removed explicit ASR/LLM/TTS/WEB env overrides that were masking repository-root credentials; aligned blank-env bootstrap handling in tts-service, rag-service, and affect-service.
+
+### Checks
+
+- Verified docker compose --env-file .env -f infra/compose/docker-compose.full.yml config, ruff check ., targeted compose/env tests, and full pytest (219 passed).
+
+### Next
+
+- Recreate the running containers with docker compose --env-file .env -f infra/compose/docker-compose.full.yml up -d --build --force-recreate and re-run the browser voice upload.
+
 ## 2026-03-11 - Fix blank env override for runtime bootstrap
 
 ### Scope

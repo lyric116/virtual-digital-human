@@ -52,9 +52,11 @@ by the current codebase:
 
 Bring up the stack:
 
-- `docker compose -f infra/compose/docker-compose.core.yml up -d --build`
+- `docker compose --env-file .env -f infra/compose/docker-compose.core.yml up -d --build`
 - before first start, ensure local Python deps are present with `uv sync`
 - current step-51 core stack mounts the repo root to `/app` and mounts `.venv/lib/python3.11/site-packages` read-only into each Python service container
+- runtime service configuration is loaded from the repository-root `.env` through
+  `env_file: ../../.env`; keep the real `.env` in the project root
 
 Run the end-to-end verification workflow:
 
@@ -82,7 +84,9 @@ Primary file:
 
 Current expectation:
 
-- use `docker compose -f infra/compose/docker-compose.full.yml config` to validate the
+- use `docker compose --env-file .env -f infra/compose/docker-compose.full.yml config` to validate the
   expanded deployment file
 - use the same local repo bind mount + `.venv` site-packages mount strategy as the core
   stack until final packaging replaces it with production images
+- use `docker compose --env-file .env -f infra/compose/docker-compose.full.yml up -d --build`
+  when you need the full voice + avatar chain with external credentials

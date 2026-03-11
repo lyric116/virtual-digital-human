@@ -63,6 +63,10 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-11 - 2026-03-11 - Nested Compose Files Must Load The Repo Root Env Explicitly
+
+- docker compose files under infra/compose do not reliably pick up the repository-root .env for variable interpolation, so runtime service credentials must be injected explicitly. Core/full stacks now load ../../.env through env_file for dialogue-service, asr-service, tts-service, and web, while operators should still use --env-file .env when compose-time substitutions such as port or database overrides matter.
+
 ## 2026-03-11 - Blank env variables no longer mask .env credentials
 
 - bootstrap_runtime_env in gateway, orchestrator, dialogue-service, and asr-service now treats empty or whitespace-only environment variables as missing and replaces them with values from .env/.env.example.

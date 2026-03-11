@@ -76,16 +76,11 @@ services:
     image: python:3.11-slim
     working_dir: /app
     command: ["python", "-m", "uvicorn", "--app-dir", "services/dialogue-service", "main:app", "--host", "0.0.0.0", "--port", "8030"]
+    env_file:
+      - ../../.env
     environment:
       DIALOGUE_SERVICE_HOST: 0.0.0.0
       DIALOGUE_SERVICE_PORT: 8030
-      LLM_PROVIDER: ${LLM_PROVIDER:-openai_compatible}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-gpt-5.2}
-      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
-      LLM_CONTEXT_WINDOW: ${LLM_CONTEXT_WINDOW:-8192}
-      DIALOGUE_FORCE_FAILURE_MODE: ${DIALOGUE_FORCE_FAILURE_MODE:-}
     ports:
       - "8030:8030"
     volumes:
@@ -123,20 +118,13 @@ services:
     image: python:3.11-slim
     working_dir: /app
     command: ["python", "-m", "uvicorn", "--app-dir", "services/tts-service", "main:app", "--host", "0.0.0.0", "--port", "8040"]
+    env_file:
+      - ../../.env
     environment:
       TTS_SERVICE_HOST: 0.0.0.0
       TTS_SERVICE_PORT: 8040
       TTS_SERVICE_BASE_URL: http://tts-service:8040
       TTS_CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173
-      TTS_PROVIDER: ${TTS_PROVIDER:-edge_tts}
-      TTS_BASE_URL: ${TTS_BASE_URL:-}
-      TTS_API_KEY: ${TTS_API_KEY:-}
-      TTS_MODEL: ${TTS_MODEL:-}
-      TTS_VOICE_A: ${TTS_VOICE_A:-companion_female_01}
-      TTS_VOICE_B: ${TTS_VOICE_B:-coach_male_01}
-      TTS_AUDIO_FORMAT: ${TTS_AUDIO_FORMAT:-mp3}
-      TTS_EDGE_TIMEOUT_SECONDS: ${TTS_EDGE_TIMEOUT_SECONDS:-18}
-      TTS_ENABLE_WAVE_FALLBACK: ${TTS_ENABLE_WAVE_FALLBACK:-true}
       TTS_STORAGE_ROOT: data/derived/tts_audio
     ports:
       - "8040:8040"
@@ -155,20 +143,11 @@ services:
     image: python:3.11-slim
     working_dir: /app
     command: ["python", "-m", "uvicorn", "--app-dir", "services/asr-service", "main:app", "--host", "0.0.0.0", "--port", "8020"]
+    env_file:
+      - ../../.env
     environment:
       ASR_SERVICE_HOST: 0.0.0.0
       ASR_SERVICE_PORT: 8020
-      ASR_PROVIDER: ${ASR_PROVIDER:-dashscope}
-      ASR_BASE_URL: ${ASR_BASE_URL:-https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}
-      ASR_API_KEY: ${ASR_API_KEY:-}
-      ASR_MODEL: ${ASR_MODEL:-qwen3-asr-flash}
-      ASR_LANGUAGE_HINT: ${ASR_LANGUAGE_HINT:-auto}
-      ASR_TIMEOUT_SECONDS: ${ASR_TIMEOUT_SECONDS:-60}
-      ASR_POSTPROCESS_ENABLED: ${ASR_POSTPROCESS_ENABLED:-true}
-      ASR_SILENCE_WINDOW_MS: ${ASR_SILENCE_WINDOW_MS:-200}
-      ASR_SILENCE_MIN_DURATION_MS: ${ASR_SILENCE_MIN_DURATION_MS:-350}
-      ASR_SILENCE_THRESHOLD_RATIO: ${ASR_SILENCE_THRESHOLD_RATIO:-0.015}
-      ASR_HOTWORD_MAP_PATH: ${ASR_HOTWORD_MAP_PATH:-services/asr-service/hotwords.json}
     ports:
       - "8020:8020"
     volumes:
@@ -279,13 +258,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/web/Dockerfile
-    environment:
-      WEB_PUBLIC_API_BASE_URL: ${WEB_PUBLIC_API_BASE_URL:-http://localhost:8000}
-      WEB_PUBLIC_WS_URL: ${WEB_PUBLIC_WS_URL:-ws://localhost:8000/ws}
-      WEB_PUBLIC_TTS_BASE_URL: ${WEB_PUBLIC_TTS_BASE_URL:-http://localhost:8040}
-      WEB_PUBLIC_AFFECT_BASE_URL: ${WEB_PUBLIC_AFFECT_BASE_URL:-http://localhost:8060}
-      WEB_DEFAULT_AVATAR_ID: ${WEB_DEFAULT_AVATAR_ID:-companion_female_01}
-      WEB_AUTOPLAY_ASSISTANT_AUDIO: ${WEB_AUTOPLAY_ASSISTANT_AUDIO:-true}
+    env_file:
+      - ../../.env
     depends_on:
       asr-service:
         condition: service_healthy

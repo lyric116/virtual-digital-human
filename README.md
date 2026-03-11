@@ -229,11 +229,11 @@ Frontend shell preview:
 - Generate and verify the current 10-turn stability regression:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_ten_turn_stability.py`
 - Build and verify the containerized core text loop:
-  - `docker compose -f infra/compose/docker-compose.core.yml up -d --build`
+  - `docker compose --env-file .env -f infra/compose/docker-compose.core.yml up -d --build`
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_core_compose_stack.py --compose-file infra/compose/docker-compose.core.yml`
   - current step-51 core stack uses `python:3.11-slim` plus bind mounts for `../..` and local `.venv/lib/python3.11/site-packages`, so run `uv sync` first
 - Prepare the full deployment compose, including `asr-service` and `avatar-driver-service`:
-  - `docker compose -f infra/compose/docker-compose.full.yml config`
+  - `docker compose --env-file .env -f infra/compose/docker-compose.full.yml config`
 - Verify the final acceptance checklist evidence inventory:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_final_acceptance_assets.py`
 - Verify the curated RAG knowledge-card dataset before retrieval work:
@@ -270,6 +270,10 @@ For DashScope ASR with the current service, use:
 For the dockerized browser shell, inject `WEB_PUBLIC_*` values into `apps/web/config.js`
 or provide them through `infra/docker/web/entrypoint.sh`; the static browser app does not
 read `.env` directly.
+For nested compose files under `infra/compose`, use `--env-file .env` when you want
+compose-time substitutions from the repository root. Runtime service containers now also
+load `../../.env` through `env_file`, so `LLM_*`, `ASR_*`, `TTS_*`, and `WEB_PUBLIC_*`
+values no longer silently fall back to compose defaults.
 The service keeps the older OpenAI-compatible route only as a fallback path when native
 calls fail.
 
