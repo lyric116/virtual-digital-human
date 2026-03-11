@@ -41,7 +41,9 @@ def parse_env_file(path: Path) -> dict[str, str]:
 def bootstrap_runtime_env() -> None:
     merged = {**parse_env_file(ROOT / ".env.example"), **parse_env_file(ROOT / ".env")}
     for key, value in merged.items():
-        os.environ.setdefault(key, value)
+        current = os.environ.get(key)
+        if current is None or not current.strip():
+            os.environ[key] = value
 
 
 @dataclass

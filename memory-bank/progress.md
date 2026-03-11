@@ -21,6 +21,28 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-11 - Fix blank env override for runtime bootstrap
+
+### Scope
+
+Resolved a runtime bootstrap bug where empty container environment variables prevented gateway, orchestrator, dialogue-service, and asr-service from loading real credentials from the repository .env file.
+
+### Outputs
+
+- bootstrap_runtime_env now overwrites blank values with .env values in gateway, orchestrator, dialogue-service, and asr-service
+- regression coverage added for blank environment values in tests/test_env_parsing_consistency.py
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run ruff check .
+- UV_CACHE_DIR=.uv-cache uv run pytest tests/test_env_parsing_consistency.py tests/test_asr_service.py tests/test_environment_inventory.py
+- UV_CACHE_DIR=.uv-cache uv run pytest
+
+### Next
+
+- Recreate the asr-service and gateway containers so they pick up the fixed bootstrap logic and the current .env values
+- Re-run the browser voice upload flow and confirm the previous 401 Unauthorized error is gone
+
 ## 2026-03-11 - Step 53 final acceptance checklist
 
 ### Scope

@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-11 - Blank env variables no longer mask .env credentials
+
+- bootstrap_runtime_env in gateway, orchestrator, dialogue-service, and asr-service now treats empty or whitespace-only environment variables as missing and replaces them with values from .env/.env.example.
+- This matters for Docker compose because service environment entries can resolve to empty strings; before the fix, os.environ.setdefault kept the blank value and prevented runtime .env fallback from loading real API keys.
+
 ## 2026-03-11 - Final acceptance evidence inventory
 
 - docs/final_acceptance_checklist.json is now the machine-readable source of truth for step-53 acceptance, and docs/final_acceptance_checklist.md is the human-readable counterpart for demo prep and答辩.
