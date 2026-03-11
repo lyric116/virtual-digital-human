@@ -1380,6 +1380,109 @@ def test_dispatch_pipeline_falls_back_when_dialogue_summary_request_fails(monkey
     assert repository.event_calls[-1]["event_type"] == "dialogue.summary.updated"
 
 
+def test_dispatch_pipeline_emits_session_error_when_summary_refresh_persistence_fails(monkeypatch):
+    module = load_gateway_module()
+
+    class BrokenSummaryRepository(FakeSessionRepository):
+        def update_dialogue_summary(self, session_id: str, summary_payload: dict):
+            raise RuntimeError("summary metadata write failed")
+
+    repository = BrokenSummaryRepository()
+    repository.user_turn_count = 3
+    connection_registry = module.ConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+
+    def fake_request_dialogue_reply(
+        settings,
+        session,
+        message,
+        *,
+        short_term_memory=None,
+        dialogue_summary=None,
+        affect_snapshot=None,
+    ):
+        return module.DialogueReplyResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            message_id="msg_assistant_005",
+            reply="我们先把这三件最重要的事收一下。",
+            emotion="anxious",
+            risk_level="medium",
+            stage="intervene",
+            next_action="intervene",
+            knowledge_refs=["breathing_478"],
+            avatar_style="warm_support",
+            safety_flags=[],
+        )
+
+    def fake_request_dialogue_summary(
+        settings,
+        session,
+        *,
+        user_turn_count,
+        previous_summary,
+        recent_messages,
+    ):
+        return module.DialogueSummaryResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            summary_text="用户主要压力围绕睡眠、课堂分心和近期任务安排。",
+            current_stage=session["stage"],
+            user_turn_count=user_turn_count,
+            generated_at="2026-03-07T14:01:05Z",
+        )
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
+    monkeypatch.setattr(module, "request_dialogue_summary", fake_request_dialogue_summary)
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "assess",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_fake_003",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "帮我梳理一下今天的重点。",
+                    "submitted_at": "2026-03-07T14:02:00Z",
+                },
+            },
+        )
+    )
+
+    event_types = [event["event_type"] for event in repository.event_calls]
+    assert "dialogue.reply" in event_types
+    assert repository.event_calls[-1]["event_type"] == "session.error"
+    payload = repository.event_calls[-1]["payload"]
+    assert payload["error_code"] == "dialogue_summary_refresh_failed"
+    assert payload["retryable"] is True
+    assert payload["details"]["operation"] == "dialogue_summary_refresh"
+    assert payload["details"]["generated_from_message_id"] == "msg_assistant_005"
+
+
 def test_connection_registry_does_not_requeue_when_any_connection_receives_event():
     module = load_gateway_module()
     registry = module.ConnectionRegistry()
@@ -1707,7 +1810,7 @@ def test_session_export_record_returns_messages_stage_history_and_events():
     module = load_gateway_module()
     repository = FakeSessionRepository()
 
-    body = module.create_session_export_record(repository, None, "sess_fake_001")
+    body = module.create_session_export_record(repository, "sess_fake_001")
 
     assert isinstance(body, dict)
     assert body["session_id"] == "sess_fake_001"
@@ -1721,13 +1824,19 @@ def test_session_export_record_returns_messages_stage_history_and_events():
     assert body["events"][1]["event_type"] == "dialogue.reply"
 
 
-def test_session_export_record_persists_snapshot_when_export_dir_is_configured(tmp_path):
+def test_session_export_record_route_persists_snapshot_when_export_dir_is_configured(tmp_path):
     module = load_gateway_module()
     repository = FakeSessionRepository()
-    settings = module.GatewaySettings.from_env()
-    settings.session_export_dir = str(tmp_path)
+    app = module.create_app(repository=repository)
+    app.state.settings.session_export_dir = str(tmp_path)
+    route = next(
+        route
+        for route in app.routes
+        if route.path == "/api/session/{session_id}/export"
+        and "GET" in getattr(route, "methods", set())
+    )
 
-    body = module.create_session_export_record(repository, settings, "sess_fake_001")
+    body = route.endpoint("sess_fake_001", SimpleNamespace(app=app))
 
     assert isinstance(body, dict)
     export_file = tmp_path / "sess_fake_001.json"
@@ -1735,6 +1844,36 @@ def test_session_export_record_persists_snapshot_when_export_dir_is_configured(t
     persisted = json.loads(export_file.read_text(encoding="utf-8"))
     assert persisted["session_id"] == "sess_fake_001"
     assert persisted["events"][0]["event_type"] == "session.created"
+
+
+def test_session_export_route_returns_503_when_snapshot_persist_fails(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    app = module.create_app(repository=repository)
+    route = next(
+        route
+        for route in app.routes
+        if route.path == "/api/session/{session_id}/export"
+        and "GET" in getattr(route, "methods", set())
+    )
+
+    def boom_snapshot(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(module, "persist_session_export_snapshot", boom_snapshot)
+
+    response = route.endpoint("sess_fake_001", SimpleNamespace(app=app))
+
+    assert isinstance(response, module.JSONResponse)
+    assert response.status_code == 503
+    payload = json.loads(response.body)
+    assert payload["error_code"] == "session_export_snapshot_failed"
+    assert payload["trace_id"] == "trace_fake_001"
+    assert payload["session_id"] == "sess_fake_001"
+    assert payload["retryable"] is True
+    assert payload["details"]["operation"] == "persist_session_export_snapshot"
+    assert payload["details"]["session_export_dir"] == app.state.settings.session_export_dir
+    assert payload["details"]["exception_type"] == "OSError"
 
 
 def test_runtime_config_record_uses_public_urls():
@@ -1768,5 +1907,32 @@ def test_schedule_background_task_tracks_and_cleans_completed_tasks():
         await asyncio.sleep(0)
         await task
         assert not app.state.background_tasks
+
+    asyncio.run(run_case())
+
+
+def test_shutdown_background_tasks_cancels_pending_tasks():
+    module = load_gateway_module()
+    app = SimpleNamespace(state=SimpleNamespace(background_tasks=set()))
+    cancelled = {"value": False}
+
+    async def run_case():
+        started = asyncio.Event()
+
+        async def pending_coro():
+            started.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                cancelled["value"] = True
+                raise
+
+        task = module.schedule_background_task(app, pending_coro(), task_name="pending")
+        await started.wait()
+        assert task in app.state.background_tasks
+        await module.shutdown_background_tasks(app)
+        assert cancelled["value"] is True
+        assert not app.state.background_tasks
+        assert task.cancelled()
 
     asyncio.run(run_case())

@@ -1,0 +1,119 @@
+{
+  "updated_at": "2026-03-11",
+  "scope": "step-53 final acceptance checklist",
+  "allowed_statuses": ["done", "partial", "blocked"],
+  "items": [
+    {
+      "id": "dual_avatar",
+      "requirement": "至少 2 个数字人形象",
+      "status": "done",
+      "evidence_paths": [
+        "docs/07-tts-avatar.md",
+        "scripts/verify_web_avatar_switch.py",
+        "tests/test_web_avatar_switch.py"
+      ],
+      "notes": "前端已支持 companion_female_01 和 coach_male_01 的切换，视觉和声线均有差异。"
+    },
+    {
+      "id": "text_interaction",
+      "requirement": "文本交互闭环",
+      "status": "done",
+      "evidence_paths": [
+        "scripts/verify_web_text_submit.py",
+        "scripts/verify_web_mock_reply.py",
+        "tests/test_web_text_submit.py"
+      ],
+      "notes": "已完成会话创建、文本发送、回复渲染、时间线恢复与导出。"
+    },
+    {
+      "id": "voice_interaction",
+      "requirement": "语音交互闭环",
+      "status": "done",
+      "evidence_paths": [
+        "scripts/verify_web_audio_final_transcript.py",
+        "tests/test_web_audio_final_transcript.py",
+        "services/asr-service/main.py",
+        "services/tts-service/main.py"
+      ],
+      "notes": "已完成录音、最终转写、回复、TTS 播放和字幕联动。"
+    },
+    {
+      "id": "camera_microphone",
+      "requirement": "摄像头和麦克风接入",
+      "status": "done",
+      "evidence_paths": [
+        "scripts/verify_web_camera_capture.py",
+        "tests/test_web_camera_capture.py",
+        "tests/test_web_recording_controls.py"
+      ],
+      "notes": "浏览器端已接入麦克风权限、摄像头预览、音频 chunk 上传和视频低频抽帧上传。"
+    },
+    {
+      "id": "asr_metrics",
+      "requirement": "ASR 与评测指标",
+      "status": "done",
+      "evidence_paths": [
+        "services/asr-service/main.py",
+        "data/derived/eval-local/magicdata_asr_baseline_report.md",
+        "scripts/verify_asr_regression.py"
+      ],
+      "notes": "当前中文公开评测基线基于 MAGICDATA，报告记录 WER 0.042017、SER 0.111111。"
+    },
+    {
+      "id": "knowledge_base",
+      "requirement": "LLM + 心理知识库",
+      "status": "done",
+      "evidence_paths": [
+        "data/kb/knowledge_cards.jsonl",
+        "services/rag-service/main.py",
+        "scripts/verify_rag_service.py",
+        "scripts/verify_dialogue_rag_grounding.py"
+      ],
+      "notes": "知识卡片数据集、检索基线和 grounded dialogue 链路已接通。"
+    },
+    {
+      "id": "multimodal_fusion",
+      "requirement": "文本/语音/视频三模态融合",
+      "status": "done",
+      "evidence_paths": [
+        "services/affect-service/main.py",
+        "scripts/verify_affect_service.py",
+        "scripts/verify_dialogue_conflict_clarification.py",
+        "tests/test_web_emotion_panel.py"
+      ],
+      "notes": "已完成文本、音频、视频 lane 与第一版融合规则，并支持冲突追问。"
+    },
+    {
+      "id": "ten_turn_dialogue",
+      "requirement": "10 轮连续对话",
+      "status": "done",
+      "evidence_paths": [
+        "data/derived/eval-local/ten_turn_stability_report.md",
+        "scripts/verify_ten_turn_stability.py"
+      ],
+      "notes": "10 轮稳定性回归已生成报告，当前基线无 session.error。"
+    },
+    {
+      "id": "latency_baseline",
+      "requirement": "时延基线与响应时间",
+      "status": "done",
+      "evidence_paths": [
+        "data/derived/eval-local/latency_report.md",
+        "scripts/verify_latency_report.py"
+      ],
+      "notes": "当前已生成时延报告，记录 dialogue、tts 和总链路统计。"
+    },
+    {
+      "id": "delivery_and_docker",
+      "requirement": "Docker 交付与统一部署",
+      "status": "partial",
+      "evidence_paths": [
+        "infra/compose/docker-compose.core.yml",
+        "infra/compose/docker-compose.full.yml",
+        "scripts/verify_core_compose_stack.py",
+        "docs/09-deploy-deliverables.md"
+      ],
+      "notes": "core/full compose 资产已完成，config 可通过；当前代理环境里 docker container/network create 会超时，仍需在本机完成 live compose 验证。"
+    }
+  ]
+}

@@ -136,6 +136,10 @@ Demo 模式是比赛交付保底：
 - 主系统与两个独立工程均能单独演示。
 - `demo mode` 可在弱网络环境或离线环境运行。
 - 交付包结构清晰，评委无需猜测入口文件和启动顺序。
+- 当前仓库已维护步骤 53 验收资产：
+  - `docs/final_acceptance_checklist.md`
+  - `docs/final_acceptance_checklist.json`
+  - `scripts/verify_final_acceptance_assets.py`
 
 ## 12. 数据挂载与交付边界
 

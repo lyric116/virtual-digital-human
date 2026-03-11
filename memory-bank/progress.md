@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-11 - Step 53 final acceptance checklist
+
+### Scope
+
+Built the final acceptance asset set so every competition-facing requirement has an explicit status and real evidence paths instead of informal notes.
+
+### Outputs
+
+- docs/final_acceptance_checklist.md with requirement-by-requirement acceptance status and remaining gap list
+- docs/final_acceptance_checklist.json as the machine-checkable evidence inventory
+- scripts/verify_final_acceptance_assets.py and tests/test_final_acceptance_checklist.py for checklist verification
+
+### Checks
+
+- UV_CACHE_DIR=.uv-cache uv run python scripts/verify_final_acceptance_assets.py
+- UV_CACHE_DIR=.uv-cache uv run ruff check .
+- UV_CACHE_DIR=.uv-cache uv run pytest
+
+### Next
+
+- Close the remaining docker live validation gap on a local machine and attach the resulting logs/screenshots to the acceptance checklist
+- After live docker validation, use the acceptance checklist as the source of truth for答辩材料 and final polish prioritization
+
 ## 2026-03-11 - Step 52 full compose deployment config
 
 ### Scope

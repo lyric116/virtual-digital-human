@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
@@ -2095,6 +2096,7 @@ def error_payload(
     trace_id: str | None = None,
     session_id: str | None = None,
     retryable: bool = False,
+    details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "error_code": error_code,
@@ -2102,7 +2104,7 @@ def error_payload(
         "trace_id": trace_id or f"trace_error_{uuid4().hex[:24]}",
         "session_id": session_id,
         "retryable": retryable,
-        "details": {},
+        "details": details or {},
     }
 
 
@@ -2445,7 +2447,6 @@ def create_session_state_record(
 
 def create_session_export_record(
     repository: SessionRepository,
-    settings: GatewaySettings | None,
     session_id: str,
 ) -> dict[str, Any] | JSONResponse:
     result = repository.get_session_export(session_id)
@@ -2459,11 +2460,6 @@ def create_session_export_record(
                 retryable=False,
             ),
         )
-    if settings is not None:
-        try:
-            persist_session_export_snapshot(settings, result)
-        except OSError:
-            pass
     return result
 
 
@@ -3153,8 +3149,28 @@ def build_message_followup_events(
                 )
                 repository.record_system_event(summary_event)
                 events.append(summary_event)
-        except (KeyError, psycopg.Error, RuntimeError):
-            pass
+        except (KeyError, psycopg.Error, RuntimeError) as exc:
+            summary_error_event = jsonable_encoder(
+                build_event_envelope(
+                    session=assistant_result["session"],
+                    event_type="session.error",
+                    payload=error_payload(
+                        error_code="dialogue_summary_refresh_failed",
+                        message=str(exc),
+                        trace_id=assistant_result["session"]["trace_id"],
+                        session_id=session_id,
+                        retryable=True,
+                        details={
+                            "operation": "dialogue_summary_refresh",
+                            "generated_from_message_id": assistant_result["message"]["message_id"],
+                        },
+                    ),
+                    message_id=assistant_result["message"]["message_id"],
+                    source_service="api_gateway",
+                )
+            )
+            repository.record_system_event(summary_error_event)
+            events.append(summary_error_event)
     except (KeyError, psycopg.Error, RuntimeError) as exc:
         error_event = jsonable_encoder(
             build_event_envelope(
@@ -3249,11 +3265,28 @@ def schedule_background_task(app: FastAPI, coro: Any, *, task_name: str) -> asyn
     return task
 
 
+async def shutdown_background_tasks(app: FastAPI | Any) -> None:
+    background_tasks: set[asyncio.Task[Any]] = getattr(app.state, "background_tasks", set())
+    if not background_tasks:
+        return
+    tasks = list(background_tasks)
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    background_tasks.clear()
+    app.state.background_tasks = background_tasks
+
+
 def create_app(repository: SessionRepository | None = None) -> FastAPI:
     bootstrap_runtime_env()
     settings = GatewaySettings.from_env()
 
-    app = FastAPI(title="virtual-huamn-api-gateway", version="0.1.0")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        yield
+        await shutdown_background_tasks(app)
+
+    app = FastAPI(title="virtual-huamn-api-gateway", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -3294,11 +3327,31 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         response_model=SessionExportResponse,
     )
     def get_session_export(session_id: str, request: Request) -> Any:
-        return create_session_export_record(
+        result = create_session_export_record(
             request.app.state.session_repository,
-            request.app.state.settings,
             session_id,
         )
+        if isinstance(result, JSONResponse):
+            return result
+        try:
+            persist_session_export_snapshot(request.app.state.settings, result)
+        except OSError as exc:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content=error_payload(
+                    error_code="session_export_snapshot_failed",
+                    message=str(exc),
+                    trace_id=result.get("trace_id"),
+                    session_id=session_id,
+                    retryable=True,
+                    details={
+                        "operation": "persist_session_export_snapshot",
+                        "session_export_dir": request.app.state.settings.session_export_dir,
+                        "exception_type": type(exc).__name__,
+                    },
+                ),
+            )
+        return result
 
     @app.post(
         "/api/session/{session_id}/text",
@@ -3540,17 +3593,6 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             return
         finally:
             await registry.remove(session_id, websocket)
-
-    @app.on_event("shutdown")
-    async def shutdown_background_tasks() -> None:
-        background_tasks: set[asyncio.Task[Any]] = app.state.background_tasks
-        if not background_tasks:
-            return
-        tasks = list(background_tasks)
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        background_tasks.clear()
 
     return app
 

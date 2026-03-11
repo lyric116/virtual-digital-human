@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-11 - Final acceptance evidence inventory
+
+- docs/final_acceptance_checklist.json is now the machine-readable source of truth for step-53 acceptance, and docs/final_acceptance_checklist.md is the human-readable counterpart for demo prep and答辩.
+- scripts/verify_final_acceptance_assets.py validates that every acceptance item references real evidence paths and only uses the allowed statuses done/partial/blocked.
+- The only explicitly partial item is docker live deployment validation; all other current competition-facing requirements map to concrete evidence already present in the repo.
+
 ## 2026-03-11 - Full compose deployment layer
 
 - infra/compose/docker-compose.full.yml extends the core stack by adding asr-service on port 8020 and avatar-driver-service on port 8050 while keeping the same local-development container pattern: python:3.11-slim plus repo and .venv bind mounts.
