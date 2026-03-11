@@ -57,6 +57,7 @@ changing the HTTP contract:
 From repository root:
 
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/asr-service main:app --host 0.0.0.0 --port 8020`
+- the service reads repo-root `.env.example` and `.env` at startup and fails fast if `ASR_API_KEY` is missing when booting the default remote ASR engine
 - required environment variables:
   - `ASR_API_KEY`
   - `ASR_BASE_URL`

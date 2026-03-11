@@ -749,6 +749,17 @@ def error_payload(
     }
 
 
+def ensure_asr_runtime_configured(settings: ASRSettings) -> None:
+    if not settings.api_key or not settings.api_key.strip():
+        raise RuntimeError("ASR_API_KEY is not configured")
+    if not settings.model or not settings.model.strip():
+        raise RuntimeError("ASR_MODEL is not configured")
+    if not settings.model.startswith("qwen3-asr-flash") and (
+        settings.base_url is None or not settings.base_url.strip()
+    ):
+        raise RuntimeError("ASR_BASE_URL is not configured")
+
+
 def create_transcription_record(
     engine: ASREngine,
     settings: ASRSettings,
@@ -833,6 +844,8 @@ def create_transcription_record(
 def create_app(engine: ASREngine | None = None) -> FastAPI:
     bootstrap_runtime_env()
     settings = ASRSettings.from_env()
+    if engine is None:
+        ensure_asr_runtime_configured(settings)
     service_engine = engine or OpenAICompatibleASREngine(settings)
 
     app = FastAPI(title="virtual-huamn-asr-service", version="0.1.0")

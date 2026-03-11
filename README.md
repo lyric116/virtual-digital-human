@@ -271,9 +271,11 @@ For the dockerized browser shell, inject `WEB_PUBLIC_*` values into `apps/web/co
 or provide them through `infra/docker/web/entrypoint.sh`; the static browser app does not
 read `.env` directly.
 For nested compose files under `infra/compose`, use `--env-file .env` when you want
-compose-time substitutions from the repository root. Runtime service containers now also
-load `../../.env` through `env_file`, so `LLM_*`, `ASR_*`, `TTS_*`, and `WEB_PUBLIC_*`
-values no longer silently fall back to compose defaults.
+compose-time substitutions from the repository root. Only some runtime containers also
+load `../../.env` through `env_file` today (`dialogue-service`, `tts-service`, `asr-service`
+in full compose, and `web`); other Python services still rely on their own repo-root
+runtime env bootstrap or explicit compose `environment` entries rather than a shared
+compose-level `env_file` contract.
 The service keeps the older OpenAI-compatible route only as a fallback path when native
 calls fail.
 

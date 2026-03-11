@@ -57,7 +57,6 @@ or deployment.
 | `ORCHESTRATOR_PORT` | Yes | `8010` | Internal HTTP port for orchestration APIs. |
 | `ORCHESTRATOR_BASE_URL` | Yes | `http://127.0.0.1:8010` | Gateway-facing base URL used for internal orchestration calls. |
 | `ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS` | Yes | `60` | Upper bound for one orchestration request. |
-| `ORCHESTRATOR_SESSION_TTL_SECONDS` | Yes | `1800` | Idle session retention window in cache. |
 
 ## Dialogue Service
 
@@ -143,7 +142,7 @@ or deployment.
 | `ASR_SERVICE_PORT` | Yes | `8020` | HTTP port for the standalone ASR service. |
 | `ASR_PROVIDER` | Yes | `dashscope` | Logical provider name for ASR. |
 | `ASR_BASE_URL` | Yes | `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation` | Canonical ASR endpoint used by the standalone service for `qwen3-asr-flash`. |
-| `ASR_API_KEY` | Yes | empty | Canonical ASR credential used by future service code. |
+| `ASR_API_KEY` | Yes | empty | Canonical ASR credential read by `services/asr-service` itself at startup/runtime; browser and gateway do not forward this secret. |
 | `ASR_MODEL` | Yes | `qwen3-asr-flash` | Primary ASR model identifier. |
 | `ASR_LANGUAGE_HINT` | No | `auto` | Optional language hint for external ASR. |
 | `ASR_TIMEOUT_SECONDS` | Yes | `60` | ASR request timeout. |

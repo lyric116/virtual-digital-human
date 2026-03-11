@@ -169,6 +169,25 @@ def test_asr_settings_only_use_canonical_asr_environment(monkeypatch):
     assert settings.model == "canonical-model"
 
 
+def test_create_app_requires_asr_api_key_when_using_default_engine(monkeypatch):
+    module = load_asr_module()
+    monkeypatch.delenv("ASR_API_KEY", raising=False)
+    monkeypatch.setenv("ASR_BASE_URL", module.DEFAULT_DASHSCOPE_QWEN3_NATIVE_URL)
+    monkeypatch.setenv("ASR_MODEL", "qwen3-asr-flash")
+
+    def empty_env_file(_path):
+        return {}
+
+    monkeypatch.setattr(module, "parse_env_file", empty_env_file)
+
+    try:
+        module.create_app()
+    except RuntimeError as exc:
+        assert str(exc) == "ASR_API_KEY is not configured"
+    else:
+        raise AssertionError("expected create_app() to reject missing ASR_API_KEY")
+
+
 def test_extract_dashscope_message_reads_text_and_language():
     module = load_asr_module()
 

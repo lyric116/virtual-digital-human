@@ -1114,7 +1114,9 @@
     elements.connectionStatusValue.textContent = state.connectionStatus;
     elements.connectionHeartbeatValue.textContent = formatTimestamp(state.lastHeartbeatAt);
     elements.connectionLogValue.textContent = state.connectionLog.join("\n");
-    elements.textInputField.value = state.draftText;
+    if (elements.textInputField.value !== state.draftText) {
+      elements.textInputField.value = state.draftText;
+    }
     elements.textInputField.disabled = interactionLocked || state.connectionStatus === "replay";
     elements.textSubmitButton.textContent = getTextSubmitButtonLabel(state);
     elements.textSubmitButton.disabled = (
@@ -1190,69 +1192,7 @@
     if (elements.avatarReplayButton) {
       elements.avatarReplayButton.disabled = !state.ttsAudioUrl || state.ttsPlaybackState === "synthesizing";
     }
-    const affectSnapshot = state.affectSnapshot || createInitialAffectSnapshot();
-    if (elements.emotionPanelStatus) {
-      elements.emotionPanelStatus.textContent = affectSnapshot.panelMessage;
-    }
-    if (elements.textSignalValue) {
-      elements.textSignalValue.textContent = affectSnapshot.text.label;
-    }
-    if (elements.textSignalConfidence) {
-      elements.textSignalConfidence.textContent = formatConfidence(affectSnapshot.text.confidence);
-    }
-    if (elements.textSignalDetail) {
-      elements.textSignalDetail.textContent = affectSnapshot.text.detail;
-    }
-    if (elements.audioSignalValue) {
-      elements.audioSignalValue.textContent = affectSnapshot.audio.label;
-    }
-    if (elements.audioSignalConfidence) {
-      elements.audioSignalConfidence.textContent = formatConfidence(affectSnapshot.audio.confidence);
-    }
-    if (elements.audioSignalDetail) {
-      elements.audioSignalDetail.textContent = affectSnapshot.audio.detail;
-    }
-    if (elements.videoSignalValue) {
-      elements.videoSignalValue.textContent = affectSnapshot.video.label;
-    }
-    if (elements.videoSignalConfidence) {
-      elements.videoSignalConfidence.textContent = formatConfidence(affectSnapshot.video.confidence);
-    }
-    if (elements.videoSignalDetail) {
-      elements.videoSignalDetail.textContent = affectSnapshot.video.detail;
-    }
-    if (elements.fusionEmotionValue) {
-      elements.fusionEmotionValue.textContent = affectSnapshot.fusion.emotionState;
-    }
-    elements.fusionRiskValue.textContent = (
-      affectSnapshot.fusion.riskLevel && affectSnapshot.fusion.riskLevel !== "pending"
-        ? affectSnapshot.fusion.riskLevel
-        : state.lastReplyRiskLevel
-    );
-    if (elements.fusionConfidenceValue) {
-      elements.fusionConfidenceValue.textContent = formatConfidence(affectSnapshot.fusion.confidence);
-    }
-    if (elements.fusionConflictValue) {
-      elements.fusionConflictValue.textContent = affectSnapshot.fusion.conflict
-        ? `conflict: ${affectSnapshot.fusion.conflictReason || "true"}`
-        : "conflict: false";
-    }
-    if (elements.fusionDetailValue) {
-      elements.fusionDetailValue.textContent = affectSnapshot.fusion.detail;
-    }
-    elements.fusionStageValue.textContent = `stage: ${state.stage} / next: ${state.lastReplyNextAction}`;
-    if (elements.emotionSourceOriginValue) {
-      elements.emotionSourceOriginValue.textContent = affectSnapshot.sourceContext.origin;
-    }
-    if (elements.emotionSourceDatasetValue) {
-      elements.emotionSourceDatasetValue.textContent = affectSnapshot.sourceContext.dataset;
-    }
-    if (elements.emotionSourceRecordValue) {
-      elements.emotionSourceRecordValue.textContent = affectSnapshot.sourceContext.recordId;
-    }
-    if (elements.emotionSourceNoteValue) {
-      elements.emotionSourceNoteValue.textContent = affectSnapshot.sourceContext.note;
-    }
+    const affectSnapshot = renderAffectPanel(rootDocument, elements, state);
     elements.timelineUserText.textContent = (
       state.lastAcceptedText
         || state.partialTranscriptText
@@ -1278,13 +1218,10 @@
     rootDocument.body.dataset.partialTranscriptState = state.partialTranscriptState;
     rootDocument.body.dataset.ttsPlaybackState = state.ttsPlaybackState;
     rootDocument.body.dataset.avatarVisualState = avatarVisualState;
-    rootDocument.body.dataset.avatarMouthState = state.avatarMouthState;
-    rootDocument.body.dataset.avatarMouthTransitionCount = String(state.avatarMouthTransitionCount);
     rootDocument.body.dataset.activeAvatarId = selectedAvatar.avatarId;
     rootDocument.body.dataset.effectiveAvatarId = effectiveAvatar.avatarId;
     rootDocument.body.dataset.effectiveAvatarProfile = effectiveAvatar.profileId;
     rootDocument.body.dataset.avatarExpressionPreset = avatarExpressionPreset.presetId;
-    rootDocument.body.dataset.affectPanelState = affectSnapshot.panelState;
   }
 
   function validateDialogueReplyPayload(payload) {
@@ -2329,7 +2266,7 @@
       runtime.affectRequestToken = requestToken;
       state.affectSnapshot.panelState = "loading";
       state.affectSnapshot.panelMessage = "正在刷新文本、音频、视频和融合占位结果。";
-      renderSessionState(rootDocument, elements, state, appConfig);
+      renderAffectPanel(rootDocument, elements, state);
 
       try {
         const payload = await requestAffectAnalysis(
@@ -2363,7 +2300,7 @@
         };
       }
 
-      renderSessionState(rootDocument, elements, state, appConfig);
+      renderAffectPanel(rootDocument, elements, state);
       return state.affectSnapshot;
     }
 
@@ -2384,7 +2321,7 @@
       }
       state.avatarMouthState = nextState;
       state.avatarMouthTransitionCount += 1;
-      renderSessionState(rootDocument, elements, state, appConfig);
+      renderAvatarMouthState(rootDocument, elements, state);
     }
 
     function updateAvatarMouthFromElapsed(elapsedMs) {
@@ -2985,7 +2922,6 @@
       state.connectionStatus = "idle";
       state.lastHeartbeatAt = null;
       state.connectionLog = ["realtime idle"];
-      renderSessionState(rootDocument, elements, state, appConfig);
 
       try {
         const payload = await requestSessionState(resolvedFetch, appConfig, storedSessionId);
@@ -2993,7 +2929,6 @@
         state.requestState = "ready";
         state.historyRestoreState = "restored";
         pushConnectionLog(state, `session restored: ${storedSessionId}`);
-        renderSessionState(rootDocument, elements, state, appConfig);
         connectRealtime();
         scheduleAffectRefresh("session_restored", 40);
         return true;
