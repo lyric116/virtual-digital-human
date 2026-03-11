@@ -228,7 +228,7 @@ def render_markdown_report(
         f"- Transcript workflow: `{display_path(transcripts_path)}`",
         f"- Hypothesis source: `{hypothesis_source}`",
         f"- Eligible records: `{gating['eligible_records']}`",
-        f"- Gate: `workflow_status=verified && locked_for_eval=true && text_status=human_verified`",
+        "- Gate: `workflow_status=verified && locked_for_eval=true && text_status=human_verified`",
         "",
         "## Gating Summary",
         "",

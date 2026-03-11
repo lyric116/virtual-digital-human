@@ -126,6 +126,29 @@ def test_rag_high_risk_guardrail_bypasses_non_handoff_stage_filter():
     assert "stage:bypassed_for_high_risk_guardrail" in payload["filters_applied"]
 
 
+def test_rag_retrieval_returns_no_cards_for_zero_semantic_overlap():
+    module = load_rag_module()
+    index = module.build_knowledge_index(ROOT / "data" / "kb" / "knowledge_cards.jsonl")
+    settings = build_settings(module)
+    payload = module.retrieve_knowledge_cards(
+        index,
+        module.RAGRetrieveRequest(
+            session_id="sess_rag_irrelevant",
+            trace_id="trace_rag_irrelevant",
+            query_text="量子退相干常数和哈密顿量本征态怎么证明",
+            current_stage="assess",
+            risk_level="low",
+            emotion="neutral",
+            top_k=3,
+        ),
+        settings,
+    )
+
+    assert payload["results"] == []
+    assert payload["candidate_count"] == 0
+    assert "semantic:no_overlap_no_results" in payload["filters_applied"]
+
+
 def test_rag_service_routes_and_docs_are_present():
     module = load_rag_module()
     app = module.create_app(index=module.build_knowledge_index(ROOT / "data" / "kb" / "knowledge_cards.jsonl"))

@@ -63,6 +63,10 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-11 - Config injection and safe grounding boundaries
+
+- The static apps/web shell reads runtime endpoints from window.__APP_CONFIG__, not directly from .env, so deployment must inject WEB_PUBLIC_* values into that object. RAG retrieval must not return grounding cards for low or medium risk when only stage/risk boosts match without meaningful token overlap; only the explicit high-risk guardrail path may bypass semantic overlap for safety handoff cards.
+
 ## 2026-03-11 - Ten-turn stability harness
 
 - Step 50 now has a service-level 10-turn regression that launches affect, rag, orchestrator, and dialogue directly and records a deterministic local event log for each turn.

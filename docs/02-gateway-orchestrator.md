@@ -80,21 +80,25 @@ stateDiagram-v2
 
 ### 对前端
 
-- `POST /session/create`
-- `POST /session/{id}/text`
-- `POST /session/{id}/audio`
-- `POST /session/{id}/frame`
-- `GET /session/{id}/state`
-- `WS /session/{id}/events`
+- `POST /api/session/create`
+- `POST /api/session/{session_id}/text`
+- `POST /api/session/{session_id}/audio/chunk`
+- `POST /api/session/{session_id}/audio/preview`
+- `POST /api/session/{session_id}/audio/finalize`
+- `POST /api/session/{session_id}/video/frame`
+- `GET /api/session/{session_id}/state`
+- `GET /api/session/{session_id}/export`
+- `WS /ws/session/{session_id}`
 
 ### 对内部服务
 
-- `POST /internal/asr/submit`
+- `POST /api/asr/transcribe`
 - `POST /internal/affect/analyze`
 - `POST /internal/rag/retrieve`
 - `POST /internal/dialogue/respond`
+- `POST /internal/dialogue/summarize`
 - `POST /internal/tts/synthesize`
-- `POST /internal/avatar/drive`
+- `POST /internal/avatar/offline-drive`
 
 ## 8. 任务编排建议
 

@@ -63,7 +63,6 @@ def reserve_local_port() -> int:
 
 def main() -> None:
     env = {**parse_env_file(ROOT / ".env.example"), **parse_env_file(ROOT / ".env"), **os.environ}
-    module = load_gateway_module()
     gateway_env = dict(env)
     gateway_env["PYTHONPATH"] = str(GATEWAY_MAIN.parent)
     gateway_port = reserve_local_port()

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import importlib.util
 import json
 from pathlib import Path
+import pytest
 import sys
 
 
@@ -266,6 +267,56 @@ def test_audio_message_record_cleans_up_orphan_asset_when_asr_fails():
     payload = json.loads(response.body.decode("utf-8"))
     assert payload["error_code"] == "audio_transcription_failed"
     assert repository.deleted_media_ids == ["media_audio_final_001"]
+
+
+def test_audio_final_repository_cleans_written_file_when_insert_fails(tmp_path, monkeypatch):
+    module = load_gateway_module()
+    settings = build_settings(module)
+    settings.media_storage_root = str(tmp_path)
+    repository = module.PostgresSessionRepository(settings)
+
+    class FailingCursor:
+        def __init__(self) -> None:
+            self.last_query = ""
+
+        def execute(self, query: str, params) -> None:
+            self.last_query = query
+            if "INSERT INTO media_indexes" in query:
+                raise RuntimeError("insert failed")
+
+        def fetchone(self):
+            if "SELECT session_id, trace_id" in self.last_query:
+                return {"session_id": "sess_fake_001", "trace_id": "trace_fake_001"}
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+    class FailingConnection:
+        def cursor(self):
+            return FailingCursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+    monkeypatch.setattr(module.psycopg, "connect", lambda *args, **kwargs: FailingConnection())
+
+    with pytest.raises(RuntimeError, match="insert failed"):
+        repository.create_audio_final_asset(
+            "sess_fake_001",
+            content=b"wav-bytes",
+            duration_ms=740,
+            mime_type="audio/wav",
+            metadata={"source": "test"},
+        )
+
+    assert not any(path.is_file() for path in tmp_path.rglob("*"))
 
 
 def test_audio_message_record_cleans_up_orphan_asset_when_asr_is_empty():

@@ -163,6 +163,7 @@ class RAGIndexInfoResponse(BaseModel):
 @dataclass
 class IndexedKnowledgeCard:
     card: KnowledgeCard
+    tokens: list[str]
     vector: dict[str, float]
     norm: float
 
@@ -227,6 +228,12 @@ def build_weighted_vector(tokens: list[str], idf: dict[str, float]) -> tuple[dic
     return weighted, norm
 
 
+def has_meaningful_token_overlap(left_tokens: list[str], right_tokens: list[str]) -> bool:
+    left = {token for token in left_tokens if len(token) >= 2}
+    right = {token for token in right_tokens if len(token) >= 2}
+    return bool(left.intersection(right))
+
+
 def load_knowledge_cards(path: Path) -> list[KnowledgeCard]:
     if not path.exists():
         raise RuntimeError(f"knowledge card dataset does not exist: {path}")
@@ -266,7 +273,7 @@ def build_knowledge_index(cards_path: Path) -> KnowledgeIndex:
     entries: list[IndexedKnowledgeCard] = []
     for card, tokens in zip(cards, document_tokens, strict=True):
         vector, norm = build_weighted_vector(tokens, idf)
-        entries.append(IndexedKnowledgeCard(card=card, vector=vector, norm=norm))
+        entries.append(IndexedKnowledgeCard(card=card, tokens=tokens, vector=vector, norm=norm))
 
     return KnowledgeIndex(
         cards_path=cards_path,
@@ -334,13 +341,14 @@ def filter_candidates(
 def score_candidate(
     entry: IndexedKnowledgeCard,
     *,
+    semantic_score: float,
     query_vector: dict[str, float],
     query_norm: float,
     current_stage: str | None,
     risk_level: str | None,
     emotion: str | None,
 ) -> float:
-    score = cosine_similarity(query_vector, query_norm, entry.vector, entry.norm)
+    score = semantic_score
 
     if current_stage and current_stage in entry.card.stage:
         score += 0.08
@@ -360,6 +368,7 @@ def retrieve_knowledge_cards(
     top_k = payload.top_k or settings.rag_default_top_k
     top_k = min(top_k, settings.rag_max_top_k)
 
+    query_tokens = tokenise_text(payload.query_text)
     query_vector, query_norm = build_query_vector(payload.query_text, index)
     candidates, filters_applied = filter_candidates(
         index,
@@ -367,21 +376,31 @@ def retrieve_knowledge_cards(
         risk_level=payload.risk_level,
     )
 
-    scored = [
-        (
-            score_candidate(
-                entry,
-                query_vector=query_vector,
-                query_norm=query_norm,
-                current_stage=payload.current_stage,
-                risk_level=payload.risk_level,
-                emotion=payload.emotion,
-            ),
+    scored: list[tuple[float, float, bool, IndexedKnowledgeCard]] = []
+    for entry in candidates:
+        semantic_score = cosine_similarity(query_vector, query_norm, entry.vector, entry.norm)
+        meaningful_overlap = has_meaningful_token_overlap(query_tokens, entry.tokens)
+        score = score_candidate(
             entry,
+            semantic_score=semantic_score,
+            query_vector=query_vector,
+            query_norm=query_norm,
+            current_stage=payload.current_stage,
+            risk_level=payload.risk_level,
+            emotion=payload.emotion,
         )
-        for entry in candidates
-    ]
-    scored.sort(key=lambda item: (-item[0], item[1].card.id))
+        scored.append((score, semantic_score, meaningful_overlap, entry))
+
+    if payload.risk_level != "high":
+        semantically_grounded = [item for item in scored if item[1] > 0.0 and item[2]]
+        if semantically_grounded:
+            scored = semantically_grounded
+            filters_applied.append("semantic:min_overlap_required")
+        else:
+            scored = []
+            filters_applied.append("semantic:no_overlap_no_results")
+
+    scored.sort(key=lambda item: (-item[0], item[3].card.id))
 
     results = [
         RetrievedKnowledgeCard(
@@ -399,7 +418,7 @@ def retrieve_knowledge_cards(
             contraindications=entry.card.contraindications,
             source=entry.card.source,
         ).model_dump()
-        for score, entry in scored[:top_k]
+        for score, _, _, entry in scored[:top_k]
     ]
 
     return RAGRetrieveResponse(
@@ -412,7 +431,7 @@ def retrieve_knowledge_cards(
         top_k=top_k,
         generated_at=datetime.now(timezone.utc),
         index_card_count=index.card_count,
-        candidate_count=len(candidates),
+        candidate_count=len(scored),
         filters_applied=filters_applied,
         results=results,
     ).model_dump(mode="json")

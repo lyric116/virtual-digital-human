@@ -26,12 +26,17 @@ code or deployment files.
 
 ## Web
 
+The static web shell under `apps/web/` does not parse `.env` at runtime. It reads
+`window.__APP_CONFIG__` from the served HTML. The `WEB_PUBLIC_*` values below are the
+canonical deployment inputs that should be injected into that object during local preview
+or deployment.
+
 | Variable | Required | Default / Example | Purpose |
 | --- | --- | --- | --- |
-| `WEB_PUBLIC_API_BASE_URL` | Yes | `http://localhost:8000` | Browser-side API entrypoint. |
-| `WEB_PUBLIC_WS_URL` | Yes | `ws://localhost:8000/ws` | Browser-side realtime endpoint. |
-| `WEB_PUBLIC_TTS_BASE_URL` | Yes | `http://localhost:8040` | Browser-side TTS entrypoint used by avatar playback to request synthesized audio. |
-| `WEB_PUBLIC_AFFECT_BASE_URL` | Yes | `http://localhost:8060` | Browser-side affect entrypoint used by the emotion panel placeholder analysis. |
+| `WEB_PUBLIC_API_BASE_URL` | Yes | `http://localhost:8000` | Canonical API base URL that should be injected into `window.__APP_CONFIG__.apiBaseUrl`. |
+| `WEB_PUBLIC_WS_URL` | Yes | `ws://localhost:8000/ws` | Canonical realtime URL that should be injected into `window.__APP_CONFIG__.wsUrl`. |
+| `WEB_PUBLIC_TTS_BASE_URL` | Yes | `http://localhost:8040` | Canonical TTS base URL that should be injected into `window.__APP_CONFIG__.ttsBaseUrl`. |
+| `WEB_PUBLIC_AFFECT_BASE_URL` | Yes | `http://localhost:8060` | Canonical affect base URL that should be injected into `window.__APP_CONFIG__.affectBaseUrl`. |
 | `WEB_DEFAULT_AVATAR_ID` | No | `companion_female_01` | Default avatar shown before session state loads. |
 
 ## Gateway

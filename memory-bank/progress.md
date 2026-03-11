@@ -21,6 +21,24 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-11 - Fix review regressions
+
+### Scope
+
+rag-service, api-gateway, replay tests, environment docs
+
+### Outputs
+
+- Added semantic gating for non-high-risk RAG retrieval, cleaned orphan media files on media_indexes insert failure, corrected frontend config documentation, refreshed gateway/orchestrator route docs, and added replay/export completeness checks.
+
+### Checks
+
+- ruff check .; pytest 201 passed
+
+### Next
+
+- Continue implementation plan from the next pending step after review fixes.
+
 ## 2026-03-11 - Step 50 Ten-Turn Stability Regression
 
 ### Scope

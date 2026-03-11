@@ -924,6 +924,16 @@ class PostgresSessionRepository:
             return candidate
         return ROOT / candidate
 
+    @staticmethod
+    def _delete_local_path(path: Path | None) -> None:
+        if path is None:
+            return
+        try:
+            if path.exists():
+                path.unlink()
+        except OSError:
+            return
+
     def _create_user_message(
         self,
         session_id: str,
@@ -1629,6 +1639,7 @@ class PostgresSessionRepository:
         now = datetime.now(timezone.utc)
         media_id = f"media_{uuid4().hex[:24]}"
         resolved_mime_type = normalize_mime_type(mime_type)
+        absolute_path: Path | None = None
 
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
@@ -1661,63 +1672,68 @@ class PostgresSessionRepository:
                     }
                 )
 
-                cur.execute(
-                    """
-                    INSERT INTO media_indexes (
-                        media_id,
-                        session_id,
-                        trace_id,
-                        message_id,
-                        media_kind,
-                        storage_backend,
-                        storage_path,
-                        mime_type,
-                        duration_ms,
-                        byte_size,
-                        metadata,
-                        created_at
-                    ) VALUES (
-                        %(media_id)s,
-                        %(session_id)s,
-                        %(trace_id)s,
-                        %(message_id)s,
-                        'audio_chunk',
-                        'local',
-                        %(storage_path)s,
-                        %(mime_type)s,
-                        %(duration_ms)s,
-                        %(byte_size)s,
-                        %(metadata)s,
-                        %(created_at)s
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO media_indexes (
+                            media_id,
+                            session_id,
+                            trace_id,
+                            message_id,
+                            media_kind,
+                            storage_backend,
+                            storage_path,
+                            mime_type,
+                            duration_ms,
+                            byte_size,
+                            metadata,
+                            created_at
+                        ) VALUES (
+                            %(media_id)s,
+                            %(session_id)s,
+                            %(trace_id)s,
+                            %(message_id)s,
+                            'audio_chunk',
+                            'local',
+                            %(storage_path)s,
+                            %(mime_type)s,
+                            %(duration_ms)s,
+                            %(byte_size)s,
+                            %(metadata)s,
+                            %(created_at)s
+                        )
+                        RETURNING
+                            media_id,
+                            session_id,
+                            trace_id,
+                            media_kind,
+                            storage_backend,
+                            storage_path,
+                            mime_type,
+                            duration_ms,
+                            byte_size,
+                            created_at
+                        """,
+                        {
+                            "media_id": media_id,
+                            "session_id": session_id,
+                            "trace_id": session_row["trace_id"],
+                            "message_id": None,
+                            "storage_path": storage_path,
+                            "mime_type": resolved_mime_type,
+                            "duration_ms": duration_ms,
+                            "byte_size": len(content),
+                            "metadata": Jsonb(row_metadata),
+                            "created_at": now,
+                        },
                     )
-                    RETURNING
-                        media_id,
-                        session_id,
-                        trace_id,
-                        media_kind,
-                        storage_backend,
-                        storage_path,
-                        mime_type,
-                        duration_ms,
-                        byte_size,
-                        created_at
-                    """,
-                    {
-                        "media_id": media_id,
-                        "session_id": session_id,
-                        "trace_id": session_row["trace_id"],
-                        "message_id": None,
-                        "storage_path": storage_path,
-                        "mime_type": resolved_mime_type,
-                        "duration_ms": duration_ms,
-                        "byte_size": len(content),
-                        "metadata": Jsonb(row_metadata),
-                        "created_at": now,
-                    },
-                )
-                row = cur.fetchone()
+                    row = cur.fetchone()
+                except Exception:
+                    self._delete_local_path(absolute_path)
+                    raise
 
         if row is None:
+            self._delete_local_path(absolute_path)
             raise RuntimeError("audio chunk insert returned no row")
 
         return {
@@ -1739,6 +1755,7 @@ class PostgresSessionRepository:
         now = datetime.now(timezone.utc)
         media_id = f"media_{uuid4().hex[:24]}"
         resolved_mime_type = normalize_mime_type(mime_type)
+        absolute_path: Path | None = None
 
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
@@ -1761,63 +1778,68 @@ class PostgresSessionRepository:
                 )
                 absolute_path.write_bytes(content)
 
-                cur.execute(
-                    """
-                    INSERT INTO media_indexes (
-                        media_id,
-                        session_id,
-                        trace_id,
-                        message_id,
-                        media_kind,
-                        storage_backend,
-                        storage_path,
-                        mime_type,
-                        duration_ms,
-                        byte_size,
-                        metadata,
-                        created_at
-                    ) VALUES (
-                        %(media_id)s,
-                        %(session_id)s,
-                        %(trace_id)s,
-                        %(message_id)s,
-                        'audio_final',
-                        'local',
-                        %(storage_path)s,
-                        %(mime_type)s,
-                        %(duration_ms)s,
-                        %(byte_size)s,
-                        %(metadata)s,
-                        %(created_at)s
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO media_indexes (
+                            media_id,
+                            session_id,
+                            trace_id,
+                            message_id,
+                            media_kind,
+                            storage_backend,
+                            storage_path,
+                            mime_type,
+                            duration_ms,
+                            byte_size,
+                            metadata,
+                            created_at
+                        ) VALUES (
+                            %(media_id)s,
+                            %(session_id)s,
+                            %(trace_id)s,
+                            %(message_id)s,
+                            'audio_final',
+                            'local',
+                            %(storage_path)s,
+                            %(mime_type)s,
+                            %(duration_ms)s,
+                            %(byte_size)s,
+                            %(metadata)s,
+                            %(created_at)s
+                        )
+                        RETURNING
+                            media_id,
+                            session_id,
+                            trace_id,
+                            media_kind,
+                            storage_backend,
+                            storage_path,
+                            mime_type,
+                            duration_ms,
+                            byte_size,
+                            created_at
+                        """,
+                        {
+                            "media_id": media_id,
+                            "session_id": session_id,
+                            "trace_id": session_row["trace_id"],
+                            "message_id": None,
+                            "storage_path": storage_path,
+                            "mime_type": resolved_mime_type,
+                            "duration_ms": duration_ms,
+                            "byte_size": len(content),
+                            "metadata": Jsonb(metadata or {}),
+                            "created_at": now,
+                        },
                     )
-                    RETURNING
-                        media_id,
-                        session_id,
-                        trace_id,
-                        media_kind,
-                        storage_backend,
-                        storage_path,
-                        mime_type,
-                        duration_ms,
-                        byte_size,
-                        created_at
-                    """,
-                    {
-                        "media_id": media_id,
-                        "session_id": session_id,
-                        "trace_id": session_row["trace_id"],
-                        "message_id": None,
-                        "storage_path": storage_path,
-                        "mime_type": resolved_mime_type,
-                        "duration_ms": duration_ms,
-                        "byte_size": len(content),
-                        "metadata": Jsonb(metadata or {}),
-                        "created_at": now,
-                    },
-                )
-                row = cur.fetchone()
+                    row = cur.fetchone()
+                except Exception:
+                    self._delete_local_path(absolute_path)
+                    raise
 
         if row is None:
+            self._delete_local_path(absolute_path)
             raise RuntimeError("audio final insert returned no row")
         return dict(row)
 
@@ -1836,6 +1858,7 @@ class PostgresSessionRepository:
         now = datetime.now(timezone.utc)
         media_id = f"media_{uuid4().hex[:24]}"
         resolved_mime_type = normalize_mime_type(mime_type)
+        absolute_path: Path | None = None
 
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
@@ -1869,62 +1892,67 @@ class PostgresSessionRepository:
                     }
                 )
 
-                cur.execute(
-                    """
-                    INSERT INTO media_indexes (
-                        media_id,
-                        session_id,
-                        trace_id,
-                        message_id,
-                        media_kind,
-                        storage_backend,
-                        storage_path,
-                        mime_type,
-                        duration_ms,
-                        byte_size,
-                        metadata,
-                        created_at
-                    ) VALUES (
-                        %(media_id)s,
-                        %(session_id)s,
-                        %(trace_id)s,
-                        %(message_id)s,
-                        'video_frame',
-                        'local',
-                        %(storage_path)s,
-                        %(mime_type)s,
-                        %(duration_ms)s,
-                        %(byte_size)s,
-                        %(metadata)s,
-                        %(created_at)s
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO media_indexes (
+                            media_id,
+                            session_id,
+                            trace_id,
+                            message_id,
+                            media_kind,
+                            storage_backend,
+                            storage_path,
+                            mime_type,
+                            duration_ms,
+                            byte_size,
+                            metadata,
+                            created_at
+                        ) VALUES (
+                            %(media_id)s,
+                            %(session_id)s,
+                            %(trace_id)s,
+                            %(message_id)s,
+                            'video_frame',
+                            'local',
+                            %(storage_path)s,
+                            %(mime_type)s,
+                            %(duration_ms)s,
+                            %(byte_size)s,
+                            %(metadata)s,
+                            %(created_at)s
+                        )
+                        RETURNING
+                            media_id,
+                            session_id,
+                            trace_id,
+                            media_kind,
+                            storage_backend,
+                            storage_path,
+                            mime_type,
+                            byte_size,
+                            created_at
+                        """,
+                        {
+                            "media_id": media_id,
+                            "session_id": session_id,
+                            "trace_id": session_row["trace_id"],
+                            "message_id": None,
+                            "storage_path": storage_path,
+                            "mime_type": resolved_mime_type,
+                            "duration_ms": None,
+                            "byte_size": len(content),
+                            "metadata": Jsonb(row_metadata),
+                            "created_at": now,
+                        },
                     )
-                    RETURNING
-                        media_id,
-                        session_id,
-                        trace_id,
-                        media_kind,
-                        storage_backend,
-                        storage_path,
-                        mime_type,
-                        byte_size,
-                        created_at
-                    """,
-                    {
-                        "media_id": media_id,
-                        "session_id": session_id,
-                        "trace_id": session_row["trace_id"],
-                        "message_id": None,
-                        "storage_path": storage_path,
-                        "mime_type": resolved_mime_type,
-                        "duration_ms": None,
-                        "byte_size": len(content),
-                        "metadata": Jsonb(row_metadata),
-                        "created_at": now,
-                    },
-                )
-                row = cur.fetchone()
+                    row = cur.fetchone()
+                except Exception:
+                    self._delete_local_path(absolute_path)
+                    raise
 
         if row is None:
+            self._delete_local_path(absolute_path)
             raise RuntimeError("video frame insert returned no row")
 
         return {
@@ -1963,8 +1991,7 @@ class PostgresSessionRepository:
             return
         try:
             absolute_path = self._resolve_storage_path(storage_path)
-            if absolute_path.exists():
-                absolute_path.unlink()
+            self._delete_local_path(absolute_path)
         except OSError:
             return
 

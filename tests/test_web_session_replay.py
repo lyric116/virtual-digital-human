@@ -37,6 +37,24 @@ def test_web_session_replay_reconstructs_saved_export():
     assert "Assistant" in payload["afterReplay"]["timelineText"]
 
 
+def test_replay_export_fixture_keeps_affect_and_knowledge_events_complete():
+    export_payload = json.loads(DEMO_EXPORT.read_text(encoding="utf-8"))
+    event_types = [event["event_type"] for event in export_payload["events"]]
+
+    assert "affect.snapshot" in event_types
+    assert "knowledge.retrieved" in event_types
+
+    affect_event = next(event for event in export_payload["events"] if event["event_type"] == "affect.snapshot")
+    knowledge_event = next(
+        event for event in export_payload["events"] if event["event_type"] == "knowledge.retrieved"
+    )
+
+    assert affect_event["payload"]["fusion_result"]["risk_level"] == "medium"
+    assert affect_event["payload"]["source_context"]["dataset"] == "demo_replay"
+    assert knowledge_event["payload"]["source_ids"] == ["breathing_box_4444"]
+    assert knowledge_event["payload"]["grounded_refs"] == ["breathing_box_4444"]
+
+
 def test_web_session_replay_docs_are_present():
     web_readme = WEB_README.read_text(encoding="utf-8")
     root_readme = ROOT_README.read_text(encoding="utf-8")

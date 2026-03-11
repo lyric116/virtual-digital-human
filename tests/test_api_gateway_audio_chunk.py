@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import pytest
 import sys
 
 
@@ -188,3 +189,56 @@ def test_audio_chunk_route_and_readme_are_present():
 
     assert "/api/session/{session_id}/audio/chunk" in paths
     assert "POST /api/session/{session_id}/audio/chunk" in readme
+
+
+def test_audio_chunk_repository_cleans_written_file_when_insert_fails(tmp_path, monkeypatch):
+    module = load_gateway_module()
+    settings = module.GatewaySettings.from_env()
+    settings.media_storage_root = str(tmp_path)
+    repository = module.PostgresSessionRepository(settings)
+
+    class FailingCursor:
+        def __init__(self) -> None:
+            self.last_query = ""
+
+        def execute(self, query: str, params) -> None:
+            self.last_query = query
+            if "INSERT INTO media_indexes" in query:
+                raise RuntimeError("insert failed")
+
+        def fetchone(self):
+            if "SELECT session_id, trace_id" in self.last_query:
+                return {"session_id": "sess_fake_001", "trace_id": "trace_fake_001"}
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+    class FailingConnection:
+        def cursor(self):
+            return FailingCursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+    monkeypatch.setattr(module.psycopg, "connect", lambda *args, **kwargs: FailingConnection())
+
+    with pytest.raises(RuntimeError, match="insert failed"):
+        repository.create_audio_chunk_index(
+            "sess_fake_001",
+            content=b"chunk-bytes",
+            chunk_seq=1,
+            chunk_started_at_ms=0,
+            duration_ms=120,
+            is_final=False,
+            mime_type="audio/webm",
+            metadata={"source": "test"},
+        )
+
+    assert not any(path.is_file() for path in tmp_path.rglob("*"))

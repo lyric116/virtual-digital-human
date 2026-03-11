@@ -15,7 +15,6 @@ import urllib.parse
 import urllib.request
 
 import psycopg
-from psycopg.rows import dict_row
 
 
 ROOT = Path(__file__).resolve().parents[1]
