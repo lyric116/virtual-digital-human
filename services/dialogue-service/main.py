@@ -130,6 +130,9 @@ class RetrievalContext(BaseModel):
     source_ids: list[str] = Field(default_factory=list)
     filters_applied: list[str] = Field(default_factory=list)
     candidate_count: int | None = Field(default=None, ge=0)
+    retrieval_status: str | None = None
+    retrieval_attempted: bool = False
+    error_message: str | None = None
 
 
 class LLMDialogueFields(BaseModel):
@@ -298,11 +301,17 @@ def extract_retrieval_context(metadata: dict[str, Any] | None) -> RetrievalConte
 
     raw_candidate_count = metadata.get("knowledge_candidate_count")
     candidate_count = raw_candidate_count if isinstance(raw_candidate_count, int) else None
+    retrieval_status = str(metadata.get("knowledge_retrieval_status") or "").strip() or None
+    retrieval_attempted = metadata.get("knowledge_retrieval_attempted") is True
+    error_message = str(metadata.get("knowledge_retrieval_error_message") or "").strip() or None
 
     return RetrievalContext(
         source_ids=[card.source_id for card in cards],
         filters_applied=filters_applied,
         candidate_count=candidate_count,
+        retrieval_status=retrieval_status,
+        retrieval_attempted=retrieval_attempted,
+        error_message=error_message,
     )
 
 
@@ -684,6 +693,12 @@ def translate_llm_exception(exc: Exception) -> HTTPException:
     return HTTPException(status_code=502, detail=f"{type(exc).__name__}: {message}")
 
 
+def should_fallback_dialogue_reply(exc: Exception) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    return isinstance(exc, RuntimeError)
+
+
 def create_app() -> FastAPI:
     bootstrap_runtime_env()
     settings = DialogueServiceSettings.from_env()
@@ -707,7 +722,9 @@ def create_app() -> FastAPI:
         except Exception as exc:
             if isinstance(exc, HTTPException):
                 raise exc
-            return build_dialogue_fallback_reply(payload, exc)
+            if should_fallback_dialogue_reply(exc):
+                return build_dialogue_fallback_reply(payload, exc)
+            raise translate_llm_exception(exc) from exc
 
     @app.post("/internal/dialogue/validate", response_model=DialogueReplyResponse)
     def validate(payload: DialogueReplyResponse) -> DialogueReplyResponse:

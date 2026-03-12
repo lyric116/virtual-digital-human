@@ -259,15 +259,20 @@ def attach_rag_context(
     settings: OrchestratorSettings,
     payload: DialogueReplyRequest,
 ) -> DialogueReplyRequest:
+    metadata = dict(payload.metadata or {})
+    metadata["knowledge_retrieval_attempted"] = True
     try:
         rag_response = request_rag_cards(settings, payload)
-    except RuntimeError:
-        return payload
+    except RuntimeError as exc:
+        metadata["knowledge_retrieval_status"] = "failed"
+        metadata["knowledge_retrieval_error_message"] = str(exc)
+        return payload.model_copy(update={"metadata": metadata})
 
-    metadata = dict(payload.metadata or {})
     metadata["knowledge_cards"] = [card.model_dump(mode="json") for card in rag_response.results]
     metadata["knowledge_filters_applied"] = rag_response.filters_applied
     metadata["knowledge_candidate_count"] = rag_response.candidate_count
+    metadata["knowledge_retrieval_status"] = "succeeded" if rag_response.results else "empty"
+    metadata.pop("knowledge_retrieval_error_message", None)
 
     return payload.model_copy(update={"metadata": metadata})
 

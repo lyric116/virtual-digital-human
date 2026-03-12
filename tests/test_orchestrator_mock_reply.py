@@ -263,6 +263,23 @@ def test_orchestrator_injects_rag_cards_into_dialogue_request(monkeypatch):
     assert "knowledge_filters_applied" in dialogue_body
 
 
+def test_orchestrator_attaches_rag_failure_metadata_when_retrieval_fails(monkeypatch):
+    module = load_orchestrator_module()
+    payload = build_request(module, content_text="普通文本")
+
+    def boom_rag(settings, request_payload):
+        raise RuntimeError("rag-service unavailable: timed out")
+
+    monkeypatch.setattr(module, "request_rag_cards", boom_rag)
+
+    enriched = module.attach_rag_context(module.OrchestratorSettings.from_env(), payload)
+
+    assert enriched.metadata["knowledge_retrieval_attempted"] is True
+    assert enriched.metadata["knowledge_retrieval_status"] == "failed"
+    assert enriched.metadata["knowledge_retrieval_error_message"] == "rag-service unavailable: timed out"
+    assert "knowledge_cards" not in enriched.metadata
+
+
 def test_orchestrator_routes_translate_downstream_runtime_errors(monkeypatch):
     module = load_orchestrator_module()
     app = module.create_app()

@@ -12,6 +12,7 @@ function parseArgs(argv) {
     mode: "mock",
     apiBaseUrl: "http://127.0.0.1:8000",
     wsUrl: "ws://127.0.0.1:8000/ws",
+    closeScenario: "normal",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -28,6 +29,11 @@ function parseArgs(argv) {
     }
     if (current === "--ws-url") {
       args.wsUrl = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (current === "--close-scenario") {
+      args.closeScenario = argv[index + 1];
       index += 1;
     }
   }
@@ -163,7 +169,9 @@ function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null)
   };
 }
 
-function createMockWebSocket() {
+function createMockWebSocket(closeScenario = "normal") {
+  let forcedCloseCount = 0;
+
   class MockWebSocket {
     constructor(url) {
       this.url = url;
@@ -219,8 +227,12 @@ function createMockWebSocket() {
 
     close(code = 1000, reason = "mock_close") {
       this.readyState = MockWebSocket.CLOSED;
+      forcedCloseCount += 1;
+      const isTerminalClose = closeScenario === "terminal_missing_session" && forcedCloseCount >= 2;
+      const resolvedCode = isTerminalClose ? 4404 : code;
+      const resolvedReason = isTerminalClose ? "session_not_found" : reason;
       setTimeout(() => {
-        this.emit("close", { code, reason });
+        this.emit("close", { code: resolvedCode, reason: resolvedReason });
       }, 0);
     }
   }
@@ -306,7 +318,7 @@ async function waitFor(condition, timeoutMs, message) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const fetchImpl = args.mode === "live" ? fetch : createMockFetch();
-  const WebSocketImpl = args.mode === "live" ? WebSocket : createMockWebSocket();
+  const WebSocketImpl = args.mode === "live" ? WebSocket : createMockWebSocket(args.closeScenario);
 
   if (typeof fetchImpl !== "function") {
     throw new Error("fetch is not available in this runtime");
@@ -352,8 +364,21 @@ async function main() {
   );
 
   const afterReconnect = collectSnapshot(runtime.document);
+
+  let afterTerminalClose = null;
+  if (args.closeScenario === "terminal_missing_session") {
+    controller.forceRealtimeDropForTest();
+    await waitFor(
+      () => runtime.document.getElementById("connection-status-value").textContent === "closed",
+      5000,
+      "terminal realtime close did not settle into closed state",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    afterTerminalClose = collectSnapshot(runtime.document);
+  }
+
   controller.shutdownForTest();
-  process.stdout.write(`${JSON.stringify({ beforeCreate, afterConnect, afterReconnect }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ beforeCreate, afterConnect, afterReconnect, afterTerminalClose }, null, 2)}\n`);
 }
 
 main().catch((error) => {

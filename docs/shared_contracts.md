@@ -288,7 +288,7 @@ avatar selection.
 | `stage` | string | Yes | `engage`, `assess`, `intervene`, `reassess`, or `handoff`. |
 | `next_action` | string | Yes | Action selected by orchestrator. |
 | `knowledge_refs` | array[string] | No | Retrieved KB ids used for grounding. |
-| `retrieval_context` | object | No | Echoed retrieval trace used for logging; may include `source_ids`, `filters_applied`, and `candidate_count`. |
+| `retrieval_context` | object | No | Echoed retrieval trace used for logging; may include `source_ids`, `filters_applied`, `candidate_count`, `retrieval_attempted`, `retrieval_status`, and `error_message` when retrieval degraded. |
 | `avatar_style` | string | No | Style hint used by TTS and avatar layers. |
 | `safety_flags` | array[string] | No | Triggered policy or risk flags. Gateway high-risk precheck may emit `high_risk_rule_precheck` and `rule_hit:*`; dialogue fallback may emit `dialogue_fallback_response` and `dialogue_fallback_reason:*`; affect-driven clarification may emit `affect_conflict_clarification` and `affect_conflict_reason_present`. |
 
@@ -380,7 +380,7 @@ This format is used by HTTP APIs and `session.error` events.
 | `trace_id` | string | Yes | Trace id used to find logs. |
 | `session_id` | string | No | Session id if the error is session-scoped. |
 | `retryable` | boolean | Yes | Whether the caller can retry the same action. |
-| `details` | object | No | Structured context safe to expose to clients. |
+| `details` | object | No | Structured context safe to expose to clients. Gateway runtime failures may include operation-specific details such as `generated_from_message_id`, `message_id`, or other degraded-path metadata. |
 
 ## Minimal Examples
 
@@ -430,6 +430,13 @@ This format is used by HTTP APIs and `session.error` events.
     "stage": "assess",
     "next_action": "ask_followup",
     "knowledge_refs": ["breathing_478"],
+    "retrieval_context": {
+      "source_ids": ["breathing_478"],
+      "filters_applied": ["stage:assess"],
+      "candidate_count": 1,
+      "retrieval_attempted": true,
+      "retrieval_status": "succeeded"
+    },
     "avatar_style": "warm_support",
     "safety_flags": []
   }

@@ -137,6 +137,26 @@ def test_create_transcription_record_rejects_empty_body():
     assert b"audio_body_empty" in response.body
 
 
+def test_create_transcription_record_rejects_invalid_wav_bytes():
+    module = load_asr_module()
+    settings = build_settings(module)
+    engine = FakeASREngine()
+
+    response = module.create_transcription_record(
+        engine,
+        settings,
+        body=b"not-a-real-wave-file",
+        filename="broken.wav",
+        content_type="audio/wav",
+        record_id="noxi/sample/bad-wav",
+    )
+
+    assert response.status_code == 400
+    assert b"audio_file_invalid" in response.body
+    assert b"invalid or unreadable audio file" in response.body
+    assert engine.calls == []
+
+
 def test_asr_service_routes_and_docs_are_present():
     module = load_asr_module()
     app = module.create_app(engine=FakeASREngine())

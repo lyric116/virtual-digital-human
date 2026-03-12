@@ -1016,6 +1016,8 @@ def test_dispatch_pipeline_records_knowledge_retrieval_event(monkeypatch):
                 "source_ids": ["sleep_worry_container", "sleep_hygiene_basic"],
                 "filters_applied": ["stage:intervene", "risk_level:medium"],
                 "candidate_count": 2,
+                "retrieval_attempted": True,
+                "retrieval_status": "succeeded",
             },
             avatar_style="warm_support",
             safety_flags=["rag_grounded_response"],
@@ -1059,6 +1061,180 @@ def test_dispatch_pipeline_records_knowledge_retrieval_event(monkeypatch):
     assert knowledge_event["payload"]["source_ids"] == ["sleep_worry_container", "sleep_hygiene_basic"]
     assert knowledge_event["payload"]["grounded_refs"] == ["sleep_worry_container"]
     assert knowledge_event["payload"]["candidate_count"] == 2
+    assert knowledge_event["payload"]["retrieval_attempted"] is True
+    assert knowledge_event["payload"]["retrieval_status"] == "succeeded"
+
+
+def test_dispatch_pipeline_records_failed_knowledge_retrieval_attempt(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    connection_registry = module.ConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+
+    def fake_request_dialogue_reply(
+        settings,
+        session,
+        message,
+        *,
+        short_term_memory=None,
+        dialogue_summary=None,
+        affect_snapshot=None,
+    ):
+        return module.DialogueReplyResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            message_id="msg_assistant_rag_failed_001",
+            reply="我们先把今晚最卡住你的那件事说具体一点。",
+            emotion="anxious",
+            risk_level="medium",
+            stage="assess",
+            next_action="ask_followup",
+            knowledge_refs=[],
+            retrieval_context={
+                "source_ids": [],
+                "filters_applied": [],
+                "candidate_count": None,
+                "retrieval_attempted": True,
+                "retrieval_status": "failed",
+                "error_message": "rag-service unavailable: timed out",
+            },
+            avatar_style="warm_support",
+            safety_flags=[],
+        )
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "engage",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_fake_001",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "我今晚又开始胡思乱想。",
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                },
+            },
+        )
+    )
+
+    knowledge_event = next(event for event in repository.event_calls if event["event_type"] == "knowledge.retrieved")
+    assert knowledge_event["payload"]["source_ids"] == []
+    assert knowledge_event["payload"]["retrieval_attempted"] is True
+    assert knowledge_event["payload"]["retrieval_status"] == "failed"
+    assert knowledge_event["payload"]["error_message"] == "rag-service unavailable: timed out"
+
+
+def test_dispatch_pipeline_emits_session_error_when_affect_snapshot_fails(monkeypatch):
+    module = load_gateway_module()
+    repository = FakeSessionRepository()
+    connection_registry = module.ConnectionRegistry()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_repository=repository,
+                settings=module.GatewaySettings.from_env(),
+                connection_registry=connection_registry,
+            )
+        )
+    )
+
+    def boom_affect(settings, session, message):
+        raise RuntimeError("affect-service unavailable: timed out")
+
+    def fake_request_dialogue_reply(
+        settings,
+        session,
+        message,
+        *,
+        short_term_memory=None,
+        dialogue_summary=None,
+        affect_snapshot=None,
+    ):
+        assert affect_snapshot is None
+        return module.DialogueReplyResponse(
+            session_id=session["session_id"],
+            trace_id=session["trace_id"],
+            message_id="msg_assistant_affect_001",
+            reply="我们先把现在最明显的感受说清楚。",
+            emotion="anxious",
+            risk_level="medium",
+            stage="assess",
+            next_action="ask_followup",
+            knowledge_refs=[],
+            avatar_style="warm_support",
+            safety_flags=[],
+        )
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_affect_snapshot", boom_affect)
+    monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
+
+    asyncio.run(
+        module.dispatch_message_pipeline(
+            request,
+            "sess_fake_001",
+            {
+                "session": {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "status": "active",
+                    "stage": "engage",
+                    "updated_at": "2026-03-07T14:01:00Z",
+                },
+                "message": {
+                    "message_id": "msg_fake_001",
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "role": "user",
+                    "status": "accepted",
+                    "source_kind": "text",
+                    "content_text": "我现在有点慌。",
+                    "submitted_at": "2026-03-07T14:01:00Z",
+                },
+            },
+        )
+    )
+
+    event_types = [event["event_type"] for event in repository.event_calls]
+    assert "dialogue.reply" in event_types
+    assert "session.error" in event_types
+    affect_error_event = next(
+        event
+        for event in repository.event_calls
+        if event["event_type"] == "session.error"
+        and event["payload"]["error_code"] == "affect_snapshot_failed"
+    )
+    assert affect_error_event["payload"]["retryable"] is True
+    assert affect_error_event["payload"]["details"]["operation"] == "request_affect_snapshot"
+    assert affect_error_event["payload"]["details"]["message_id"] == "msg_fake_001"
 
 
 def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monkeypatch):

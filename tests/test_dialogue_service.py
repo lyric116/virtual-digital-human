@@ -306,6 +306,25 @@ def test_dialogue_service_routes_fallback_on_reply_error_and_keep_summary_errors
         raise AssertionError("expected summarize route to translate generic error")
 
 
+def test_dialogue_service_routes_surface_unexpected_reply_errors(monkeypatch):
+    module = load_dialogue_module()
+    app = module.create_app()
+    respond_route = next(route for route in app.routes if route.path == "/internal/dialogue/respond")
+
+    def boom_reply(settings, payload):
+        raise ValueError("unexpected local bug")
+
+    monkeypatch.setattr(module, "generate_dialogue_fields", boom_reply)
+
+    try:
+        respond_route.endpoint(build_request(module, content_text="普通文本"))
+    except module.HTTPException as exc:
+        assert exc.status_code == 502
+        assert exc.detail == "ValueError: unexpected local bug"
+    else:
+        raise AssertionError("expected respond route to surface unexpected local errors")
+
+
 def test_dialogue_service_short_circuits_to_clarification_on_affect_conflict(monkeypatch):
     module = load_dialogue_module()
     app = module.create_app()

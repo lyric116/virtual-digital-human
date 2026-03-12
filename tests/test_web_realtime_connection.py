@@ -11,7 +11,7 @@ WEB_README = ROOT / "apps" / "web" / "README.md"
 GATEWAY_README = ROOT / "apps" / "api-gateway" / "README.md"
 
 
-def run_harness() -> dict:
+def run_harness(*, close_scenario: str = "normal") -> dict:
     result = subprocess.run(
         [
             "node",
@@ -22,6 +22,8 @@ def run_harness() -> dict:
             "http://127.0.0.1:8000",
             "--ws-url",
             "ws://127.0.0.1:8000/ws",
+            "--close-scenario",
+            close_scenario,
         ],
         cwd=ROOT,
         check=True,
@@ -50,6 +52,15 @@ def test_web_realtime_recovers_after_forced_drop():
     assert payload["afterReconnect"]["lastHeartbeat"] != "not started"
     assert "reconnect attempt" in payload["afterReconnect"]["connectionLog"]
     assert "socket connected" in payload["afterReconnect"]["connectionLog"]
+
+
+def test_web_realtime_stops_after_terminal_missing_session_close():
+    payload = run_harness(close_scenario="terminal_missing_session")
+
+    assert payload["afterTerminalClose"]["connectionStatus"] == "closed"
+    assert payload["afterTerminalClose"]["bodyConnectionState"] == "closed"
+    assert "terminal realtime close: session_not_found" in payload["afterTerminalClose"]["connectionLog"]
+    assert "reconnect attempt 2 scheduled" not in payload["afterTerminalClose"]["connectionLog"]
 
 
 def test_realtime_readmes_document_websocket_flow():

@@ -3006,17 +3006,29 @@ def build_knowledge_retrieved_event(
 ) -> dict[str, Any] | None:
     retrieval_context = dialogue_reply.retrieval_context or {}
     source_ids = retrieval_context.get("source_ids")
-    if not isinstance(source_ids, list) or not source_ids:
+    normalized_source_ids = (
+        [str(item) for item in source_ids if str(item).strip()]
+        if isinstance(source_ids, list)
+        else []
+    )
+    retrieval_attempted = retrieval_context.get("retrieval_attempted") is True
+    retrieval_status = str(retrieval_context.get("retrieval_status") or "").strip() or None
+    error_message = str(retrieval_context.get("error_message") or "").strip() or None
+    if not normalized_source_ids and not retrieval_attempted and retrieval_status is None:
         return None
 
     payload = {
-        "source_ids": [str(item) for item in source_ids if str(item).strip()],
+        "source_ids": normalized_source_ids,
         "grounded_refs": list(dialogue_reply.knowledge_refs),
         "filters_applied": list(retrieval_context.get("filters_applied") or []),
         "candidate_count": retrieval_context.get("candidate_count"),
         "risk_level": dialogue_reply.risk_level,
         "stage": dialogue_reply.stage,
+        "retrieval_attempted": retrieval_attempted,
+        "retrieval_status": retrieval_status or ("succeeded" if normalized_source_ids else "not_requested"),
     }
+    if error_message:
+        payload["error_message"] = error_message
     return jsonable_encoder(
         build_event_envelope(
             session=result["session"],
@@ -3075,8 +3087,29 @@ def build_message_followup_events(
                         )
                     )
                 )
-            except RuntimeError:
+            except RuntimeError as exc:
                 affect_snapshot = None
+                affect_error_event = jsonable_encoder(
+                    build_event_envelope(
+                        session=result["session"],
+                        event_type="session.error",
+                        payload=error_payload(
+                            error_code="affect_snapshot_failed",
+                            message=str(exc),
+                            trace_id=result["session"]["trace_id"],
+                            session_id=session_id,
+                            retryable=True,
+                            details={
+                                "operation": "request_affect_snapshot",
+                                "message_id": result["message"]["message_id"],
+                            },
+                        ),
+                        message_id=result["message"]["message_id"],
+                        source_service="api_gateway",
+                    )
+                )
+                repository.record_system_event(affect_error_event)
+                events.append(affect_error_event)
             dialogue_reply = request_dialogue_reply(
                 settings,
                 request_session,

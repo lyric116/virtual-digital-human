@@ -2594,6 +2594,18 @@
       );
     }
 
+    function isTerminalRealtimeClose(event) {
+      if (!event || typeof event !== "object") {
+        return false;
+      }
+      const closeCode = typeof event.code === "number" ? event.code : 1000;
+      const closeReason = typeof event.reason === "string" ? event.reason : "";
+      if (closeCode === 4404) {
+        return true;
+      }
+      return closeReason === "session_not_found";
+    }
+
     function scheduleReconnect() {
       clearReconnectTimer();
       runtime.reconnectAttempt += 1;
@@ -2906,6 +2918,12 @@
           return;
         }
         pushConnectionLog(state, `socket closed (${event.code || 1000})`);
+        if (isTerminalRealtimeClose(event)) {
+          state.connectionStatus = "closed";
+          pushConnectionLog(state, `terminal realtime close: ${event.reason || "unknown"}`);
+          renderSessionState(rootDocument, elements, state, appConfig);
+          return;
+        }
         scheduleReconnect();
       });
     }

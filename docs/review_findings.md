@@ -1,10 +1,10 @@
 # Review Findings
 
-Current status after re-verification and a fresh static review. This document records observed issues only; it does not apply fixes.
+Current status after re-verification and targeted fixes. This document records review findings and current verification status; it does not apply fixes itself.
 
 ## Current checks
 
-- `UV_CACHE_DIR=.uv-cache uv run pytest` -> `211 passed`
+- `UV_CACHE_DIR=.uv-cache uv run pytest` -> `230 passed`
 - `UV_CACHE_DIR=.uv-cache uv run ruff check .` -> passed
 
 ## Previously reported issues
@@ -103,19 +103,21 @@ Current evidence:
 
 ## Current review findings
 
-### Open — RAG retrieval failures still degrade silently and drop observability
+### Resolved — RAG retrieval failures no longer degrade silently
 
-Evidence:
+Current evidence:
 
-- `apps/orchestrator/main.py:258-265`
-- `apps/api-gateway/main.py:3003-3010`
-- `apps/api-gateway/main.py:3092-3095`
+- `apps/orchestrator/main.py:258-277`
+- `apps/api-gateway/main.py:3008-3035`
+- `tests/test_orchestrator_mock_reply.py:266`
+- `tests/test_api_gateway_session_create.py:1068`
+- `docs/shared_contracts.md:291`
 
 Current state:
 
-- `attach_rag_context()` still swallows retrieval `RuntimeError` and falls back to the original dialogue payload with no explicit failure marker
-- gateway retrieval evidence is still conditional on non-empty `retrieval_context.source_ids`, so failed retrieval attempts do not emit a corresponding observable event
-- this means a user can receive a normal `dialogue.reply` while grounding quietly disappeared from the event/export trail
+- orchestrator now marks retrieval attempts with `knowledge_retrieval_attempted`
+- retrieval failures now propagate machine-readable `knowledge_retrieval_status="failed"` plus an error message instead of disappearing silently
+- gateway now records `knowledge.retrieved` even when retrieval failed or returned no cards, so degraded grounding remains visible in persisted/realtime trails
 
 ### Open — compose "deployment" stacks remain host-coupled dev harnesses
 
@@ -138,14 +140,14 @@ Current state:
 - both core/full stacks still mount the repo root into `/app` and bind host `.venv/lib/python3.11/site-packages` into the container runtime
 - startup therefore still depends on a prepared host checkout plus host-side `uv sync`, which is consistent with a local dev harness but not with a portable deployment artifact
 
-### Open — environment inventory and compose/runtime docs still drift from actual behavior
+### Open — compose/runtime documentation still needs careful reading despite inventory cleanup
 
 Evidence:
 
-- `README.md:273-277`
+- `README.md:273-278`
 - `docs/environment.md:56-60`
-- `.env.example:25-30`
-- `apps/orchestrator/main.py:51-68`
+- `.env.example:25-29`
+- `tests/test_environment_inventory.py:42-46`
 - `infra/compose/docker-compose.core.yml:79-80`
 - `infra/compose/docker-compose.core.yml:121-122`
 - `infra/compose/docker-compose.core.yml:217-218`
@@ -153,13 +155,12 @@ Evidence:
 - `infra/compose/docker-compose.full.yml:121-122`
 - `infra/compose/docker-compose.full.yml:146-147`
 - `infra/compose/docker-compose.full.yml:261-262`
-- `tests/test_environment_inventory.py:42-46`
 
 Current state:
 
-- the docs/test inventory still treated `ORCHESTRATOR_SESSION_TTL_SECONDS` as a required runtime input even though orchestrator settings do not read it at all
-- README had implied runtime containers uniformly load `../../.env` via `env_file`, but current compose files only do that for a subset of services
-- the resulting operator expectation is still broader than what the actual runtime wiring guarantees
+- the stale `ORCHESTRATOR_SESSION_TTL_SECONDS` inventory claim has been removed from docs/tests, so that part of the drift is fixed
+- README now correctly narrows the claim: `--env-file .env` is compose-time substitution from the repo root, while only a subset of runtime containers load `../../.env` through `env_file`
+- the remaining risk is operational misunderstanding: these compose stacks still do not provide a single uniform runtime env contract across all services
 
 ### Resolved — export snapshot write failures are now explicit
 
@@ -177,6 +178,19 @@ Current state:
 - snapshot write `OSError` now returns `503` with `error_code="session_export_snapshot_failed"`
 - structured `details` include the export operation and configured export directory
 
+### Resolved — affect snapshot failures now emit observable `session.error`
+
+Current evidence:
+
+- `apps/api-gateway/main.py:3088-3111`
+- `tests/test_api_gateway_session_create.py:1152`
+
+Current state:
+
+- affect snapshot request failures are no longer reduced to `None` with no trace
+- gateway now records `session.error` with `error_code="affect_snapshot_failed"` and retry metadata while allowing the primary reply path to continue
+- the degraded path is now visible in persisted and realtime event streams
+
 ### Resolved — summary refresh failures now emit observable `session.error`
 
 Current evidence:
@@ -189,6 +203,47 @@ Current state:
 - the post-reply summary refresh path no longer silently swallows failures
 - if summary refresh persistence or summary event recording fails, the gateway now emits `session.error`
 - the primary `dialogue.reply` still succeeds, but the failure is visible in persisted/realtime event streams
+
+### Resolved — malformed WAV uploads now return structured validation errors
+
+Current evidence:
+
+- `services/asr-service/main.py:788-801`
+- `tests/test_asr_service.py:140`
+
+Current state:
+
+- invalid WAV bytes are now rejected during file inspection with `400` and `error_code="audio_file_invalid"`
+- unreadable uploads no longer bubble out as framework-level 500 responses
+- the ASR engine is not invoked for obviously broken WAV payloads
+
+### Resolved — dialogue fallback no longer masks unexpected local bugs as successful replies
+
+Current evidence:
+
+- `services/dialogue-service/main.py:696-727`
+- `tests/test_dialogue_service.py:279`
+- `tests/test_dialogue_service.py:309`
+
+Current state:
+
+- expected upstream-style failures such as `TimeoutError` and `RuntimeError` still produce the designed fallback reply
+- unexpected local exceptions now surface through translated HTTP errors instead of being wrapped as normal business success
+- this preserves graceful degradation without hiding real implementation faults from callers
+
+### Resolved — terminal websocket closes no longer trigger endless reconnect loops
+
+Current evidence:
+
+- `apps/web/app.js:2597-2607`
+- `apps/web/app.js:2920-2927`
+- `tests/test_web_realtime_connection.py:57-63`
+
+Current state:
+
+- the browser now distinguishes terminal closes such as `4404` / `session_not_found` from transient disconnects
+- terminal closes move the UI into a stable `closed` state instead of scheduling another reconnect attempt
+- transient forced drops still recover through the existing reconnect path
 
 ### Resolved — deprecated FastAPI shutdown hook migrated to lifespan handling
 

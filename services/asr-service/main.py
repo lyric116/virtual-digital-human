@@ -784,11 +784,21 @@ def create_transcription_record(
     with tempfile.TemporaryDirectory(prefix="vdh_asr_") as temp_dir:
         temp_audio_path = Path(temp_dir) / f"input{suffix}"
         temp_audio_path.write_bytes(body)
-        audio_metadata = inspect_audio_file(
-            temp_audio_path,
-            filename=filename,
-            content_type=normalized_content_type,
-        )
+        try:
+            audio_metadata = inspect_audio_file(
+                temp_audio_path,
+                filename=filename,
+                content_type=normalized_content_type,
+            )
+        except (wave.Error, EOFError, OSError) as exc:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=error_payload(
+                    error_code="audio_file_invalid",
+                    message=f"invalid or unreadable audio file: {exc}",
+                    record_id=record_id,
+                ),
+            )
 
         try:
             engine_result = engine.transcribe_file(
