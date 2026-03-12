@@ -2,7 +2,7 @@
 
 ## 1. 在整体技术路线中的位置
 
-部署与交付模块决定项目是否真正“可落地”。赛题明确要求可执行作品、可执行 ASR 工程、可执行数字人驱动工程，因此从第一周开始就要按交付标准组织仓库、环境和启动流程。
+部署与交付模块决定项目是否真正“可落地”。赛题明确要求可执行作品、可执行 ASR 工程、可执行数字人驱动工程，因此从第一周开始就要按交付标准组织仓库、环境和启动流程。当前仓库已经具备演示和开发所需的 compose / Docker 资产，但这并不自动等同于已经完成可移植部署交付。
 
 ## 2. 交付目标
 
@@ -62,9 +62,10 @@ project/
   - 覆盖 `web / gateway / orchestrator / dialogue-service / rag-service / affect-service / tts-service / postgres / redis / minio`
   - 当前 step-51 版本为本地开发型 Compose：Python 服务基于 `python:3.11-slim`，并绑定本地仓库源码和 `.venv/lib/python3.11/site-packages`
   - 这意味着启动前必须先在宿主机完成 `uv sync`
-- 当前 step-52 已补齐完整部署配置：
+- 当前 step-52 已补齐完整的 full compose 资产：
   - `infra/compose/docker-compose.full.yml`
   - 在 `core` 基础上加入 `asr-service` 与 `avatar-driver-service`
+  - 但它仍继承了当前开发型 compose 的宿主机源码和 `.venv` 绑定方式，因此更适合本地演示 / 联调，而不是直接视为可移植部署产物
 
 ## 5. 环境变量清单
 

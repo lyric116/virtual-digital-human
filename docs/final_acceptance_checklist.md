@@ -6,10 +6,10 @@
 - 部分完成：`1`
 - 阻塞：`0`
 
-当前项目已经具备答辩演示和继续冲刺优化的基础。唯一明确的未闭环项是
-`Docker 统一部署的 live 容器验证`：部署资产已经齐全，但当前代理环境无法
-完成 Docker 容器/网络创建，因此需要在本机 Docker 环境里补做最后一次 live
-验证。
+当前项目已经具备答辩演示和继续冲刺优化的基础。当前唯一明确的未闭环项仍在
+compose / 部署交付侧：仓库已经具备 `core/full compose` 这套 dev/demo 启动资产，
+但它们还不是可移植的部署产物，且当前代理环境无法完成 Docker 容器/网络创建，
+因此仍需在本机 Docker 环境里补做 live compose 验证。
 
 ## 2. 逐项验收
 
@@ -24,13 +24,14 @@
 | 文本/语音/视频三模态融合 | `done` | `services/affect-service/main.py`、`scripts/verify_affect_service.py`、`scripts/verify_dialogue_conflict_clarification.py` | 三路 lane 和第一版融合规则已完成，冲突会触发澄清追问。 |
 | 10 轮连续对话 | `done` | `data/derived/eval-local/ten_turn_stability_report.md`、`scripts/verify_ten_turn_stability.py` | 已有 10 轮稳定性报告。 |
 | 时延基线 | `done` | `data/derived/eval-local/latency_report.md`、`scripts/verify_latency_report.py` | 当前已经有时延评测基线报告。 |
-| Docker 交付与统一部署 | `partial` | `infra/compose/docker-compose.core.yml`、`infra/compose/docker-compose.full.yml`、`scripts/verify_core_compose_stack.py`、`docs/09-deploy-deliverables.md` | 部署资产已完成，`docker compose config` 可通过；仍需在本机 Docker 环境补做 live 容器验证。 |
+| Docker 交付与统一部署 | `partial` | `infra/compose/docker-compose.core.yml`、`infra/compose/docker-compose.full.yml`、`scripts/verify_core_compose_stack.py`、`docs/09-deploy-deliverables.md` | 当前已具备 dev/demo compose 资产，`docker compose config` 可通过；但仍不是可移植部署产物，且需在本机 Docker 环境补做 live compose 验证。 |
 
 ## 3. 未完成项列表
 
 ### 3.1 Docker live 验证
 
 - 现状：`partial`
+- 当前边界：`core/full compose` 仍是 host-coupled 的 dev/demo 启动资产，不应被表述成已完成的可移植统一部署。
 - 原因：当前代理环境里 `docker compose up` 会在容器/网络创建阶段超时，无法作为最终 live 证据。
 - 补做方式：
   - 在本机执行 `docker compose -f infra/compose/docker-compose.full.yml config`

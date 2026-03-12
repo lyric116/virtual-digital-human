@@ -162,6 +162,38 @@ Current state:
 - README now correctly narrows the claim: `--env-file .env` is compose-time substitution from the repo root, while only a subset of runtime containers load `../../.env` through `env_file`
 - the remaining risk is operational misunderstanding: these compose stacks still do not provide a single uniform runtime env contract across all services
 
+### Open — final acceptance and deployment docs still overstate current compose readiness
+
+Evidence:
+
+- `docs/final_acceptance_checklist.md:27-38`
+- `docs/09-deploy-deliverables.md:5-14`
+- `docs/09-deploy-deliverables.md:65-67`
+- `docs/final_acceptance_checklist.json:107-116`
+- `infra/compose/docker-compose.core.yml:65-67`
+- `infra/compose/docker-compose.full.yml:153-155`
+
+Current state:
+
+- acceptance materials still frame the current asset set as `Docker 交付与统一部署`, while the compose files remain host-coupled dev/demo harnesses
+- deploy docs still use stronger `可落地` / `完整部署配置` language than the evidence supports for a portable deployment artifact
+- this creates a stronger delivery-readiness signal than the repository can currently prove
+
+### Open — compose acceptance checks still give false confidence
+
+Evidence:
+
+- `tests/test_core_compose.py:41-59`
+- `tests/test_full_compose.py:12-31`
+- `scripts/verify_final_acceptance_assets.py:15-35`
+- `docs/final_acceptance_checklist.json:107-116`
+
+Current state:
+
+- `tests/test_full_compose.py` still performs static token checks and cannot prove the full compose stack actually boots or matches the documented deployment contract
+- existing compose tests still encode host `.venv`-mounted dev behavior as the expected baseline, which is easy to misread as deployment correctness
+- `scripts/verify_final_acceptance_assets.py` only validates evidence-path existence and status shape, so acceptance can stay green even when the underlying deployment claim is overstated
+
 ### Resolved — export snapshot write failures are now explicit
 
 Current evidence:

@@ -232,8 +232,10 @@ Frontend shell preview:
   - `docker compose --env-file .env -f infra/compose/docker-compose.core.yml up -d --build`
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_core_compose_stack.py --compose-file infra/compose/docker-compose.core.yml`
   - current step-51 core stack uses `python:3.11-slim` plus bind mounts for `../..` and local `.venv/lib/python3.11/site-packages`, so run `uv sync` first
-- Prepare the full deployment compose, including `asr-service` and `avatar-driver-service`:
+  - treat this as a dev/demo compose harness, not yet a portable deployment artifact
+- Prepare the full compose asset set, including `asr-service` and `avatar-driver-service`:
   - `docker compose --env-file .env -f infra/compose/docker-compose.full.yml config`
+  - this validates config generation only; it does not by itself prove full portable deployment readiness
 - Verify the final acceptance checklist evidence inventory:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_final_acceptance_assets.py`
 - Verify the curated RAG knowledge-card dataset before retrieval work:

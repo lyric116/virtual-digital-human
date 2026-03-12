@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the final acceptance checklist references real evidence files."""
+"""Validate the final acceptance checklist references real evidence files and truthful scope notes."""
 
 from __future__ import annotations
 
@@ -10,6 +10,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CHECKLIST_PATH = ROOT / "docs" / "final_acceptance_checklist.json"
 ALLOWED_STATUSES = {"done", "partial", "blocked"}
+DELIVERY_ITEM_ID = "delivery_and_docker"
+REQUIRED_PARTIAL_NOTE_SNIPPETS = (
+    "dev/demo",
+    "not yet a portable deployment artifact",
+    "live compose verification",
+)
 
 
 def main() -> None:
@@ -18,6 +24,7 @@ def main() -> None:
 
     missing_paths: list[str] = []
     invalid_statuses: list[str] = []
+    invalid_delivery_notes: list[str] = []
     status_counts = {status: 0 for status in ALLOWED_STATUSES}
 
     for item in items:
@@ -27,18 +34,25 @@ def main() -> None:
             continue
         status_counts[status] += 1
 
+        if item.get("id") == DELIVERY_ITEM_ID and status == "partial":
+            notes = str(item.get("notes") or "")
+            for snippet in REQUIRED_PARTIAL_NOTE_SNIPPETS:
+                if snippet not in notes:
+                    invalid_delivery_notes.append(f"{item.get('id')}: missing '{snippet}'")
+
         for raw_path in item.get("evidence_paths", []):
             evidence_path = ROOT / raw_path
             if not evidence_path.exists():
                 missing_paths.append(raw_path)
 
-    if invalid_statuses or missing_paths:
+    if invalid_statuses or missing_paths or invalid_delivery_notes:
         raise SystemExit(
             json.dumps(
                 {
                     "status": "failed",
                     "invalid_statuses": invalid_statuses,
                     "missing_paths": missing_paths,
+                    "invalid_delivery_notes": invalid_delivery_notes,
                 },
                 ensure_ascii=False,
                 indent=2,

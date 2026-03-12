@@ -113,7 +113,7 @@
         "scripts/verify_core_compose_stack.py",
         "docs/09-deploy-deliverables.md"
       ],
-      "notes": "core/full compose 资产已完成，config 可通过；当前代理环境里 docker container/network create 会超时，仍需在本机完成 live compose 验证。"
+      "notes": "core/full compose 目前是 dev/demo 启动资产，config 可通过，但仍 not yet a portable deployment artifact；当前代理环境里 docker container/network create 会超时，仍需在本机完成 live compose verification。"
     }
   ]
 }
