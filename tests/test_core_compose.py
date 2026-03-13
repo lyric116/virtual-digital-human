@@ -36,6 +36,9 @@ def test_core_compose_includes_core_services_and_verifier_targets():
     assert "/api/session/create" in verify_content
     assert "/api/session/" in verify_content
     assert "config.js" in verify_content
+    assert "extract_rendered_web_config" in verify_content
+    assert "wait_for_http_text(\"http://127.0.0.1:4173/\")" in verify_content
+    assert "rendered_web_config" in verify_content
 
 
 def test_python_service_dockerfile_keeps_app_code_inside_image_but_core_compose_is_still_dev_harness():

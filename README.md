@@ -149,6 +149,16 @@ Demo assets for mock flow development live in:
 
 Frontend shell preview:
 
+Recommended shortcuts:
+
+- `make web`
+- `make backend-core`
+- `make backend-full`
+- `make up-core`
+- `make up-full`
+
+Underlying native commands:
+
 - `python3 -m http.server 4173 --directory apps/web`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/api-gateway main:app --host 0.0.0.0 --port 8000`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/orchestrator main:app --host 0.0.0.0 --port 8010`
@@ -229,12 +239,16 @@ Frontend shell preview:
 - Generate and verify the current 10-turn stability regression:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_ten_turn_stability.py`
 - Build and verify the containerized core text loop:
-  - `docker compose --env-file .env -f infra/compose/docker-compose.core.yml up -d --build`
-  - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_core_compose_stack.py --compose-file infra/compose/docker-compose.core.yml`
+  - recommended shortcuts: `make up-core`, `make down-core`, `make logs-core`, `make verify-core`
+  - raw commands:
+    - `docker compose --env-file .env -f infra/compose/docker-compose.core.yml up -d --build`
+    - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_core_compose_stack.py --compose-file infra/compose/docker-compose.core.yml`
   - current step-51 core stack uses `python:3.11-slim` plus bind mounts for `../..` and local `.venv/lib/python3.11/site-packages`, so run `uv sync` first
   - treat this as a dev/demo compose harness, not yet a portable deployment artifact
 - Prepare the full compose asset set, including `asr-service` and `avatar-driver-service`:
-  - `docker compose --env-file .env -f infra/compose/docker-compose.full.yml config`
+  - recommended shortcuts: `make compose-full-config`, `make up-full`, `make down-full`, `make logs-full`
+  - raw command:
+    - `docker compose --env-file .env -f infra/compose/docker-compose.full.yml config`
   - this validates config generation only; it does not by itself prove full portable deployment readiness
 - Verify the final acceptance checklist evidence inventory:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_final_acceptance_assets.py`

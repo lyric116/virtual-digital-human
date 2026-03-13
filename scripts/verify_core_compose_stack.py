@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -73,6 +74,39 @@ def wait_for_http_json(url: str, *, timeout_seconds: int = 180) -> dict:
     raise RuntimeError(f"service did not become ready: {url} ({last_error})")
 
 
+def wait_for_http_text(url: str, *, timeout_seconds: int = 180) -> str:
+    deadline = time.time() + timeout_seconds
+    last_error = "unknown"
+    while time.time() < deadline:
+        try:
+            return http_text(url)
+        except Exception as exc:  # noqa: BLE001
+            last_error = str(exc)
+            time.sleep(2)
+    raise RuntimeError(f"service did not become ready: {url} ({last_error})")
+
+
+def extract_rendered_web_config(config_js: str) -> dict[str, str | bool]:
+    required_patterns: dict[str, str] = {
+        "apiBaseUrl": r'apiBaseUrl:\s*"([^"]+)"',
+        "wsUrl": r'wsUrl:\s*"([^"]+)"',
+        "ttsBaseUrl": r'ttsBaseUrl:\s*"([^"]+)"',
+        "affectBaseUrl": r'affectBaseUrl:\s*"([^"]+)"',
+        "defaultAvatarId": r'defaultAvatarId:\s*"([^"]+)"',
+        "autoplayAssistantAudio": r'autoplayAssistantAudio:\s*(true|false)',
+    }
+    extracted: dict[str, str | bool] = {}
+    for key, pattern in required_patterns.items():
+        match = re.search(pattern, config_js)
+        if match is None:
+            raise RuntimeError(f"web config is missing rendered field: {key}")
+        value = match.group(1)
+        if value.startswith("${"):
+            raise RuntimeError(f"web config field was not rendered: {key}")
+        extracted[key] = value == "true" if key == "autoplayAssistantAudio" else value
+    return extracted
+
+
 def wait_for_assistant_reply(base_url: str, session_id: str, *, timeout_seconds: int = 60) -> dict:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
@@ -102,7 +136,9 @@ def main() -> None:
             timeout_seconds=args.compose_up_timeout_seconds,
         )
 
-        config_js = http_text("http://127.0.0.1:4173/config.js")
+        wait_for_http_text("http://127.0.0.1:4173/")
+        config_js = wait_for_http_text("http://127.0.0.1:4173/config.js")
+        rendered_web_config = extract_rendered_web_config(config_js)
         wait_for_http_json("http://127.0.0.1:8000/health")
         wait_for_http_json("http://127.0.0.1:8010/health")
         wait_for_http_json("http://127.0.0.1:8030/health")
@@ -130,7 +166,7 @@ def main() -> None:
         summary = {
             "compose_file": str(compose_file.relative_to(ROOT)),
             "project_name": project_name,
-            "web_config_preview": config_js.splitlines()[0] if config_js else "",
+            "rendered_web_config": rendered_web_config,
             "runtime_config": runtime_config,
             "session_id": session["session_id"],
             "message_id": message["message_id"],

@@ -2349,7 +2349,7 @@ def create_video_frame_record(
         )
 
     try:
-        return repository.create_video_frame_index(
+        result = repository.create_video_frame_index(
             session_id,
             content=content,
             frame_seq=frame_seq,
@@ -2359,6 +2359,8 @@ def create_video_frame_record(
             mime_type=normalized_mime_type,
             metadata=metadata,
         )
+        result["latest_video_frame_path"] = result["storage_path"]
+        return result
     except KeyError:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -2524,6 +2526,46 @@ def create_client_runtime_event_record(
     return ClientRuntimeEventAcceptedResponse.model_validate(envelope)
 
 
+def open_internal_request(request: urllib_request.Request, *, timeout: float):
+    opener = urllib_request.build_opener(urllib_request.ProxyHandler({}))
+    return opener.open(request, timeout=timeout)
+
+
+def bind_affect_media_metadata(message: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    bound_metadata = dict(metadata)
+    message_metadata = message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
+
+    audio_storage_path = str(message_metadata.get("audio_storage_path") or "").strip()
+    if audio_storage_path and not bound_metadata.get("audio_path"):
+        bound_metadata["audio_path"] = audio_storage_path
+    if audio_storage_path and not bound_metadata.get("audio_path_16k_mono"):
+        bound_metadata["audio_path_16k_mono"] = audio_storage_path
+
+    video_storage_path = str(message_metadata.get("latest_video_frame_path") or "").strip()
+    if video_storage_path and not bound_metadata.get("video_frame_path"):
+        bound_metadata["video_frame_path"] = video_storage_path
+    if video_storage_path and not bound_metadata.get("image_path"):
+        bound_metadata["image_path"] = video_storage_path
+
+    return bound_metadata
+
+
+def normalize_dialogue_reply_identity(
+    payload: DialogueReplyResponse,
+    *,
+    session_id: str,
+    trace_id: str,
+) -> DialogueReplyResponse:
+    return payload.model_copy(update={"session_id": session_id, "trace_id": trace_id})
+
+
+def resolve_finalized_audio_duration_ms(
+    requested_duration_ms: int | None,
+    transcription: ASRServiceTranscriptionResponse,
+) -> int | None:
+    return requested_duration_ms if requested_duration_ms is not None else transcription.duration_ms
+
+
 def request_dialogue_reply(
     settings: GatewaySettings,
     session: dict[str, Any],
@@ -2558,7 +2600,7 @@ def request_dialogue_reply(
     )
 
     try:
-        with urllib_request.urlopen(request, timeout=settings.orchestrator_timeout_seconds) as response:
+        with open_internal_request(request, timeout=settings.orchestrator_timeout_seconds) as response:
             raw_payload = json.loads(response.read().decode("utf-8"))
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
@@ -2569,9 +2611,14 @@ def request_dialogue_reply(
         raise RuntimeError("orchestrator returned invalid json") from exc
 
     try:
-        return DialogueReplyResponse.model_validate(raw_payload)
+        payload = DialogueReplyResponse.model_validate(raw_payload)
     except ValidationError as exc:
         raise RuntimeError(f"invalid dialogue reply: {exc}") from exc
+    return normalize_dialogue_reply_identity(
+        payload,
+        session_id=session["session_id"],
+        trace_id=session["trace_id"],
+    )
 
 
 def request_affect_snapshot(
@@ -2588,6 +2635,7 @@ def request_affect_snapshot(
     )
     merged_metadata = dict(session_metadata or {})
     merged_metadata.update(message_metadata or {})
+    merged_metadata = bind_affect_media_metadata(message, merged_metadata)
     merged_metadata.setdefault("source", message_metadata.get("source") or "api_gateway")
 
     request_payload = AffectAnalyzeRequest(
@@ -2607,7 +2655,7 @@ def request_affect_snapshot(
     )
 
     try:
-        with urllib_request.urlopen(request, timeout=10) as response:
+        with open_internal_request(request, timeout=10) as response:
             raw_payload = json.loads(response.read().decode("utf-8"))
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
@@ -2648,7 +2696,7 @@ def request_dialogue_summary(
     )
 
     try:
-        with urllib_request.urlopen(request, timeout=settings.orchestrator_timeout_seconds) as response:
+        with open_internal_request(request, timeout=settings.orchestrator_timeout_seconds) as response:
             raw_payload = json.loads(response.read().decode("utf-8"))
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
@@ -2683,7 +2731,7 @@ def request_asr_transcription(
     )
 
     try:
-        with urllib_request.urlopen(request, timeout=settings.asr_timeout_seconds) as response:
+        with open_internal_request(request, timeout=settings.asr_timeout_seconds) as response:
             raw_payload = json.loads(response.read().decode("utf-8"))
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
@@ -2751,21 +2799,26 @@ def create_audio_message_record(
             ),
         )
 
+    resolved_duration_ms = resolve_finalized_audio_duration_ms(duration_ms, transcription)
+
+    audio_message_metadata = {
+        "source": "audio_finalize",
+        "audio_media_id": audio_asset["media_id"],
+        "audio_mime_type": normalized_mime_type,
+        "audio_duration_ms": resolved_duration_ms,
+        "audio_storage_path": audio_asset["storage_path"],
+        "asr_provider": transcription.provider,
+        "asr_model": transcription.model,
+        "transcript_language": transcription.transcript_language,
+        "confidence_mean": transcription.confidence_mean,
+        "confidence_available": transcription.confidence_available,
+    }
+
     try:
         result = repository.create_user_audio_message(
             session_id,
             content_text=transcript_text,
-            metadata={
-                "source": "audio_finalize",
-                "audio_media_id": audio_asset["media_id"],
-                "audio_mime_type": normalized_mime_type,
-                "audio_duration_ms": duration_ms,
-                "asr_provider": transcription.provider,
-                "asr_model": transcription.model,
-                "transcript_language": transcription.transcript_language,
-                "confidence_mean": transcription.confidence_mean,
-                "confidence_available": transcription.confidence_available,
-            },
+            metadata=audio_message_metadata,
         )
     except KeyError:
         cleanup_media_asset(repository, audio_asset["media_id"])
@@ -2790,6 +2843,10 @@ def create_audio_message_record(
 
     result["audio"] = audio_asset
     result["transcription"] = transcription.model_dump(mode="json")
+    result["message"] = {
+        **result["message"],
+        "metadata": audio_message_metadata,
+    }
     return result
 
 
@@ -2975,13 +3032,14 @@ def build_message_accepted_event(result: dict[str, Any]) -> dict[str, Any]:
 
 def build_transcript_final_event(result: dict[str, Any]) -> dict[str, Any]:
     transcription = dict(result.get("transcription") or {})
+    message_metadata = result["message"].get("metadata") if isinstance(result["message"].get("metadata"), dict) else {}
     payload = {
         "transcript_kind": "final",
         "text": result["message"]["content_text"],
         "language": transcription.get("transcript_language"),
         "confidence": transcription.get("confidence_mean"),
         "confidence_available": transcription.get("confidence_available", False),
-        "duration_ms": transcription.get("duration_ms"),
+        "duration_ms": message_metadata.get("audio_duration_ms"),
         "asr_engine": transcription.get("model"),
         "provider": transcription.get("provider"),
         "media_id": result["audio"]["media_id"],
@@ -3144,6 +3202,8 @@ def build_message_followup_events(
                 payload={
                     **dialogue_reply.model_dump(mode="json"),
                     **affect_payload,
+                    "session_id": assistant_result["session"]["session_id"],
+                    "trace_id": assistant_result["session"]["trace_id"],
                     "stage": assistant_result["session"]["stage"],
                     "next_action": assistant_metadata.get("next_action", dialogue_reply.next_action),
                     "submitted_at": assistant_result["message"]["submitted_at"],
@@ -3550,7 +3610,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             **result["message"],
             "media_id": result["audio"]["media_id"],
             "mime_type": result["audio"]["mime_type"],
-            "duration_ms": duration_ms,
+            "duration_ms": result["message"].get("metadata", {}).get("audio_duration_ms"),
         }
 
     @app.post(

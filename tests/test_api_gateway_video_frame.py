@@ -91,6 +91,7 @@ def test_video_frame_record_returns_contract_shape():
     assert body["media_kind"] == "video_frame"
     assert body["frame_seq"] == 3
     assert body["width"] == 640
+    assert body["latest_video_frame_path"] == body["storage_path"]
     assert repository.calls[0]["mime_type"] == "image/jpeg"
 
 

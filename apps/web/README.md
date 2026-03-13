@@ -85,6 +85,16 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
 
 From repository root:
 
+Recommended shortcuts:
+
+- `make web`
+- `make backend-core`
+- `make backend-full`
+- `make up-core`
+- `make up-full`
+
+Underlying native commands:
+
 - start the gateway:
   - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/api-gateway main:app --host 0.0.0.0 --port 8000`
 - start the orchestrator:

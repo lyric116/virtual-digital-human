@@ -4,7 +4,7 @@ Current status after re-verification and targeted fixes. This document records r
 
 ## Current checks
 
-- `UV_CACHE_DIR=.uv-cache uv run pytest` -> `230 passed`
+- `UV_CACHE_DIR=.uv-cache uv run pytest` -> `234 passed`
 - `UV_CACHE_DIR=.uv-cache uv run ruff check .` -> passed
 
 ## Previously reported issues
@@ -102,6 +102,96 @@ Current evidence:
 - `UV_CACHE_DIR=.uv-cache uv run ruff check .` -> passed
 
 ## Current review findings
+
+### Resolved — core compose verifier can race web config rendering and barely validates rendered config
+
+Current evidence:
+
+- `scripts/verify_core_compose_stack.py:64-100`
+- `scripts/verify_core_compose_stack.py:117-147`
+- `tests/test_core_compose.py:17-39`
+
+Current state:
+
+- the verifier now waits for the web root to answer before fetching `config.js`
+- it now parses and validates rendered `apiBaseUrl`, `wsUrl`, `ttsBaseUrl`, `affectBaseUrl`, `defaultAvatarId`, and `autoplayAssistantAudio` instead of previewing only the first line
+- regression coverage now locks in that stronger verifier behavior
+
+### Resolved — web runtime config inventory and tests drifted from the actual rendered config contract
+
+Current evidence:
+
+- `.env.example:12-17`
+- `docs/environment.md:34-41`
+- `tests/test_environment_inventory.py:27-119`
+
+Current state:
+
+- `WEB_AUTOPLAY_ASSISTANT_AUDIO` is now documented in both `.env.example` and `docs/environment.md`
+- environment inventory tests now require both `WEB_PUBLIC_AFFECT_BASE_URL` and `WEB_AUTOPLAY_ASSISTANT_AUDIO`
+- the documented web runtime contract and the regression suite are aligned again
+
+### Resolved — internal HTTP calls treated proxy configuration inconsistently across gateway and orchestrator
+
+Current evidence:
+
+- `apps/api-gateway/main.py:2527-2667`
+- `apps/api-gateway/main.py:2670-2702`
+- `tests/test_api_gateway_session_create.py:462-606`
+
+Current state:
+
+- gateway internal HTTP calls now go through a shared opener that disables ambient proxies, matching orchestrator behavior
+- internal calls to orchestrator, affect-service, dialogue summary, and ASR now follow one consistent proxy policy
+
+### Resolved — live affect snapshots were not bound to saved audio/video media assets
+
+Current evidence:
+
+- `apps/api-gateway/main.py:2527-2600`
+- `apps/api-gateway/main.py:2238-2379`
+- `apps/api-gateway/main.py:2702-2803`
+- `tests/test_api_gateway_session_create.py:716-785`
+- `tests/test_api_gateway_video_frame.py:73-95`
+
+Current state:
+
+- gateway now binds persisted `audio_storage_path` and latest video frame path into the affect request metadata using the keys that affect-service actually consumes
+- finalized audio messages now retain the saved audio storage path
+- video frame uploads now expose the latest persisted frame path for downstream affect analysis wiring
+
+### Resolved — downstream dialogue identifiers were trusted too loosely at the gateway boundary
+
+Current evidence:
+
+- `apps/orchestrator/main.py:154-185`
+- `apps/api-gateway/main.py:2527-2585`
+- `apps/api-gateway/main.py:3175-3198`
+- `tests/test_orchestrator_mock_reply.py:83-117`
+- `tests/test_api_gateway_session_create.py:462-606`
+
+Current state:
+
+- orchestrator now rejects dialogue replies whose `session_id` or `trace_id` do not match the request it sent
+- gateway also normalizes the reply identity back to the authoritative session identifiers before later persistence/event use
+- realtime `dialogue.reply` payloads now explicitly emit the persisted session identifiers
+
+### Resolved — finalized-audio duration could diverge across response payloads, stored metadata, and emitted events
+
+Current evidence:
+
+- `apps/api-gateway/main.py:2586-2624`
+- `apps/api-gateway/main.py:2761-2811`
+- `apps/api-gateway/main.py:2997-3022`
+- `apps/api-gateway/main.py:3560-3599`
+- `tests/test_api_gateway_audio_finalize.py:119-212`
+- `tests/test_api_gateway_session_create.py:1794-1895`
+
+Current state:
+
+- audio finalize now resolves one canonical duration value, preferring the request value and otherwise falling back to ASR duration
+- that resolved duration is now written into message metadata, emitted in `transcript.final`, and returned by the finalize route
+- successful finalize requests no longer surface conflicting duration values across those three interfaces
 
 ### Resolved — RAG retrieval failures no longer degrade silently
 

@@ -80,7 +80,7 @@ def test_orchestrator_parses_valid_dialogue_service_response(monkeypatch):
     assert "谢谢你愿意说出来" in response.reply
 
 
-def test_orchestrator_rejects_invalid_dialogue_service_stage(monkeypatch):
+def test_orchestrator_rejects_mismatched_dialogue_service_identity(monkeypatch):
     module = load_orchestrator_module()
 
     class FakeResponse:
@@ -94,8 +94,8 @@ def test_orchestrator_rejects_invalid_dialogue_service_stage(monkeypatch):
 
         def read(self) -> bytes:
             return (
-                b'{"session_id":"sess_fake_001","trace_id":"trace_fake_001","message_id":"msg_assistant_001",'
-                b'"reply":"invalid stage","emotion":"neutral","risk_level":"low","stage":"invalid_stage",'
+                b'{"session_id":"sess_other_001","trace_id":"trace_other_001","message_id":"msg_assistant_001",'
+                b'"reply":"identity mismatch","emotion":"neutral","risk_level":"low","stage":"engage",'
                 b'"next_action":"ask_followup"}'
             )
 
@@ -111,10 +111,10 @@ def test_orchestrator_rejects_invalid_dialogue_service_stage(monkeypatch):
             build_request(module, content_text="普通文本"),
         )
     except RuntimeError as exc:
-        assert "invalid dialogue reply" in str(exc)
+        assert "session_id mismatch" in str(exc)
         return
 
-    raise AssertionError("expected orchestrator to reject invalid dialogue reply payload")
+    raise AssertionError("expected orchestrator to reject mismatched dialogue reply identity")
 
 
 def test_orchestrator_parses_valid_dialogue_summary(monkeypatch):

@@ -176,9 +176,14 @@ def request_dialogue_reply(
         raise RuntimeError("dialogue-service returned invalid json") from exc
 
     try:
-        return DialogueReplyResponse.model_validate(raw_payload)
+        payload = DialogueReplyResponse.model_validate(raw_payload)
     except ValidationError as exc:
         raise RuntimeError(f"invalid dialogue reply: {exc}") from exc
+    if payload.session_id != enriched_payload.session_id:
+        raise RuntimeError("invalid dialogue reply: session_id mismatch")
+    if payload.trace_id != enriched_payload.trace_id:
+        raise RuntimeError("invalid dialogue reply: trace_id mismatch")
+    return payload
 
 
 def extract_rag_risk_level(payload: DialogueReplyRequest) -> str | None:

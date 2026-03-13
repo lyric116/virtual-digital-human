@@ -38,6 +38,7 @@ or deployment.
 | `WEB_PUBLIC_TTS_BASE_URL` | Yes | `http://localhost:8040` | Canonical TTS base URL that should be injected into `window.__APP_CONFIG__.ttsBaseUrl`. |
 | `WEB_PUBLIC_AFFECT_BASE_URL` | Yes | `http://localhost:8060` | Canonical affect base URL that should be injected into `window.__APP_CONFIG__.affectBaseUrl`. |
 | `WEB_DEFAULT_AVATAR_ID` | No | `companion_female_01` | Default avatar shown before session state loads. |
+| `WEB_AUTOPLAY_ASSISTANT_AUDIO` | No | `true` | Whether the rendered browser config should autoplay assistant speech when the web app receives synthesized audio. |
 
 ## Gateway
 

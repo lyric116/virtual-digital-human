@@ -478,11 +478,12 @@ def test_request_dialogue_reply_includes_short_term_memory(monkeypatch):
                 b'"knowledge_refs":[],"avatar_style":"warm_support","safety_flags":[]}'
             )
 
-    def fake_urlopen(request, timeout):
-        captured["body"] = json.loads(request.data.decode("utf-8"))
-        return FakeResponse()
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            return FakeResponse()
 
-    monkeypatch.setattr(module.urllib_request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(module.urllib_request, "build_opener", lambda *args: FakeOpener())
 
     response = module.request_dialogue_reply(
         module.GatewaySettings.from_env(),
@@ -512,6 +513,8 @@ def test_request_dialogue_reply_includes_short_term_memory(monkeypatch):
     )
 
     assert response.reply == "你好，小李。"
+    assert response.session_id == "sess_fake_001"
+    assert response.trace_id == "trace_fake_001"
     assert captured["body"]["metadata"]["short_term_memory"][0]["content_text"] == "我叫小李。"
     assert captured["body"]["metadata"]["dialogue_summary"]["user_turn_count"] == 3
     assert "affect_snapshot" not in captured["body"]["metadata"]
@@ -536,11 +539,12 @@ def test_request_dialogue_reply_includes_affect_snapshot(monkeypatch):
                 b'"knowledge_refs":[],"avatar_style":"calm_guarded","safety_flags":["affect_conflict_clarification"]}'
             )
 
-    def fake_urlopen(request, timeout):
-        captured["body"] = json.loads(request.data.decode("utf-8"))
-        return FakeResponse()
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            return FakeResponse()
 
-    monkeypatch.setattr(module.urllib_request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(module.urllib_request, "build_opener", lambda *args: FakeOpener())
 
     affect_snapshot = module.AffectAnalyzeResponse(
         session_id="sess_fake_001",
@@ -599,6 +603,8 @@ def test_request_dialogue_reply_includes_affect_snapshot(monkeypatch):
     )
 
     assert response.next_action == "ask_followup"
+    assert response.session_id == "sess_fake_001"
+    assert response.trace_id == "trace_fake_001"
     assert captured["body"]["metadata"]["affect_snapshot"]["fusion_result"]["conflict"] is True
     assert captured["body"]["metadata"]["affect_snapshot"]["fusion_result"]["conflict_reason"].startswith(
         "text-neutral"
@@ -677,12 +683,13 @@ def test_request_affect_snapshot_uses_message_metadata(monkeypatch):
                 ensure_ascii=False,
             ).encode("utf-8")
 
-    def fake_urlopen(request, timeout):
-        captured["body"] = json.loads(request.data.decode("utf-8"))
-        captured["timeout"] = timeout
-        return FakeResponse()
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            captured["timeout"] = timeout
+            return FakeResponse()
 
-    monkeypatch.setattr(module.urllib_request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(module.urllib_request, "build_opener", lambda *args: FakeOpener())
 
     response = module.request_affect_snapshot(
         module.GatewaySettings.from_env(),
@@ -711,6 +718,95 @@ def test_request_affect_snapshot_uses_message_metadata(monkeypatch):
     assert captured["body"]["metadata"]["video_frame_path"] == "data/derived/frame.npy"
     assert captured["body"]["metadata"]["source"] == "verify_dialogue_conflict_clarification"
     assert captured["timeout"] == 10
+
+
+def test_request_affect_snapshot_binds_live_media_storage_paths(monkeypatch):
+    module = load_gateway_module()
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "session_id": "sess_fake_001",
+                    "trace_id": "trace_fake_001",
+                    "current_stage": "engage",
+                    "generated_at": "2026-03-10T12:00:00Z",
+                    "source_context": {
+                        "origin": "api_gateway",
+                        "dataset": "live_web",
+                        "record_id": "session/sess_fake_001",
+                        "note": "live media",
+                    },
+                    "text_result": {
+                        "status": "ready",
+                        "label": "neutral",
+                        "confidence": 0.64,
+                        "evidence": [],
+                        "detail": "text",
+                    },
+                    "audio_result": {
+                        "status": "ready",
+                        "label": "steady_speech_proxy",
+                        "confidence": 0.64,
+                        "evidence": [],
+                        "detail": "audio",
+                    },
+                    "video_result": {
+                        "status": "ready",
+                        "label": "stable_gaze_proxy",
+                        "confidence": 0.74,
+                        "evidence": [],
+                        "detail": "video",
+                    },
+                    "fusion_result": {
+                        "emotion_state": "observe_more",
+                        "risk_level": "low",
+                        "confidence": 0.52,
+                        "conflict": False,
+                        "conflict_reason": None,
+                        "detail": "fusion",
+                    },
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            return FakeResponse()
+
+    monkeypatch.setattr(module.urllib_request, "build_opener", lambda *args: FakeOpener())
+
+    module.request_affect_snapshot(
+        module.GatewaySettings.from_env(),
+        {
+            "session_id": "sess_fake_001",
+            "trace_id": "trace_fake_001",
+            "stage": "engage",
+            "metadata": {},
+        },
+        {
+            "message_id": "msg_user_001",
+            "source_kind": "audio",
+            "content_text": "测试",
+            "metadata": {
+                "audio_storage_path": "data/derived/live_media/audio_final/sess_fake/audio.wav",
+                "latest_video_frame_path": "data/derived/live_media/video_frames/sess_fake/frame.npy",
+            },
+        },
+    )
+
+    assert captured["body"]["metadata"]["audio_path"] == "data/derived/live_media/audio_final/sess_fake/audio.wav"
+    assert captured["body"]["metadata"]["audio_path_16k_mono"] == "data/derived/live_media/audio_final/sess_fake/audio.wav"
+    assert captured["body"]["metadata"]["video_frame_path"] == "data/derived/live_media/video_frames/sess_fake/frame.npy"
+    assert captured["body"]["metadata"]["image_path"] == "data/derived/live_media/video_frames/sess_fake/frame.npy"
 
 
 def test_dispatch_pipeline_excludes_current_message_from_memory_and_syncs_next_action(monkeypatch):
@@ -1890,6 +1986,7 @@ def test_finalize_audio_route_schedules_background_pipeline(monkeypatch):
 
     assert response["message_id"] == "msg_audio_001"
     assert response["mime_type"] == "audio/webm"
+    assert response["duration_ms"] == 200
     assert scheduled["task_name"] == "dispatch_message_pipeline:sess_fake_001:audio"
     assert "coro" in scheduled
     assert "awaited" not in scheduled

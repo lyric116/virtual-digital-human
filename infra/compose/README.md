@@ -23,11 +23,13 @@ Primary file:
 
 Bring up the stack:
 
-- `docker compose -f infra/compose/docker-compose.yml up -d`
+- recommended shortcut: `make up-infra`
+- raw command: `docker compose -f infra/compose/docker-compose.yml up -d`
 
 Stop the stack:
 
-- `docker compose -f infra/compose/docker-compose.yml down`
+- recommended shortcut: `make down-infra`
+- raw command: `docker compose -f infra/compose/docker-compose.yml down`
 
 Run the verification workflow:
 
@@ -52,8 +54,9 @@ by the current codebase:
 
 Bring up the stack:
 
-- `docker compose --env-file .env -f infra/compose/docker-compose.core.yml up -d --build`
-- before first start, ensure local Python deps are present with `uv sync`
+- recommended shortcuts: `make up-core`, `make down-core`, `make logs-core`, `make verify-core`
+- raw command: `docker compose --env-file .env -f infra/compose/docker-compose.core.yml up -d --build`
+- before first start, ensure local Python deps are present with `uv sync` or `make sync`
 - current step-51 core stack mounts the repo root to `/app` and mounts `.venv/lib/python3.11/site-packages` read-only into each Python service container
 - runtime service configuration is loaded from the repository-root `.env` through
   `env_file: ../../.env`; keep the real `.env` in the project root
@@ -84,6 +87,7 @@ Primary file:
 
 Current expectation:
 
+- recommended shortcuts: `make compose-full-config`, `make up-full`, `make down-full`, `make logs-full`
 - use `docker compose --env-file .env -f infra/compose/docker-compose.full.yml config` to validate the
   expanded deployment file
 - use the same local repo bind mount + `.venv` site-packages mount strategy as the core

@@ -159,12 +159,17 @@ def test_audio_message_record_calls_asr_and_creates_audio_user_message():
     assert result["transcription"]["model"] == "qwen3-asr-flash"
     assert repository.final_asset_calls[0]["mime_type"] == "audio/wav"
     assert repository.audio_message_calls[0]["metadata"]["audio_media_id"] == "media_audio_final_001"
+    assert repository.audio_message_calls[0]["metadata"]["audio_storage_path"] == (
+        "data/derived/live_media/audio_final/sess_fake/media_audio_final_001.wav"
+    )
+    assert repository.audio_message_calls[0]["metadata"]["audio_duration_ms"] == 740
     assert repository.audio_message_calls[0]["metadata"]["asr_provider"] == "dashscope"
     transcript_event = module.build_transcript_final_event(result)
     assert transcript_event["event_type"] == "transcript.final"
     assert transcript_event["message_id"] == "msg_audio_final_001"
     assert transcript_event["payload"]["asr_engine"] == "qwen3-asr-flash"
     assert transcript_event["payload"]["media_id"] == "media_audio_final_001"
+    assert transcript_event["payload"]["duration_ms"] == 740
 
 
 def test_audio_message_record_normalizes_webm_content_type_parameters():
@@ -204,6 +209,7 @@ def test_audio_message_record_normalizes_webm_content_type_parameters():
     assert result["audio"]["mime_type"] == "audio/webm"
     assert repository.final_asset_calls[0]["mime_type"] == "audio/webm"
     assert repository.audio_message_calls[0]["metadata"]["audio_mime_type"] == "audio/webm"
+    assert repository.audio_message_calls[0]["metadata"]["audio_duration_ms"] == 320
 
 
 def test_audio_message_record_rejects_empty_audio_body():
