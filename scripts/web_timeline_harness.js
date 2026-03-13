@@ -173,6 +173,8 @@ function createMockRuntime() {
     messages: [],
     turnIndex: 0,
     currentSocket: null,
+    lastAcceptedPayload: null,
+    lastDialoguePayload: null,
   };
 
   const mockTurns = [
@@ -362,6 +364,8 @@ function createMockRuntime() {
         stage: assistantMessage.stage,
         updated_at: replyAt,
       };
+      store.lastAcceptedPayload = userMessage;
+      store.lastDialoguePayload = assistantMessage;
       store.turnIndex += 1;
 
       setTimeout(() => {
@@ -411,9 +415,42 @@ function createMockRuntime() {
     };
   }
 
+  function replayLastTurn() {
+    if (!store.currentSocket || store.currentSocket.readyState !== MockWebSocket.OPEN) {
+      throw new Error("cannot replay events without an open websocket");
+    }
+    if (!store.lastAcceptedPayload || !store.lastDialoguePayload || !store.session) {
+      throw new Error("cannot replay events before a turn has completed");
+    }
+    store.currentSocket.emit("message", {
+      data: JSON.stringify(
+        buildEnvelope(
+          store.session.session_id,
+          store.session.trace_id,
+          "message.accepted",
+          store.lastAcceptedPayload,
+          store.lastAcceptedPayload.message_id,
+        ),
+      ),
+    });
+    store.currentSocket.emit("message", {
+      data: JSON.stringify(
+        buildEnvelope(
+          store.session.session_id,
+          store.session.trace_id,
+          "dialogue.reply",
+          store.lastDialoguePayload,
+          store.lastDialoguePayload.message_id,
+          "orchestrator",
+        ),
+      ),
+    });
+  }
+
   return {
     fetchImpl: mockFetch,
     WebSocketImpl: MockWebSocket,
+    replayLastTurn,
   };
 }
 
@@ -541,9 +578,9 @@ async function main() {
     "realtime connection did not reach connected state before timeline test",
   );
 
-  await submitTurn(firstPage, "我这两天晚上总是睡不稳。", 3);
-  await submitTurn(firstPage, "我愿意先试试你说的慢呼吸。", 6);
-  await submitTurn(firstPage, "现在比刚才稍微松一点了。", 9);
+  await submitTurn(firstPage, "我这两天晚上总是睡不稳。", 2);
+  await submitTurn(firstPage, "我愿意先试试你说的慢呼吸。", 4);
+  await submitTurn(firstPage, "现在比刚才稍微松一点了。", 6);
   const afterThreeTurns = collectSnapshot(firstPage.document, sharedStorage);
 
   const secondPage = executeApp({
@@ -566,10 +603,24 @@ async function main() {
   );
 
   const afterRefresh = collectSnapshot(secondPage.document, sharedStorage);
+
+  runtimeConfig.replayLastTurn();
+  await waitFor(
+    () => {
+      const snapshot = collectSnapshot(secondPage.document, sharedStorage);
+      return snapshot.timelineEntryCount === afterRefresh.timelineEntryCount;
+    },
+    5000,
+    "replayed realtime events changed chat timeline count",
+  );
+  const afterReplayDuplicate = collectSnapshot(secondPage.document, sharedStorage);
+
   secondPage.window.__virtualHumanConsoleController.shutdownForTest();
   firstPage.window.__virtualHumanConsoleController.shutdownForTest();
 
-  process.stdout.write(`${JSON.stringify({ beforeCreate, afterThreeTurns, afterRefresh }, null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ beforeCreate, afterThreeTurns, afterRefresh, afterReplayDuplicate }, null, 2)}\n`,
+  );
 }
 
 main().catch((error) => {

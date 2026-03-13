@@ -35,6 +35,8 @@ def test_web_session_replay_reconstructs_saved_export():
     assert payload["afterReplay"]["connectionStatus"] == "replay"
     assert payload["afterReplay"]["fusionRisk"] == "medium"
     assert "Assistant" in payload["afterReplay"]["timelineText"]
+    assert "User" in payload["afterReplay"]["timelineText"]
+    assert "Stage |" not in payload["afterReplay"]["timelineText"]
 
 
 def test_replay_export_fixture_keeps_affect_and_knowledge_events_complete():

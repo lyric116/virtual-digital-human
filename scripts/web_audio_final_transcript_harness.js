@@ -222,6 +222,8 @@ function createMockRuntime() {
   const uploadCalls = [];
   const previewCalls = [];
   const finalizeCalls = [];
+  let lastAcceptedPayload = null;
+  let lastDialoguePayload = null;
   const sessionPayload = {
     session_id: "sess_mock_audio_001",
     trace_id: "trace_mock_audio_001",
@@ -429,6 +431,8 @@ function createMockRuntime() {
         safety_flags: [],
         submitted_at: "2026-03-08T16:20:05Z",
       };
+      lastAcceptedPayload = acceptedPayload;
+      lastDialoguePayload = dialoguePayload;
 
       setTimeout(() => {
         if (!currentSocket || currentSocket.readyState !== MockWebSocket.OPEN) {
@@ -478,12 +482,46 @@ function createMockRuntime() {
     };
   }
 
+  function replayFinalizedTurn() {
+    if (!currentSocket || currentSocket.readyState !== MockWebSocket.OPEN) {
+      throw new Error("cannot replay audio events without an open websocket");
+    }
+    if (!lastAcceptedPayload || !lastDialoguePayload) {
+      throw new Error("cannot replay audio events before finalize completes");
+    }
+    currentSocket.emit("message", {
+      data: JSON.stringify(
+        buildEnvelope(
+          sessionPayload.session_id,
+          sessionPayload.trace_id,
+          "message.accepted",
+          lastAcceptedPayload,
+          lastAcceptedPayload.message_id,
+          "api_gateway",
+        ),
+      ),
+    });
+    currentSocket.emit("message", {
+      data: JSON.stringify(
+        buildEnvelope(
+          sessionPayload.session_id,
+          sessionPayload.trace_id,
+          "dialogue.reply",
+          lastDialoguePayload,
+          lastDialoguePayload.message_id,
+          "orchestrator",
+        ),
+      ),
+    });
+  }
+
   return {
     fetchImpl: mockFetch,
     WebSocketImpl: MockWebSocket,
     uploadCalls,
     previewCalls,
     finalizeCalls,
+    replayFinalizedTurn,
   };
 }
 
@@ -545,6 +583,8 @@ function createMediaRecorderCtor(sampleAudioPath, BlobImpl) {
 
 function collectSnapshot(document, window) {
   const controllerState = window.__virtualHumanConsoleController.getState();
+  const timelineText = document.getElementById("chat-timeline-list").textContent;
+  const timelineEntries = timelineText.split("\n").map((item) => item.trim()).filter(Boolean);
   return {
     sessionId: document.getElementById("session-id-value").textContent,
     status: document.getElementById("session-status-value").textContent,
@@ -566,6 +606,8 @@ function collectSnapshot(document, window) {
     timelineUserText: document.getElementById("timeline-user-text").textContent,
     timelineAssistantText: document.getElementById("timeline-assistant-text").textContent,
     timelineStageText: document.getElementById("timeline-stage-text").textContent,
+    timelineText,
+    timelineEntryCount: timelineEntries.length,
     dialogueReplyState: document.body.dataset.dialogueReplyState || null,
     textSubmitState: document.body.dataset.textSubmitState || null,
   };
@@ -723,6 +765,14 @@ async function main() {
   );
 
   const afterReply = collectSnapshot(runtime.document, runtime.window);
+  runtimeConfig.replayFinalizedTurn();
+  await waitFor(
+    () => collectSnapshot(runtime.document, runtime.window).timelineEntryCount === afterReply.timelineEntryCount,
+    5000,
+    "replayed audio events changed chat timeline count",
+  );
+  const afterReplayDuplicate = collectSnapshot(runtime.document, runtime.window);
+
   runtime.window.__virtualHumanConsoleController.shutdownForTest();
   process.stdout.write(
     `${JSON.stringify({
@@ -731,6 +781,7 @@ async function main() {
       duringRecording,
       afterStop,
       afterReply,
+      afterReplayDuplicate,
       uploadCalls: runtimeConfig.uploadCalls,
       previewCalls: runtimeConfig.previewCalls,
       finalizeCalls: runtimeConfig.finalizeCalls,

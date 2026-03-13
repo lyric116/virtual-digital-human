@@ -34,6 +34,10 @@ def test_web_audio_final_transcript_flow_updates_transcript_and_reply():
     assert payload["afterReply"]["assistantReplyText"].startswith("谢谢你愿意先开口")
     assert payload["afterReply"]["dialogueReplyState"] == "received"
     assert payload["afterReply"]["timelineStageText"] == "engage → assess"
+    assert payload["afterReply"]["timelineEntryCount"] == 2
+    assert "User |" in payload["afterReply"]["timelineText"]
+    assert "Assistant |" in payload["afterReply"]["timelineText"]
+    assert "Stage |" not in payload["afterReply"]["timelineText"]
 
 
 def test_web_audio_final_transcript_flow_keeps_chunk_uploads_and_finalize_call():
@@ -44,6 +48,14 @@ def test_web_audio_final_transcript_flow_keeps_chunk_uploads_and_finalize_call()
     assert len(payload["finalizeCalls"]) == 1
     assert payload["finalizeCalls"][0]["contentType"] == "audio/wav"
     assert payload["afterReply"]["lastMessageId"] == "msg_mock_audio_001"
+
+
+def test_web_audio_final_transcript_replayed_events_do_not_duplicate_visible_entries():
+    payload = run_harness()
+
+    assert payload["afterReplayDuplicate"]["timelineEntryCount"] == payload["afterReply"]["timelineEntryCount"]
+    assert payload["afterReplayDuplicate"]["timelineText"] == payload["afterReply"]["timelineText"]
+    assert payload["afterReplayDuplicate"]["timelineStageText"] == payload["afterReply"]["timelineStageText"]
 
 
 def test_audio_finalize_docs_are_present():

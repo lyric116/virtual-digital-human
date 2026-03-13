@@ -103,6 +103,35 @@ Current evidence:
 
 ## Current review findings
 
+### Open — visible chat timeline currently mixes stage/system rows into user-facing chat history
+
+Evidence:
+
+- `apps/web/app.js:1866-1940`
+- `apps/web/app.js:2756-2790`
+- `apps/web/index.html:296-315`
+- `tests/test_web_timeline.py:35-46`
+
+Current state:
+
+- history restore currently rebuilds visible timeline rows for both `user` / `assistant` messages and assistant-driven `Stage` system transitions
+- realtime `dialogue.reply` handling also appends a visible `Stage` row into the same chat history list
+- the page already has a separate top-level `timeline-stage-text` summary, so stage information is currently duplicated in the user-facing chat area
+
+### Open — visible chat timeline lacks idempotent upsert for replayed realtime messages
+
+Evidence:
+
+- `apps/web/app.js:1764-1766`
+- `apps/web/app.js:2079-2109`
+- `apps/web/app.js:2690-2790`
+
+Current state:
+
+- visible timeline insertion still uses unconditional append semantics
+- session restore rebuilds timeline state from `/api/session/{session_id}/state` before reconnecting realtime
+- if already-persisted `message.accepted` or `dialogue.reply` events are replayed on reconnect, the frontend has no stable-entry upsert by `message_id` / `entryId`, so the same visible turn can be shown twice
+
 ### Resolved — core compose verifier can race web config rendering and barely validates rendered config
 
 Current evidence:

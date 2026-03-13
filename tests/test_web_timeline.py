@@ -36,14 +36,15 @@ def test_web_timeline_renders_three_turns_in_order():
     payload = run_harness()
 
     assert payload["beforeCreate"]["timelineEntryCount"] == 1
-    assert payload["afterThreeTurns"]["timelineEntryCount"] == 9
+    assert payload["afterThreeTurns"]["timelineEntryCount"] == 6
     assert payload["afterThreeTurns"]["stage"] == "reassess"
+    assert payload["afterThreeTurns"]["latestStage"] == "intervene → reassess"
     assert "User |" in payload["afterThreeTurns"]["timelineText"]
     assert "Assistant |" in payload["afterThreeTurns"]["timelineText"]
-    assert "Stage |" in payload["afterThreeTurns"]["timelineText"]
-    assert "engage → assess" in payload["afterThreeTurns"]["timelineText"]
-    assert "assess → intervene" in payload["afterThreeTurns"]["timelineText"]
-    assert "intervene → reassess" in payload["afterThreeTurns"]["timelineText"]
+    assert "Stage |" not in payload["afterThreeTurns"]["timelineText"]
+    assert "engage → assess" not in payload["afterThreeTurns"]["timelineText"]
+    assert "assess → intervene" not in payload["afterThreeTurns"]["timelineText"]
+    assert "intervene → reassess" not in payload["afterThreeTurns"]["timelineText"]
 
 
 def test_web_timeline_restores_history_after_refresh():
@@ -54,6 +55,14 @@ def test_web_timeline_restores_history_after_refresh():
     assert payload["afterRefresh"]["timelineEntryCount"] == payload["afterThreeTurns"]["timelineEntryCount"]
     assert payload["afterRefresh"]["storedSessionId"] == payload["afterThreeTurns"]["sessionId"]
     assert payload["afterRefresh"]["timelineText"] == payload["afterThreeTurns"]["timelineText"]
+
+
+def test_web_timeline_replayed_events_do_not_duplicate_visible_entries():
+    payload = run_harness()
+
+    assert payload["afterReplayDuplicate"]["timelineEntryCount"] == payload["afterRefresh"]["timelineEntryCount"]
+    assert payload["afterReplayDuplicate"]["timelineText"] == payload["afterRefresh"]["timelineText"]
+    assert payload["afterReplayDuplicate"]["latestStage"] == payload["afterRefresh"]["latestStage"]
 
 
 def test_timeline_docs_are_present():

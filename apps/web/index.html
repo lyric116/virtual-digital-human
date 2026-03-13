@@ -63,14 +63,18 @@
                 rows="3"
               >我这两天总是睡不好，脑子停不下来。</textarea>
             </div>
-            <div class="button-row">
-              <button type="button" id="camera-request-button">Enable Camera</button>
-              <button type="button" id="camera-start-button">Start Camera</button>
-              <button type="button" id="camera-stop-button">Stop Camera</button>
-              <button type="button" id="mic-request-button">Enable Mic</button>
-              <button type="button" id="mic-start-button">Start Recording</button>
-              <button type="button" id="mic-stop-button">Stop Recording</button>
-              <button type="button" id="text-submit-button">Send Text</button>
+            <div class="capture-action-stack">
+              <div class="capture-control-grid">
+                <button type="button" id="camera-request-button">Enable Camera</button>
+                <button type="button" id="camera-start-button">Start Camera</button>
+                <button type="button" id="camera-stop-button">Stop Camera</button>
+                <button type="button" id="mic-request-button">Enable Mic</button>
+                <button type="button" id="mic-start-button">Start Recording</button>
+                <button type="button" id="mic-stop-button">Stop Recording</button>
+              </div>
+              <div class="button-row capture-submit-row">
+                <button type="button" id="text-submit-button">Send Text</button>
+              </div>
             </div>
             <p class="capture-status" id="mic-permission-status" aria-live="polite">
               麦克风尚未授权。
@@ -290,23 +294,9 @@
             <h2>Chat Timeline</h2>
           </div>
           <p class="panel-summary">
-            Multi-turn history panel. The latest turn summary stays pinned, while the
-            full timeline is restored from backend session state after refresh.
+            Multi-turn history panel. Full chat history is restored from backend session
+            state after refresh.
           </p>
-          <div class="timeline-summary">
-            <article class="timeline-item user">
-              <span class="timeline-role">User</span>
-              <p id="timeline-user-text">等待用户消息...</p>
-            </article>
-            <article class="timeline-item assistant">
-              <span class="timeline-role">Assistant</span>
-              <p id="timeline-assistant-text">等待系统回复...</p>
-            </article>
-            <article class="timeline-item system">
-              <span class="timeline-role">Stage</span>
-              <p id="timeline-stage-text">idle → idle</p>
-            </article>
-          </div>
           <div class="timeline" id="chat-timeline-list" aria-live="polite">
             <article class="timeline-item system timeline-empty">
               <span class="timeline-role">History</span>
@@ -353,17 +343,19 @@
             <p class="export-status" id="session-export-status" aria-live="polite">
               创建或恢复会话后可导出当前 JSON。
             </p>
-            <ul class="control-notes">
-              <li>Trace id: <span id="session-trace-value">not assigned</span></li>
-              <li>Last user trace: <span id="last-user-trace-value">not observed</span></li>
-              <li>Last reply trace: <span id="last-reply-trace-value">not observed</span></li>
-              <li>Last update: <span id="session-updated-at-value">not started</span></li>
-              <li>Gateway base URL: <span id="session-api-base-url-value">http://127.0.0.1:8000</span></li>
-              <li>Realtime: <span id="connection-status-value">idle</span></li>
-              <li>Last heartbeat: <span id="connection-heartbeat-value">not started</span></li>
-              <li>Realtime URL: <span id="session-ws-url-value">ws://127.0.0.1:8000/ws</span></li>
-            </ul>
-            <pre class="connection-log" id="connection-log">realtime idle</pre>
+            <div class="session-runtime-meta" aria-hidden="true">
+              <ul class="control-notes">
+                <li>Trace id: <span id="session-trace-value">not assigned</span></li>
+                <li>Last user trace: <span id="last-user-trace-value">not observed</span></li>
+                <li>Last reply trace: <span id="last-reply-trace-value">not observed</span></li>
+                <li>Last update: <span id="session-updated-at-value">not started</span></li>
+                <li>Gateway base URL: <span id="session-api-base-url-value">http://127.0.0.1:8000</span></li>
+                <li>Realtime: <span id="connection-status-value">idle</span></li>
+                <li>Last heartbeat: <span id="connection-heartbeat-value">not started</span></li>
+                <li>Realtime URL: <span id="session-ws-url-value">ws://127.0.0.1:8000/ws</span></li>
+              </ul>
+              <pre class="connection-log" id="connection-log">realtime idle</pre>
+            </div>
           </div>
         </section>
       </main>

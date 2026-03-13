@@ -112,6 +112,7 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
   padding: 22px;
   min-height: 260px;
   border: 1px solid rgba(29, 42, 43, 0.08);
@@ -142,6 +143,10 @@ body::before {
   grid-column: span 2;
 }
 
+.emotion-panel {
+  grid-column: span 2;
+}
+
 .chat-panel {
   grid-column: span 2;
 }
@@ -151,6 +156,7 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
 }
 
 .media-preview,
@@ -209,6 +215,41 @@ body::before {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.capture-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.capture-control-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 136px));
+  gap: 10px;
+  justify-content: start;
+}
+
+.capture-control-grid button,
+.capture-submit-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 48px;
+  white-space: nowrap;
+}
+
+.capture-control-grid button {
+  width: 100%;
+}
+
+.capture-submit-row {
+  justify-content: flex-start;
+}
+
+.capture-submit-row button {
+  min-width: 0;
 }
 
 .session-overview {
@@ -642,9 +683,15 @@ body::before {
 
 .avatar-action-row {
   grid-column: span 1;
+  align-self: end;
 }
 
 .avatar-action-row button {
+  height: 48px;
+  min-width: 128px;
+  padding: 0 22px;
+  line-height: 1;
+  white-space: nowrap;
   background: var(--accent);
 }
 
@@ -660,14 +707,42 @@ body::before {
   gap: 12px;
 }
 
+.timeline {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
 .timeline-summary {
   margin-bottom: 16px;
 }
 
 .line,
 .timeline-item {
+  min-width: 0;
   padding: 14px 16px;
   border-radius: 18px;
+}
+
+.line p,
+.timeline-item p,
+.capture-status,
+.capture-meta strong,
+.capture-meta small,
+.text-submit-status,
+.text-submit-meta strong,
+.text-submit-meta small,
+.subtitle-bar strong,
+.avatar-character-detail,
+.avatar-stage-note,
+.signal-card strong,
+.signal-card small,
+.emotion-panel-status,
+.session-feedback,
+.export-status,
+.control-notes li,
+.connection-log {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .line-label,
@@ -765,7 +840,8 @@ body::before {
   gap: 12px;
 }
 
-.button-row button {
+.button-row button,
+.capture-control-grid button {
   border: 0;
   border-radius: 999px;
   padding: 12px 16px;
@@ -775,18 +851,19 @@ body::before {
   cursor: pointer;
 }
 
-.button-row button#camera-start-button,
-.button-row button#camera-stop-button,
-.button-row button#mic-start-button,
-.button-row button#mic-stop-button {
+#camera-start-button,
+#camera-stop-button,
+#mic-start-button,
+#mic-stop-button {
   background: #476261;
 }
 
-.button-row button#text-submit-button {
+#text-submit-button {
   background: var(--signal);
 }
 
-.button-row button[disabled] {
+.button-row button[disabled],
+.capture-control-grid button[disabled] {
   opacity: 0.58;
   cursor: not-allowed;
 }
@@ -872,6 +949,10 @@ body::before {
   white-space: pre-wrap;
 }
 
+.session-runtime-meta {
+  display: none;
+}
+
 .control-notes {
   margin: 0;
   padding-left: 18px;
@@ -908,6 +989,7 @@ body::before {
   }
 
   .avatar-panel,
+  .emotion-panel,
   .chat-panel {
     grid-column: span 1;
   }

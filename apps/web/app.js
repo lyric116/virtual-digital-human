@@ -355,9 +355,9 @@
       emotionSourceDatasetValue: findOptionalElement(rootDocument, "emotion-source-dataset-value"),
       emotionSourceRecordValue: findOptionalElement(rootDocument, "emotion-source-record-value"),
       emotionSourceNoteValue: findOptionalElement(rootDocument, "emotion-source-note-value"),
-      timelineUserText: findRequiredElement(rootDocument, "timeline-user-text"),
-      timelineAssistantText: findRequiredElement(rootDocument, "timeline-assistant-text"),
-      timelineStageText: findRequiredElement(rootDocument, "timeline-stage-text"),
+      timelineUserText: findOptionalElement(rootDocument, "timeline-user-text"),
+      timelineAssistantText: findOptionalElement(rootDocument, "timeline-assistant-text"),
+      timelineStageText: findOptionalElement(rootDocument, "timeline-stage-text"),
       chatTimelineList: findRequiredElement(rootDocument, "chat-timeline-list"),
       sessionIdValue: findRequiredElement(rootDocument, "session-id-value"),
       sessionStatusValue: findRequiredElement(rootDocument, "session-status-value"),
@@ -1193,13 +1193,19 @@
       elements.avatarReplayButton.disabled = !state.ttsAudioUrl || state.ttsPlaybackState === "synthesizing";
     }
     const affectSnapshot = renderAffectPanel(rootDocument, elements, state);
-    elements.timelineUserText.textContent = (
-      state.lastAcceptedText
-        || state.partialTranscriptText
-        || "等待用户消息..."
-    );
-    elements.timelineAssistantText.textContent = state.lastReplyText || "等待系统回复...";
-    elements.timelineStageText.textContent = state.lastStageTransition;
+    if (elements.timelineUserText) {
+      elements.timelineUserText.textContent = (
+        state.lastAcceptedText
+          || state.partialTranscriptText
+          || "等待用户消息..."
+      );
+    }
+    if (elements.timelineAssistantText) {
+      elements.timelineAssistantText.textContent = state.lastReplyText || "等待系统回复...";
+    }
+    if (elements.timelineStageText) {
+      elements.timelineStageText.textContent = state.lastStageTransition;
+    }
     renderTimeline(elements, state);
 
     rootDocument.body.dataset.uiReady = "true";
@@ -1761,8 +1767,26 @@
     storage.removeItem(appConfig.activeSessionStorageKey);
   }
 
+  function hasTimelineEntry(state, entryId) {
+    return state.timelineEntries.some(function (currentEntry) {
+      return currentEntry.entryId === entryId;
+    });
+  }
+
   function appendTimelineEntry(state, entry) {
-    state.timelineEntries = state.timelineEntries.concat([entry]);
+    const existingIndex = state.timelineEntries.findIndex(function (currentEntry) {
+      return currentEntry.entryId === entry.entryId;
+    });
+    if (existingIndex === -1) {
+      state.timelineEntries = state.timelineEntries.concat([entry]);
+      return;
+    }
+    state.timelineEntries = state.timelineEntries.map(function (currentEntry, index) {
+      if (index !== existingIndex) {
+        return currentEntry;
+      }
+      return entry;
+    });
   }
 
   function readExportCache(rootWindow, appConfig) {
@@ -1919,24 +1943,8 @@
           text: message.content_text,
           timestamp: message.submitted_at,
         });
-        timelineEntries.push({
-          entryId: `timeline-stage-${message.message_id}`,
-          kind: "system",
-          label: "Stage",
-          text: `${currentStage} → ${nextStage}`,
-          timestamp: message.submitted_at,
-        });
         currentStage = nextStage;
-        return;
       }
-
-      timelineEntries.push({
-        entryId: `timeline-${message.message_id || Math.random().toString(16).slice(2, 8)}`,
-        kind: "system",
-        label: "System",
-        text: message.content_text || "system event",
-        timestamp: message.submitted_at || null,
-      });
     });
 
     return {
@@ -2762,6 +2770,8 @@
           return;
         }
 
+        const timelineEntryId = `timeline-${payload.message_id}`;
+        const isDuplicateReply = hasTimelineEntry(state, timelineEntryId);
         state.status = "active";
         const replyTimestamp = payload.submitted_at || envelope.emitted_at;
         state.updatedAt = replyTimestamp;
@@ -2772,19 +2782,14 @@
         state.lastReplyEmotion = payload.emotion;
         state.lastReplyRiskLevel = payload.risk_level;
         state.lastReplyNextAction = payload.next_action;
-        state.lastStageTransition = `${state.stage} → ${payload.stage}`;
+        if (!isDuplicateReply) {
+          state.lastStageTransition = `${state.stage} → ${payload.stage}`;
+        }
         appendTimelineEntry(state, {
-          entryId: `timeline-${payload.message_id}`,
+          entryId: timelineEntryId,
           kind: "assistant",
           label: "Assistant",
           text: payload.reply,
-          timestamp: replyTimestamp,
-        });
-        appendTimelineEntry(state, {
-          entryId: `timeline-stage-${payload.message_id}`,
-          kind: "system",
-          label: "Stage",
-          text: state.lastStageTransition,
           timestamp: replyTimestamp,
         });
         state.stage = payload.stage;

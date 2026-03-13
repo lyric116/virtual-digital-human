@@ -52,6 +52,9 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert '<script src="./config.js"></script>' in content
     assert '<script src="./app.js"></script>' in content
     assert 'id="session-start-button"' in content
+    assert 'class="capture-action-stack"' in content
+    assert 'class="capture-control-grid"' in content
+    assert 'class="button-row capture-submit-row"' in content
     assert 'id="camera-request-button"' in content
     assert 'id="camera-start-button"' in content
     assert 'id="camera-stop-button"' in content
@@ -112,16 +115,26 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="emotion-source-dataset-value"' in content
     assert 'id="emotion-source-record-value"' in content
     assert 'id="emotion-source-note-value"' in content
-    assert 'id="timeline-assistant-text"' in content
     assert 'id="chat-timeline-list"' in content
+    assert 'id="timeline-assistant-text"' not in content
+    assert 'id="timeline-stage-text"' not in content
     assert 'id="session-id-value"' in content
     assert 'id="session-status-value"' in content
+    assert 'class="session-runtime-meta" aria-hidden="true"' in content
     assert 'id="last-user-trace-value"' in content
     assert 'id="last-reply-trace-value"' in content
     assert 'id="connection-status-value"' in content
     assert 'id="connection-log"' in content
     assert 'id="session-export-button"' in content
     assert 'id="session-export-status"' in content
+    css_content = CSS_FILE.read_text(encoding="utf-8")
+    assert ".panel {\n  display: flex;\n  flex-direction: column;\n  gap: 16px;\n  min-width: 0;\n" in css_content
+    assert ".avatar-action-row {\n  grid-column: span 1;\n  align-self: end;\n}" in css_content
+    assert ".avatar-action-row button {\n  height: 48px;\n  min-width: 128px;\n  padding: 0 22px;\n  line-height: 1;\n  white-space: nowrap;\n  background: var(--accent);\n}" in css_content
+    assert ".emotion-panel {\n  grid-column: span 2;\n}" in css_content
+    assert ".timeline {\n  max-height: 520px;\n  overflow-y: auto;\n}" in css_content
+    assert ".session-runtime-meta {\n  display: none;\n}" in css_content
+    assert "overflow-wrap: anywhere;" in css_content
     assert "Emotion Care Console" in content
     assert "Capture Panel" in content
     assert "Session Control" in content
