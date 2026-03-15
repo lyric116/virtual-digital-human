@@ -1,0 +1,49 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - paragraph [ref=e5]: 情绪支持陪伴
+      - heading "情绪关怀对话台" [level=1] [ref=e6]
+      - paragraph [ref=e7]: 在这里，你可以用文字或语音慢慢开口，随时查看最新回应、情绪摘要和对话进展。
+    - generic [ref=e8]:
+      - generic [ref=e9]: 陪伴式回应
+      - generic [ref=e10]: 文字与语音
+      - generic [ref=e11]: 实时情绪摘要
+  - navigation "功能模块" [ref=e12]:
+    - button "01 准备 摄像头、麦克风与输入准备" [ref=e13] [cursor=pointer]:
+      - generic [ref=e14]: 01 准备
+      - generic [ref=e15]: 摄像头、麦克风与输入准备
+    - button "02 互动 选角色、说话，也可补充一点文字" [ref=e16] [cursor=pointer]:
+      - generic [ref=e17]: 02 互动
+      - generic [ref=e18]: 选角色、说话，也可补充一点文字
+    - button "03 对话 查看正在说的话与完整对话过程" [ref=e19] [cursor=pointer]:
+      - generic [ref=e20]: 03 对话
+      - generic [ref=e21]: 查看正在说的话与完整对话过程
+    - button "04 情绪 查看当前情绪摘要" [ref=e22] [cursor=pointer]:
+      - generic [ref=e23]: 04 情绪
+      - generic [ref=e24]: 查看当前情绪摘要
+    - button "05 会话 开始、导出与回放当前记录" [active] [ref=e25] [cursor=pointer]:
+      - generic [ref=e26]: 05 会话
+      - generic [ref=e27]: 开始、导出与回放当前记录
+  - main [ref=e28]:
+    - text: 当前使用
+    - generic [ref=e155]:
+      - generic [ref=e156]:
+        - paragraph [ref=e157]: "05"
+        - heading "会话控制" [level=2] [ref=e158]
+      - paragraph [ref=e159]: 从这里开始新的会话，查看当前会话状态，并在需要时导出或回放这段记录。
+      - generic [ref=e160]:
+        - generic [ref=e161]:
+          - generic [ref=e162]:
+            - generic [ref=e163]: 当前状态
+            - strong [ref=e164]: 等待开始
+          - generic [ref=e165]:
+            - generic [ref=e166]: 当前阶段
+            - strong [ref=e167]: 刚开始
+        - paragraph [ref=e168]: 点击开始会话，开启一次新的对话。
+        - generic [ref=e169]:
+          - button "开始会话" [ref=e170] [cursor=pointer]
+          - button "暂停" [disabled] [ref=e171]
+          - button "重置" [disabled] [ref=e172]
+          - button "导出记录" [disabled] [ref=e173]
+          - button "回放记录" [disabled] [ref=e174]
+        - paragraph [ref=e175]: 开始或恢复会话后，就可以导出当前记录。

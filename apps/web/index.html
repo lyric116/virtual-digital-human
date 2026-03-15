@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Virtual Human Console</title>
+    <title>情绪关怀对话台</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -11,31 +11,80 @@
     <div class="app-shell">
       <header class="hero">
         <div>
-          <p class="eyebrow">Demo Mode / Frontend Skeleton</p>
-          <h1>Emotion Care Console</h1>
+          <p class="eyebrow">情绪支持陪伴</p>
+          <h1>情绪关怀对话台</h1>
           <p class="hero-copy">
-            Frontend console for the early interaction loop. Session bootstrap is now
-            connected to the gateway, while transcript, emotion, and avatar modules
-            are being wired step by step through stable service contracts.
+            在这里，你可以用文字或语音慢慢开口，随时查看最新回应、情绪摘要和对话进展。
           </p>
         </div>
         <div class="hero-badges">
-          <span>2 avatars available</span>
-          <span>text + voice</span>
-          <span>camera + mic</span>
+          <span>陪伴式回应</span>
+          <span>文字与语音</span>
+          <span>实时情绪摘要</span>
         </div>
       </header>
+
+      <nav class="module-nav" aria-label="功能模块">
+        <button
+          type="button"
+          class="module-option-card"
+          id="module-option-capture"
+          data-module-option="capture"
+          data-selected="false"
+        >
+          <span class="module-option-title">01 准备</span>
+          <span class="module-option-meta">摄像头、麦克风与输入准备</span>
+        </button>
+        <button
+          type="button"
+          class="module-option-card"
+          id="module-option-avatar"
+          data-module-option="avatar"
+          data-selected="false"
+        >
+          <span class="module-option-title">02 互动</span>
+          <span class="module-option-meta">选角色、说话，也可补充一点文字</span>
+        </button>
+        <button
+          type="button"
+          class="module-option-card"
+          id="module-option-conversation"
+          data-module-option="conversation"
+          data-selected="true"
+        >
+          <span class="module-option-title">03 对话</span>
+          <span class="module-option-meta">查看正在说的话与完整对话过程</span>
+        </button>
+        <button
+          type="button"
+          class="module-option-card"
+          id="module-option-emotion"
+          data-module-option="emotion"
+          data-selected="false"
+        >
+          <span class="module-option-title">04 情绪</span>
+          <span class="module-option-meta">查看当前情绪摘要</span>
+        </button>
+        <button
+          type="button"
+          class="module-option-card"
+          id="module-option-session"
+          data-module-option="session"
+          data-selected="false"
+        >
+          <span class="module-option-title">05 会话</span>
+          <span class="module-option-meta">开始、导出与回放当前记录</span>
+        </button>
+      </nav>
 
       <main class="panel-grid">
         <section class="panel capture-panel" data-panel="capture">
           <div class="panel-header">
             <p class="panel-kicker">01</p>
-            <h2>Capture Panel</h2>
+            <h2>设备准备</h2>
           </div>
           <p class="panel-summary">
-            Text input is live. Microphone recording and camera preview now share the same
-            capture surface, and the gateway can already persist low-frequency audio/video
-            media records without touching later multimodal inference.
+            先确认摄像头和麦克风是否可用，准备好之后再切到互动区开口说话。
           </p>
           <div class="panel-body stacked">
             <div class="media-preview camera-preview-shell">
@@ -52,60 +101,43 @@
               </div>
             </div>
             <div class="pill-row">
-              <span class="pill" id="capture-mic-pill">Mic: idle</span>
-              <span class="pill" id="capture-camera-pill">Camera: idle</span>
-              <span class="pill" id="capture-input-pill">Input: text</span>
+              <span class="pill" id="capture-mic-pill">麦克风：未开启</span>
+              <span class="pill" id="capture-camera-pill">摄像头：未开启</span>
+              <span class="pill" id="capture-input-pill">当前输入：文字</span>
             </div>
-            <div class="mock-input">
-              <label for="text-input-field">Text input</label>
-              <textarea
-                id="text-input-field"
-                rows="3"
-              >我这两天总是睡不好，脑子停不下来。</textarea>
-            </div>
+            <p class="capture-intro">
+              这里主要负责设备与权限准备；文字补充输入已移动到 02 互动模块。
+            </p>
             <div class="capture-action-stack">
               <div class="capture-control-grid">
-                <button type="button" id="camera-request-button">Enable Camera</button>
-                <button type="button" id="camera-start-button">Start Camera</button>
-                <button type="button" id="camera-stop-button">Stop Camera</button>
-                <button type="button" id="mic-request-button">Enable Mic</button>
-                <button type="button" id="mic-start-button">Start Recording</button>
-                <button type="button" id="mic-stop-button">Stop Recording</button>
-              </div>
-              <div class="button-row capture-submit-row">
-                <button type="button" id="text-submit-button">Send Text</button>
+                <button type="button" id="camera-request-button">授权摄像头</button>
+                <button type="button" id="camera-start-button">开启画面</button>
+                <button type="button" id="camera-stop-button">停止画面</button>
+                <button type="button" id="mic-request-button">授权麦克风</button>
               </div>
             </div>
             <p class="capture-status" id="mic-permission-status" aria-live="polite">
               麦克风尚未授权。
             </p>
-            <div class="capture-meta">
-              <span>Camera state</span>
+            <div class="capture-meta capture-meta-hidden" hidden aria-hidden="true">
+              <span>摄像头状态</span>
               <strong id="camera-preview-state-value">idle</strong>
               <small id="camera-preview-detail-value">尚未开启摄像头预览。</small>
             </div>
-            <div class="capture-meta">
-              <span>Video upload</span>
+            <div class="capture-meta capture-meta-hidden" hidden aria-hidden="true">
+              <span>画面上传</span>
               <strong id="video-upload-state-value">idle</strong>
               <small id="video-upload-detail-value">当前没有视频帧上传。</small>
             </div>
-            <div class="capture-meta">
-              <span>Recording state</span>
+            <div class="capture-meta capture-meta-hidden" hidden aria-hidden="true">
+              <span>录音状态</span>
               <strong id="mic-recording-state-value">idle</strong>
               <small id="mic-recording-detail-value">尚未开始录音。</small>
             </div>
-            <div class="capture-meta">
-              <span>Upload state</span>
+            <div class="capture-meta capture-meta-hidden" hidden aria-hidden="true">
+              <span>音频上传</span>
               <strong id="audio-upload-state-value">idle</strong>
               <small id="audio-upload-detail-value">当前没有音频分片上传。</small>
-            </div>
-            <p class="text-submit-status" id="text-submit-status" aria-live="polite">
-              建立会话并连接实时通道后可发送文本。
-            </p>
-            <div class="text-submit-meta">
-              <span>Last accepted message</span>
-              <strong id="text-last-message-id-value">not sent</strong>
-              <small id="text-last-message-time-value">not accepted</small>
             </div>
           </div>
         </section>
@@ -113,14 +145,13 @@
         <section class="panel avatar-panel" data-panel="avatar">
           <div class="panel-header">
             <p class="panel-kicker">02</p>
-            <h2>Avatar Stage</h2>
+            <h2>语音互动</h2>
           </div>
           <p class="panel-summary">
-            Two static 2D avatars are now available. Selection changes both the stage styling and
-            the TTS voice used for the next session.
+            先选一个陪伴角色，直接开始说话；如果一时不想开口，也可以用下方小卡片补充一点文字。
           </p>
           <div class="avatar-stage">
-            <div class="avatar-selector-grid" aria-label="Avatar selector">
+            <div class="avatar-selector-grid" aria-label="角色选择">
               <button
                 type="button"
                 class="avatar-option-card"
@@ -129,8 +160,8 @@
                 data-selected="true"
                 data-effective="true"
               >
-                <span class="avatar-option-name">Companion Avatar A</span>
-                <span class="avatar-option-meta">Warm support / Xiaoxiao voice</span>
+                <span class="avatar-option-name">陪伴角色 A</span>
+                <span class="avatar-option-meta">温和接住情绪 / 晓晓语音</span>
               </button>
               <button
                 type="button"
@@ -140,19 +171,19 @@
                 data-selected="false"
                 data-effective="false"
               >
-                <span class="avatar-option-name">Coach Avatar B</span>
-                <span class="avatar-option-meta">Structured guidance / Yunxi voice</span>
+                <span class="avatar-option-name">引导角色 B</span>
+                <span class="avatar-option-meta">帮助梳理重点 / 云希语音</span>
               </button>
             </div>
             <div class="avatar-baseline-card" id="avatar-baseline-card" data-avatar-state="idle">
               <div class="avatar-baseline-header">
                 <div>
-                  <p class="avatar-label" id="avatar-label-value">Companion Avatar A</p>
-                  <p class="avatar-meta" id="avatar-meta-value">
-                    Warm support / static 2D baseline / low motion
+                  <p class="avatar-label" id="avatar-label-value">陪伴角色 A</p>
+                  <p class="avatar-meta avatar-meta-soft" id="avatar-meta-value">
+                    温和、稳定、陪你慢慢说
                   </p>
                 </div>
-                <span class="avatar-state-pill" id="avatar-character-state-value">idle</span>
+                <span class="avatar-state-pill avatar-state-pill-hidden" id="avatar-character-state-value" hidden aria-hidden="true">idle</span>
               </div>
               <div class="avatar-baseline-canvas" aria-hidden="true">
                 <div class="avatar-halo"></div>
@@ -167,121 +198,135 @@
                   <div class="avatar-body"></div>
                 </div>
               </div>
-              <p class="avatar-character-detail" id="avatar-character-detail-value">
-                静态角色等待中。
+              <p class="avatar-character-detail avatar-secondary-detail" id="avatar-character-detail-value">
+                陪伴角色已准备好开始回应。
               </p>
-              <p class="avatar-stage-note" id="avatar-stage-note-value">
-                温和陪伴型角色，适合建立联系和低刺激安抚。
+              <p class="avatar-stage-note avatar-secondary-note avatar-stage-note-soft" id="avatar-stage-note-value">
+                更适合温和接住情绪、慢慢展开对话。
               </p>
             </div>
             <div class="subtitle-bar">
-              <span>Latest reply</span>
-              <strong id="avatar-latest-reply-text">等待 mock reply...</strong>
+              <span>最新回应</span>
+              <strong id="avatar-latest-reply-text">等待新的回应...</strong>
+            </div>
+            <div class="button-row avatar-live-action-row">
+              <button type="button" id="avatar-mic-start-button">开始录音</button>
+              <button type="button" id="avatar-mic-stop-button">结束录音</button>
+            </div>
+            <div class="button-row avatar-action-row">
+              <button type="button" id="avatar-replay-button" disabled>重播语音</button>
+            </div>
+            <div class="mock-input avatar-text-card">
+              <div class="avatar-text-card-header">
+                <div>
+                  <p class="avatar-text-card-title">补充一点文字</p>
+                  <p class="avatar-text-card-note">如果暂时不想开口，也可以在这里补充一句。</p>
+                </div>
+                <span class="avatar-text-card-tip">会话仍请在 05 开始</span>
+              </div>
+              <label for="text-input-field">补充文字</label>
+              <textarea
+                id="text-input-field"
+                rows="3"
+              >我这两天总是睡不好，脑子停不下来。</textarea>
+              <div class="button-row capture-submit-row avatar-text-submit-row">
+                <button type="button" id="text-submit-button">发送文字</button>
+              </div>
+              <p class="text-submit-status" id="text-submit-status" aria-live="polite">
+                开始会话并连接后，就可以发送文字。
+              </p>
+              <div class="text-submit-meta text-submit-meta-soft">
+                <span>最近一次发送内容</span>
+                <strong id="text-last-message-label-value">还没有发送新的文字。</strong>
+                <small id="text-last-message-time-label-value">发送后会在这里显示接收时间。</small>
+                <strong id="text-last-message-id-value" hidden aria-hidden="true">not sent</strong>
+                <small id="text-last-message-time-value" hidden aria-hidden="true">not accepted</small>
+              </div>
             </div>
             <div class="avatar-playback-grid">
-              <div class="capture-meta">
-                <span>Speech state</span>
+              <div class="capture-meta avatar-debug-meta avatar-debug-meta-hidden" hidden aria-hidden="true">
+                <span>语音状态</span>
                 <strong id="avatar-speech-state-value">idle</strong>
-                <small id="avatar-speech-detail-value">等待系统回复并合成语音。</small>
+                <small id="avatar-speech-detail-value">等待新的回应并准备语音。</small>
               </div>
-              <div class="capture-meta">
-                <span>Voice asset</span>
+              <div class="capture-meta avatar-debug-meta avatar-debug-meta-soft avatar-debug-meta-soft-hidden" hidden aria-hidden="true">
+                <span>当前声线</span>
                 <strong id="avatar-voice-value">pending</strong>
                 <small id="avatar-duration-value">0.0s / pending</small>
               </div>
-              <div class="capture-meta">
-                <span>Mouth state</span>
+              <div class="capture-meta avatar-debug-meta avatar-debug-meta-hidden" hidden aria-hidden="true">
+                <span>嘴型状态</span>
                 <strong id="avatar-mouth-state-value">closed</strong>
-                <small id="avatar-mouth-detail-value">嘴部闭合，累计切换 0 次。</small>
+                <small id="avatar-mouth-detail-value">当前嘴型闭合。</small>
               </div>
-              <div class="capture-meta">
-                <span>Expression preset</span>
+              <div class="capture-meta avatar-debug-meta avatar-debug-meta-hidden" hidden aria-hidden="true">
+                <span>表情预设</span>
                 <strong id="avatar-expression-preset-value">ready_idle</strong>
                 <small id="avatar-expression-detail-value">
-                  未进入业务阶段前保持中性等待，不提前表现强情绪。
+                  当前保持平稳自然的待机表情。
                 </small>
               </div>
             </div>
-            <div class="button-row avatar-action-row">
-              <button type="button" id="avatar-replay-button" disabled>Replay Voice</button>
-            </div>
             <audio id="avatar-audio-player" preload="auto"></audio>
-          </div>
-        </section>
-
-        <section class="panel transcript-panel" data-panel="transcript">
-          <div class="panel-header">
-            <p class="panel-kicker">03</p>
-            <h2>Transcript Panel</h2>
-          </div>
-          <p class="panel-summary">
-            Partial transcript appears during recording, then final transcript and reply land after stop.
-          </p>
-          <div class="panel-body transcript-lines">
-            <div class="line partial">
-              <span class="line-label">partial</span>
-              <p id="transcript-user-partial-text">等待 partial transcript...</p>
-            </div>
-            <div class="line final">
-              <span class="line-label">final</span>
-              <p id="transcript-user-final-text">等待用户提交文本...</p>
-            </div>
-            <div class="line assistant">
-              <span class="line-label">reply</span>
-              <p id="transcript-assistant-reply-text">等待 mock orchestrator reply...</p>
-            </div>
           </div>
         </section>
 
         <section class="panel emotion-panel" data-panel="emotion">
           <div class="panel-header">
             <p class="panel-kicker">04</p>
-            <h2>Emotion Panel</h2>
+            <h2>情绪摘要</h2>
           </div>
           <p class="panel-summary">
-            Step-37 affect snapshot view. Text, audio, video, and fusion stay lightweight
-            for now, but the panel already reserves sample source and conflict fields.
+            用简短摘要看当前情绪走向，并提醒接下来可能需要多大的关注与照顾。
           </p>
           <p class="emotion-panel-status" id="emotion-panel-status" aria-live="polite">
-            等待 affect-service 返回第一版占位结果。
+            等待本轮对话的情绪摘要。
           </p>
-          <div class="signal-grid">
-            <article class="signal-card">
-              <span>Text</span>
-              <strong id="text-signal-value">pending</strong>
-              <small id="text-signal-confidence">confidence: pending</small>
-              <small id="text-signal-detail">文本路尚未接入。</small>
+          <div class="signal-grid emotion-summary-grid">
+            <article class="signal-card fusion emotion-summary-card">
+              <span>当前情绪</span>
+              <strong id="fusion-emotion-label-value">待更新</strong>
+              <strong id="fusion-emotion-value" hidden aria-hidden="true">pending</strong>
+              <small id="fusion-detail-value">等待更完整的情绪线索。</small>
             </article>
-            <article class="signal-card">
-              <span>Audio</span>
-              <strong id="audio-signal-value">pending</strong>
-              <small id="audio-signal-confidence">confidence: pending</small>
-              <small id="audio-signal-detail">音频路尚未接入。</small>
-            </article>
-            <article class="signal-card">
-              <span>Video</span>
-              <strong id="video-signal-value">pending</strong>
-              <small id="video-signal-confidence">confidence: pending</small>
-              <small id="video-signal-detail">视频路尚未接入。</small>
-            </article>
-            <article class="signal-card fusion">
-              <span>Fusion</span>
-              <strong id="fusion-emotion-value">pending</strong>
-              <strong id="fusion-risk-value">pending</strong>
-              <small id="fusion-confidence-value">confidence: pending</small>
-              <small id="fusion-conflict-value">conflict: pending</small>
-              <small id="fusion-detail-value">等待融合结果。</small>
-              <small id="fusion-stage-value">stage: idle / next: pending</small>
+            <article class="signal-card fusion emotion-summary-card">
+              <span>关注等级</span>
+              <strong id="fusion-risk-label-value">待更新</strong>
+              <strong id="fusion-risk-value" hidden aria-hidden="true">pending</strong>
+              <small id="fusion-stage-value">当前仍在了解你的状态</small>
             </article>
           </div>
-          <div class="emotion-source-grid">
+          <div class="emotion-hidden-copy" aria-hidden="true">
+            <article class="signal-card">
+              <span>文字线索</span>
+              <strong id="text-signal-value">pending</strong>
+              <small id="text-signal-confidence">置信度：待更新</small>
+              <small id="text-signal-detail">文字线索尚未更新。</small>
+            </article>
+            <article class="signal-card">
+              <span>语音线索</span>
+              <strong id="audio-signal-value">pending</strong>
+              <small id="audio-signal-confidence">置信度：待更新</small>
+              <small id="audio-signal-detail">语音线索尚未更新。</small>
+            </article>
+            <article class="signal-card">
+              <span>画面线索</span>
+              <strong id="video-signal-value">pending</strong>
+              <small id="video-signal-confidence">置信度：待更新</small>
+              <small id="video-signal-detail">画面线索尚未更新。</small>
+            </article>
+            <article class="signal-card fusion">
+              <span>融合诊断</span>
+              <small id="fusion-confidence-value">置信度：待更新</small>
+              <small id="fusion-conflict-value">冲突：待更新</small>
+            </article>
             <div class="capture-meta">
-              <span>Source origin</span>
+              <span>来源类型</span>
               <strong id="emotion-source-origin-value">live_web_session</strong>
-              <small id="emotion-source-note-value">enterprise sample pending binding</small>
+              <small id="emotion-source-note-value">等待会话样本信息</small>
             </div>
             <div class="capture-meta">
-              <span>Sample dataset</span>
+              <span>样本集合</span>
               <strong id="emotion-source-dataset-value">live_web</strong>
               <small id="emotion-source-record-value">session/pending</small>
             </div>
@@ -290,69 +335,78 @@
 
         <section class="panel chat-panel" data-panel="chat">
           <div class="panel-header">
-            <p class="panel-kicker">05</p>
-            <h2>Chat Timeline</h2>
+            <p class="panel-kicker">03</p>
+            <h2>对话进展</h2>
           </div>
           <p class="panel-summary">
-            Multi-turn history panel. Full chat history is restored from backend session
-            state after refresh.
+            先看你此刻正在说的话，再继续查看最近的来回内容，跟上这段对话是怎么展开的。
           </p>
+          <div class="panel-body transcript-lines transcript-inline-card">
+            <div class="line partial transcript-live-line">
+              <span class="line-label">正在说</span>
+              <p id="transcript-user-partial-text">等待你开始说话...</p>
+            </div>
+            <div class="transcript-hidden-copy" aria-hidden="true">
+              <p id="transcript-user-final-text">等待你的第一条消息...</p>
+              <p id="transcript-assistant-reply-text">等待新的回应...</p>
+            </div>
+          </div>
           <div class="timeline" id="chat-timeline-list" aria-live="polite">
             <article class="timeline-item system timeline-empty">
-              <span class="timeline-role">History</span>
-              <p>等待会话历史...</p>
+              <span class="timeline-role">对话记录</span>
+              <p>开始会话后，对话记录会显示在这里。</p>
             </article>
           </div>
         </section>
 
         <section class="panel control-panel" data-panel="control">
           <div class="panel-header">
-            <p class="panel-kicker">06</p>
-            <h2>Session Control</h2>
+            <p class="panel-kicker">05</p>
+            <h2>会话控制</h2>
           </div>
           <p class="panel-summary">
-            Session start and export are live. Pause and reset stay disabled until later
-            control steps, while Export downloads the current session JSON for replay and
-            traceability checks.
+            从这里开始新的会话，查看当前会话状态，并在需要时导出或回放这段记录。
           </p>
           <div class="panel-body controls">
             <div class="session-overview">
-              <div class="session-chip">
+              <div class="session-chip session-chip-hidden" hidden aria-hidden="true">
                 <span>Session</span>
                 <strong id="session-id-value">未创建</strong>
               </div>
               <div class="session-chip">
-                <span>Status</span>
-                <strong id="session-status-value">idle</strong>
+                <span>当前状态</span>
+                <strong id="session-status-value" hidden aria-hidden="true">idle</strong>
+                <strong id="session-status-label-value">等待开始</strong>
               </div>
-              <div class="session-chip">
-                <span>Stage</span>
-                <strong id="session-stage-value">idle</strong>
+              <div class="session-chip session-chip-soft">
+                <span>当前阶段</span>
+                <strong id="session-stage-value" hidden aria-hidden="true">idle</strong>
+                <strong id="session-stage-label-value">刚开始</strong>
               </div>
             </div>
             <p class="session-feedback" id="session-feedback" aria-live="polite">
-              点击 Start Session 创建新的会话编号。
+              点击开始会话，开启一次新的对话。
             </p>
             <div class="button-row">
-              <button type="button" id="session-start-button">Start Session</button>
-              <button type="button" id="session-pause-button" disabled>Pause</button>
-              <button type="button" id="session-reset-button" disabled>Reset</button>
-              <button type="button" id="session-export-button">Export</button>
-              <button type="button" id="session-replay-button">Replay Export</button>
+              <button type="button" id="session-start-button">开始会话</button>
+              <button type="button" id="session-pause-button" disabled>暂停</button>
+              <button type="button" id="session-reset-button" disabled>重置</button>
+              <button type="button" id="session-export-button">导出记录</button>
+              <button type="button" id="session-replay-button">回放记录</button>
             </div>
             <p class="export-status" id="session-export-status" aria-live="polite">
-              创建或恢复会话后可导出当前 JSON。
+              开始或恢复会话后，就可以导出当前记录。
             </p>
             <div class="session-runtime-meta" aria-hidden="true">
               <ul class="control-notes">
-                <li>Trace id: <span id="session-trace-value">not assigned</span></li>
-                <li>Last user trace: <span id="last-user-trace-value">not observed</span></li>
-                <li>Last reply trace: <span id="last-reply-trace-value">not observed</span></li>
-                <li>Last update: <span id="session-updated-at-value">not started</span></li>
-                <li>Gateway base URL: <span id="session-api-base-url-value">http://127.0.0.1:8000</span></li>
-                <li>Realtime: <span id="connection-status-value">idle</span></li>
-                <li>Last heartbeat: <span id="connection-heartbeat-value">not started</span></li>
-                <li>Realtime URL: <span id="session-ws-url-value">ws://127.0.0.1:8000/ws</span></li>
+                <li>追踪 ID：<span id="session-trace-value">not assigned</span></li>
+                <li>最近用户追踪：<span id="last-user-trace-value">not observed</span></li>
+                <li>最近回复追踪：<span id="last-reply-trace-value">not observed</span></li>
+                <li>最近更新时间：<span id="session-updated-at-value">not started</span></li>
+                <li>网关地址：<span id="session-api-base-url-value">http://127.0.0.1:8000</span></li>
+                <li>实时连接：<span id="connection-status-value">idle</span></li>
+                <li>最近心跳：<span id="connection-heartbeat-value">not started</span></li>
+                <li>实时地址：<span id="session-ws-url-value">ws://127.0.0.1:8000/ws</span></li>
               </ul>
               <pre class="connection-log" id="connection-log">realtime idle</pre>
             </div>

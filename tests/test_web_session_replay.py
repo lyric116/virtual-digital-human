@@ -34,8 +34,8 @@ def test_web_session_replay_reconstructs_saved_export():
     assert payload["afterReplay"]["replayState"] == "completed"
     assert payload["afterReplay"]["connectionStatus"] == "replay"
     assert payload["afterReplay"]["fusionRisk"] == "medium"
-    assert "Assistant" in payload["afterReplay"]["timelineText"]
-    assert "User" in payload["afterReplay"]["timelineText"]
+    assert "陪伴方" in payload["afterReplay"]["timelineText"]
+    assert "用户" in payload["afterReplay"]["timelineText"]
     assert "Stage |" not in payload["afterReplay"]["timelineText"]
 
 

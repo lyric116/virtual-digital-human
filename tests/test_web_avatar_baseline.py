@@ -39,10 +39,10 @@ def test_avatar_baseline_switches_between_idle_and_speaking():
 
     assert payload["beforeCreate"]["avatarVisualState"] == "idle"
     assert payload["beforeCreate"]["avatarCharacterState"] == "idle"
-    assert "等待" in payload["beforeCreate"]["avatarCharacterDetail"]
+    assert "准备好" in payload["beforeCreate"]["avatarCharacterDetail"]
     assert payload["afterPlaybackStart"]["avatarVisualState"] == "speaking"
     assert payload["afterPlaybackStart"]["avatarCharacterState"] == "speaking"
-    assert "说话" in payload["afterPlaybackStart"]["avatarCharacterDetail"]
+    assert "回应" in payload["afterPlaybackStart"]["avatarCharacterDetail"]
     assert payload["afterPlaybackEnd"]["avatarVisualState"] == "idle"
     assert payload["afterPlaybackEnd"]["avatarCharacterState"] == "idle"
 

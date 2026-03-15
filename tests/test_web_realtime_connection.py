@@ -40,7 +40,7 @@ def test_web_realtime_happy_path_reaches_connected_state_and_heartbeat():
     assert payload["afterConnect"]["requestState"] == "ready"
     assert payload["afterConnect"]["connectionStatus"] == "connected"
     assert payload["afterConnect"]["bodyConnectionState"] == "connected"
-    assert payload["afterConnect"]["lastHeartbeat"] != "not started"
+    assert payload["afterConnect"]["lastHeartbeat"] != "未开始"
     assert "heartbeat acknowledged" in payload["afterConnect"]["connectionLog"]
 
 
@@ -49,7 +49,7 @@ def test_web_realtime_recovers_after_forced_drop():
 
     assert payload["afterReconnect"]["connectionStatus"] == "connected"
     assert payload["afterReconnect"]["bodyConnectionState"] == "connected"
-    assert payload["afterReconnect"]["lastHeartbeat"] != "not started"
+    assert payload["afterReconnect"]["lastHeartbeat"] != "未开始"
     assert "reconnect attempt" in payload["afterReconnect"]["connectionLog"]
     assert "socket connected" in payload["afterReconnect"]["connectionLog"]
 

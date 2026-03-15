@@ -50,15 +50,15 @@ class FakeDocument {
     this.panelMap = new Map();
     this.idMap = new Map();
 
-    ["capture", "avatar", "transcript", "emotion", "chat", "control"].forEach((panelId) => {
+    ["capture", "avatar", "emotion", "chat", "control"].forEach((panelId) => {
       this.panelMap.set(panelId, new FakeElement({ panelId }));
     });
 
     const elements = [
-      ["session-start-button", "Start Session", ""],
-      ["mic-request-button", "Enable Mic", ""],
-      ["mic-start-button", "Start Recording", ""],
-      ["mic-stop-button", "Stop Recording", ""],
+      ["session-start-button", "开始会话", ""],
+      ["mic-request-button", "授权麦克风", ""],
+      ["mic-start-button", "开始录音", ""],
+      ["mic-stop-button", "结束录音", ""],
       ["capture-mic-pill", "Mic: idle", ""],
       ["capture-camera-pill", "Camera: blocked", ""],
       ["capture-input-pill", "Input: text", ""],
@@ -68,33 +68,33 @@ class FakeDocument {
       ["audio-upload-state-value", "idle", ""],
       ["audio-upload-detail-value", "当前没有音频分片上传。", ""],
       ["text-input-field", "", "我这两天总是睡不好，脑子停不下来。"],
-      ["text-submit-button", "Send Text", ""],
-      ["text-submit-status", "建立会话并连接实时通道后可发送文本。", ""],
+      ["text-submit-button", "发送文字", ""],
+      ["text-submit-status", "开始会话并连接后，就可以发送文字。", ""],
       ["text-last-message-id-value", "not sent", ""],
       ["text-last-message-time-value", "not accepted", ""],
-      ["transcript-user-final-text", "等待用户提交文本...", ""],
-      ["transcript-assistant-reply-text", "等待 mock orchestrator reply...", ""],
-      ["avatar-latest-reply-text", "等待 mock reply...", ""],
+      ["transcript-user-final-text", "等待你的第一条消息...", ""],
+      ["transcript-assistant-reply-text", "等待新的回应...", ""],
+      ["avatar-latest-reply-text", "等待新的回应...", ""],
       ["fusion-risk-value", "pending", ""],
-      ["fusion-stage-value", "stage: idle / next: pending", ""],
+      ["fusion-stage-value", "当前仍在了解你的状态", ""],
       ["timeline-user-text", "等待用户消息...", ""],
       ["timeline-assistant-text", "等待系统回复...", ""],
       ["timeline-stage-text", "idle → idle", ""],
-      ["chat-timeline-list", "History | 等待会话历史...", ""],
+      ["chat-timeline-list", "对话记录 | 开始会话后，对话记录会显示在这里。", ""],
       ["session-id-value", "未创建", ""],
       ["session-status-value", "idle", ""],
       ["session-stage-value", "idle", ""],
-      ["session-trace-value", "not assigned", ""],
-      ["last-user-trace-value", "not observed", ""],
-      ["last-reply-trace-value", "not observed", ""],
-      ["session-updated-at-value", "not started", ""],
+      ["session-trace-value", "未分配", ""],
+      ["last-user-trace-value", "暂未记录", ""],
+      ["last-reply-trace-value", "暂未记录", ""],
+      ["session-updated-at-value", "未开始", ""],
       ["session-api-base-url-value", "http://127.0.0.1:8000", ""],
       ["session-ws-url-value", "ws://127.0.0.1:8000/ws", ""],
-      ["session-feedback", "点击 Start Session 创建新的会话编号。", ""],
+      ["session-feedback", "点击 开始会话 开始一次新的对话。", ""],
       ["session-export-button", "Export", ""],
-      ["session-export-status", "创建或恢复会话后可导出当前 JSON。", ""],
+      ["session-export-status", "开始或恢复会话后，就可以导出当前记录。", ""],
       ["connection-status-value", "idle", ""],
-      ["connection-heartbeat-value", "not started", ""],
+      ["connection-heartbeat-value", "未开始", ""],
       ["connection-log", "realtime idle", ""],
     ];
 

@@ -1,5 +1,6 @@
 (function () {
-  const panelIds = ["capture", "avatar", "transcript", "emotion", "chat", "control"];
+  const panelIds = ["capture", "avatar", "emotion", "chat", "control"];
+  const moduleIds = ["capture", "avatar", "conversation", "emotion", "session"];
   const dialogueStages = new Set(["engage", "assess", "intervene", "reassess", "handoff"]);
   const dialogueRiskLevels = new Set(["low", "medium", "high"]);
   const defaultSessionIdLabel = "未创建";
@@ -12,21 +13,21 @@
     companion_female_01: {
       avatarId: "companion_female_01",
       profileId: "companion",
-      label: "Companion Avatar A",
-      meta: "Warm support / static 2D baseline / low motion",
-      stageNote: "温和陪伴型角色，适合建立联系和低刺激安抚。",
-      idleDetail: "陪伴型角色等待中，语气柔和，准备接住当前情绪。",
-      speakingDetail: "陪伴型角色说话中，声线更柔和，节奏更慢。",
+      label: "陪伴角色 A",
+      meta: "温和、稳定、陪你慢慢说",
+      stageNote: "更适合温和接住情绪、慢慢展开对话。",
+      idleDetail: "陪伴角色已准备好开始回应。",
+      speakingDetail: "陪伴角色正在温和回应。",
       voicePreview: "zh-CN-XiaoxiaoNeural",
     },
     coach_male_01: {
       avatarId: "coach_male_01",
       profileId: "coach",
-      label: "Coach Avatar B",
-      meta: "Structured guidance / static 2D baseline / firmer pacing",
-      stageNote: "理性引导型角色，适合澄清问题和推进下一步行动。",
-      idleDetail: "引导型角色等待中，表达更克制，准备做结构化追问。",
-      speakingDetail: "引导型角色说话中，声线更沉稳，节奏更明确。",
+      label: "引导角色 B",
+      meta: "帮助梳理重点，陪你往下走",
+      stageNote: "更适合帮助梳理重点，带着你往下一步走。",
+      idleDetail: "引导角色已准备好继续对话。",
+      speakingDetail: "引导角色正在给出更清晰的建议。",
       voicePreview: "zh-CN-YunxiNeural",
     },
   };
@@ -34,7 +35,7 @@
     ready_idle: {
       presetId: "ready_idle",
       label: "ready_idle",
-      detail: "未进入业务阶段前保持中性等待，不提前表现强情绪。",
+      detail: "当前保持平稳自然的待机表情。",
     },
     open_warm: {
       presetId: "open_warm",
@@ -127,6 +128,13 @@
     );
   }
 
+  function resolveModuleId(candidateModuleId) {
+    if (typeof candidateModuleId === "string" && moduleIds.includes(candidateModuleId)) {
+      return candidateModuleId;
+    }
+    return "conversation";
+  }
+
   function getAppConfig(rootWindow) {
     const config = rootWindow.__APP_CONFIG__ || {};
     return {
@@ -153,30 +161,30 @@
   function createInitialAffectSnapshot() {
     return {
       panelState: "idle",
-      panelMessage: "等待 affect-service 返回第一版占位结果。",
+      panelMessage: "等待本轮对话的情绪摘要。",
       sourceContext: {
         origin: "live_web_session",
         dataset: "live_web",
         recordId: "session/pending",
-        note: "enterprise sample pending binding",
+        note: "等待会话样本信息",
       },
       text: {
         status: "pending",
         label: "pending",
         confidence: 0,
-        detail: "文本路尚未接入。",
+        detail: "文字线索尚未更新。",
       },
       audio: {
         status: "pending",
         label: "pending",
         confidence: 0,
-        detail: "音频路尚未接入。",
+        detail: "语音线索尚未更新。",
       },
       video: {
         status: "pending",
         label: "pending",
         confidence: 0,
-        detail: "视频路尚未接入。",
+        detail: "画面线索尚未更新。",
       },
       fusion: {
         emotionState: "pending",
@@ -184,7 +192,7 @@
         confidence: 0,
         conflict: false,
         conflictReason: null,
-        detail: "等待融合结果。",
+        detail: "等待更完整的情绪线索。",
       },
     };
   }
@@ -192,6 +200,7 @@
   function createInitialSessionState() {
     return {
       sessionId: null,
+      activeModule: "conversation",
       activeAvatarId: defaultAvatarId,
       sessionAvatarId: null,
       traceId: null,
@@ -252,7 +261,7 @@
       lastStageTransition: "idle → idle",
       affectSnapshot: createInitialAffectSnapshot(),
       ttsPlaybackState: "idle",
-      ttsPlaybackMessage: "等待系统回复并合成语音。",
+      ttsPlaybackMessage: "等待新的回应并准备语音。",
       ttsAudioUrl: null,
       ttsAudioFormat: "pending",
       ttsVoiceId: "pending",
@@ -261,11 +270,11 @@
       avatarMouthState: "closed",
       avatarMouthTransitionCount: 0,
       exportState: "idle",
-      exportMessage: "创建或恢复会话后可导出当前 JSON。",
+      exportMessage: "开始或恢复会话后，就可以导出当前记录。",
       lastExportedAt: null,
       lastExportFileName: null,
       replayState: "idle",
-      replayMessage: "导出 JSON 后可进入回放模式。",
+      replayMessage: "导出当前记录后，就可以回放这段对话。",
       replayEventCount: 0,
       replaySourceName: null,
       nextClientSeq: 1,
@@ -286,6 +295,11 @@
 
   function getViewElements(rootDocument) {
     return {
+      moduleOptionCapture: findOptionalElement(rootDocument, "module-option-capture"),
+      moduleOptionAvatar: findOptionalElement(rootDocument, "module-option-avatar"),
+      moduleOptionConversation: findOptionalElement(rootDocument, "module-option-conversation"),
+      moduleOptionEmotion: findOptionalElement(rootDocument, "module-option-emotion"),
+      moduleOptionSession: findOptionalElement(rootDocument, "module-option-session"),
       startButton: findRequiredElement(rootDocument, "session-start-button"),
       cameraRequestButton: findOptionalElement(rootDocument, "camera-request-button"),
       cameraStartButton: findOptionalElement(rootDocument, "camera-start-button"),
@@ -293,6 +307,8 @@
       micRequestButton: findOptionalElement(rootDocument, "mic-request-button"),
       micStartButton: findOptionalElement(rootDocument, "mic-start-button"),
       micStopButton: findOptionalElement(rootDocument, "mic-stop-button"),
+      avatarMicStartButton: findOptionalElement(rootDocument, "avatar-mic-start-button"),
+      avatarMicStopButton: findOptionalElement(rootDocument, "avatar-mic-stop-button"),
       cameraPreviewVideo: findOptionalElement(rootDocument, "camera-preview-video"),
       textInputField: findRequiredElement(rootDocument, "text-input-field"),
       textSubmitButton: findRequiredElement(rootDocument, "text-submit-button"),
@@ -310,6 +326,8 @@
       audioUploadStateValue: findOptionalElement(rootDocument, "audio-upload-state-value"),
       audioUploadDetailValue: findOptionalElement(rootDocument, "audio-upload-detail-value"),
       textSubmitStatus: findRequiredElement(rootDocument, "text-submit-status"),
+      textLastMessageLabelValue: findOptionalElement(rootDocument, "text-last-message-label-value"),
+      textLastMessageTimeLabelValue: findOptionalElement(rootDocument, "text-last-message-time-label-value"),
       textLastMessageIdValue: findRequiredElement(rootDocument, "text-last-message-id-value"),
       textLastMessageTimeValue: findRequiredElement(rootDocument, "text-last-message-time-value"),
       transcriptUserPartialText: findOptionalElement(rootDocument, "transcript-user-partial-text"),
@@ -345,7 +363,9 @@
       videoSignalValue: findOptionalElement(rootDocument, "video-signal-value"),
       videoSignalConfidence: findOptionalElement(rootDocument, "video-signal-confidence"),
       videoSignalDetail: findOptionalElement(rootDocument, "video-signal-detail"),
+      fusionEmotionLabelValue: findOptionalElement(rootDocument, "fusion-emotion-label-value"),
       fusionEmotionValue: findOptionalElement(rootDocument, "fusion-emotion-value"),
+      fusionRiskLabelValue: findOptionalElement(rootDocument, "fusion-risk-label-value"),
       fusionRiskValue: findRequiredElement(rootDocument, "fusion-risk-value"),
       fusionConfidenceValue: findOptionalElement(rootDocument, "fusion-confidence-value"),
       fusionConflictValue: findOptionalElement(rootDocument, "fusion-conflict-value"),
@@ -361,7 +381,9 @@
       chatTimelineList: findRequiredElement(rootDocument, "chat-timeline-list"),
       sessionIdValue: findRequiredElement(rootDocument, "session-id-value"),
       sessionStatusValue: findRequiredElement(rootDocument, "session-status-value"),
+      sessionStatusLabelValue: findOptionalElement(rootDocument, "session-status-label-value"),
       sessionStageValue: findRequiredElement(rootDocument, "session-stage-value"),
+      sessionStageLabelValue: findOptionalElement(rootDocument, "session-stage-label-value"),
       sessionTraceValue: findRequiredElement(rootDocument, "session-trace-value"),
       lastUserTraceValue: findOptionalElement(rootDocument, "last-user-trace-value"),
       lastReplyTraceValue: findOptionalElement(rootDocument, "last-reply-trace-value"),
@@ -380,7 +402,7 @@
 
   function formatTimestamp(value) {
     if (!value) {
-      return "not started";
+      return "未开始";
     }
 
     const date = new Date(value);
@@ -400,9 +422,9 @@
 
   function formatConfidence(value) {
     if (typeof value !== "number" || value <= 0) {
-      return "confidence: pending";
+      return "置信度：待更新";
     }
-    return `confidence: ${value.toFixed(2)}`;
+    return `置信度：${value.toFixed(2)}`;
   }
 
   function resolvePlayableTtsAudioUrl(audioUrl, appConfig) {
@@ -448,12 +470,12 @@
     const rawMessage = error instanceof Error ? error.message : String(error || "");
     const normalized = rawMessage.toLowerCase();
     if (normalized.includes("supported source")) {
-      return "语音资源已生成，但浏览器未能加载音频资源，可点击 Replay Voice 重试。";
+      return "语音资源已生成，但浏览器未能加载音频资源，可点击重播语音重试。";
     }
     if (normalized.includes("user didn't interact") || normalized.includes("notallowederror")) {
-      return "语音资源已生成，但浏览器拦截了自动播放，可点击 Replay Voice 继续。";
+      return "语音资源已生成，但浏览器拦截了自动播放，可点击重播语音继续。";
     }
-    return "语音资源已生成，但当前未能开始播放，可点击 Replay Voice 重试。";
+    return "语音资源已生成，但当前未能开始播放，可点击重播语音重试。";
   }
 
   function getNavigatorLike(rootWindow) {
@@ -478,18 +500,18 @@
 
   function getStartButtonLabel(state) {
     if (state.requestState === "restoring") {
-      return "Restoring Session...";
+      return "正在恢复会话...";
     }
     if (state.requestState === "loading") {
-      return "Creating Session...";
+      return "正在开始...";
     }
     if (state.requestState === "error") {
-      return "Retry Session Start";
+      return "重新开始会话";
     }
     if (state.sessionId) {
-      return "Create New Session";
+      return "开始新会话";
     }
-    return "Start Session";
+    return "开始会话";
   }
 
   function getFeedbackMessage(state) {
@@ -513,11 +535,11 @@
     }
     if (state.sessionId) {
       if (state.historyRestoreState === "restored") {
-        return "最近一次会话已恢复，页面会继续保持会话级实时连接。";
+        return "已恢复上次对话，你可以继续从这里开始。";
       }
-      return "会话已建立，当前页面会保持会话级实时连接并自动处理断线重连。";
+      return "会话已开始，可以继续发送文字、语音并查看最新进展。";
     }
-    return "点击 Start Session 创建新的会话编号。";
+    return "点击开始会话，开启一次新的对话。";
   }
 
   function getTextSubmitStatusMessage(state) {
@@ -525,30 +547,119 @@
       return "回放模式下禁用实时文本发送。";
     }
     if (!state.sessionId) {
-      return "建立会话并连接实时通道后可发送文本。";
+      return "开始会话并连接后，就可以发送文字。";
     }
     if (state.connectionStatus === "unsupported") {
       return "当前环境不支持 WebSocket，无法等待确认事件。";
     }
     if (state.connectionStatus !== "connected") {
       if (state.connectionStatus === "reconnecting") {
-        return "实时连接重连中，暂时不能发送文本。";
+        return "连接正在恢复中，请稍后再发送。";
       }
-      return "等待实时连接完成后再发送文本。";
+      return "等待连接完成后，再发送补充文字。";
     }
     if (state.textSubmitState === "sending") {
-      return "正在提交文本，请稍候。";
+      return "正在发送文字，请稍候。";
     }
     if (state.textSubmitState === "awaiting_ack") {
-      return "消息已写入网关，等待确认事件。";
+      return "文字已发出，正在等待确认。";
     }
     if (state.textSubmitState === "sent") {
       return state.textSubmitMessage || "发送成功。";
     }
     if (state.textSubmitState === "error") {
-      return state.textSubmitMessage || "文本发送失败。";
+      return state.textSubmitMessage || "文字发送失败。";
     }
-    return "输入文本并点击 Send Text。";
+    return "想补充一点文字时，可以在这里输入后发送。";
+  }
+
+  function getLatestAcceptedMessageLabel(state) {
+    if (state.lastAcceptedText) {
+      return state.lastAcceptedText;
+    }
+    return "还没有发送新的文字。";
+  }
+
+  function getLatestAcceptedTimeLabel(state) {
+    if (state.lastAcceptedAt) {
+      return `接收时间：${formatTimestamp(state.lastAcceptedAt)}`;
+    }
+    return "发送后会在这里显示接收时间。";
+  }
+
+  function getLatestAcceptedMessageIdValue(state) {
+    if (state.lastAcceptedMessageId) {
+      return state.lastAcceptedMessageId;
+    }
+    return "not sent";
+  }
+
+  function getLatestAcceptedTimeValue(state) {
+    if (state.lastAcceptedAt) {
+      return state.lastAcceptedAt;
+    }
+    return "not accepted";
+  }
+
+  function getVisibleCaptureMicLabel(state) {
+    const labelMap = {
+      idle: "未开启",
+      requesting: "授权中",
+      granted: state.recordingState === "recording" ? "录音中" : "已准备",
+      denied: "未授权",
+      unsupported: "不可用",
+      error: "异常",
+    };
+    return `麦克风：${labelMap[state.micPermissionState] || "未开启"}`;
+  }
+
+  function getVisibleCaptureCameraLabel(state) {
+    if (state.cameraState === "previewing") {
+      return "摄像头：画面中";
+    }
+    const labelMap = {
+      idle: "未开启",
+      requesting: "授权中",
+      granted: "已准备",
+      denied: "未授权",
+      unsupported: "不可用",
+      error: "异常",
+    };
+    return `摄像头：${labelMap[state.cameraPermissionState] || "未开启"}`;
+  }
+
+  function getVisibleCaptureInputLabel(state) {
+    const activeInputs = ["文字"];
+    if (state.recordingState === "recording") {
+      activeInputs.push("语音");
+    }
+    if (state.cameraState === "previewing") {
+      activeInputs.push("画面");
+    }
+    return `当前输入：${activeInputs.join(" + ")}`;
+  }
+
+  function getVisibleSessionStatusLabel(state) {
+    const labelMap = {
+      idle: "等待开始",
+      created: "已开始",
+      active: "进行中",
+      replay_ready: "可回放",
+      replay_loading: "准备回放",
+    };
+    return labelMap[state.status] || state.status || "等待开始";
+  }
+
+  function getVisibleSessionStageLabel(state) {
+    const labelMap = {
+      idle: "刚开始",
+      engage: "倾听中",
+      assess: "了解中",
+      intervene: "回应中",
+      reassess: "继续陪伴",
+      handoff: "准备转接",
+    };
+    return labelMap[state.stage] || state.stage || "刚开始";
   }
 
   function getCameraPermissionStatusMessage(state) {
@@ -668,38 +779,38 @@
       return state.partialTranscriptText;
     }
     if (state.partialTranscriptState === "error") {
-      return state.partialTranscriptText || "partial transcript 获取失败。";
+      return state.partialTranscriptText || "暂时没能显示正在说的话。";
     }
     if (state.recordingState === "recording" || state.audioUploadState === "processing_final") {
-      return "等待语音局部转写...";
+      return "正在整理你刚才的话...";
     }
-    return "等待 partial transcript...";
+    return "等待你开口说话...";
   }
 
   function getTextSubmitButtonLabel(state) {
     if (state.textSubmitState === "sending") {
-      return "Sending...";
+      return "发送中...";
     }
-    return "Send Text";
+    return "发送文字";
   }
 
   function getAvatarSpeechStatusMessage(state) {
     if (state.ttsPlaybackState === "synthesizing") {
-      return state.ttsPlaybackMessage || "正在合成语音。";
+      return state.ttsPlaybackMessage || "正在准备这段语音。";
     }
     if (state.ttsPlaybackState === "ready") {
-      return state.ttsPlaybackMessage || "语音已生成，可播放。";
+      return state.ttsPlaybackMessage || "语音已准备好，可以重播。";
     }
     if (state.ttsPlaybackState === "playing") {
-      return state.ttsPlaybackMessage || "数字人语音播放中。";
+      return state.ttsPlaybackMessage || "正在播放这段回应。";
     }
     if (state.ttsPlaybackState === "completed") {
-      return state.ttsPlaybackMessage || "本轮语音播放完成。";
+      return state.ttsPlaybackMessage || "这段回应已播放完成。";
     }
     if (state.ttsPlaybackState === "error") {
-      return state.ttsPlaybackMessage || "语音播放失败。";
+      return state.ttsPlaybackMessage || "这段语音暂时无法播放。";
     }
-    return state.ttsPlaybackMessage || "等待系统回复并合成语音。";
+    return state.ttsPlaybackMessage || "等待新的回应并准备语音。";
   }
 
   function getAvatarVisualState(state) {
@@ -722,7 +833,7 @@
       && state.sessionAvatarId
       && resolveAvatarId(state.sessionAvatarId) !== resolveAvatarId(state.activeAvatarId)
     ) {
-      return `已选 ${selectedAvatar.label}，点击 Create New Session 后切换当前会话角色。`;
+      return `已选 ${selectedAvatar.label}，开始新会话后会切换成这个角色。`;
     }
     return effectiveAvatar.stageNote;
   }
@@ -733,9 +844,9 @@
 
   function getAvatarMouthDetail(state) {
     if (state.avatarMouthState === "closed") {
-      return `嘴部闭合，累计切换 ${state.avatarMouthTransitionCount} 次。`;
+      return "当前嘴型闭合。";
     }
-    return `嘴型 ${state.avatarMouthState}，累计切换 ${state.avatarMouthTransitionCount} 次。`;
+    return `当前嘴型：${state.avatarMouthState}。`;
   }
 
   function buildMouthCueSequence(text, durationMs) {
@@ -800,7 +911,7 @@
       return state.replayMessage || "回放失败。";
     }
     if (!state.sessionId) {
-      return "创建或恢复会话后可导出当前 JSON。";
+      return "开始或恢复会话后，就可以导出当前记录。";
     }
     if (state.exportState === "loading") {
       return "正在准备会话导出，请稍候。";
@@ -811,21 +922,21 @@
     if (state.exportState === "exported") {
       return state.exportMessage || "会话导出成功。";
     }
-    return state.exportMessage || "点击 Export 下载当前会话 JSON。";
+    return state.exportMessage || "点击导出，保存当前会话记录。";
   }
 
   function getExportButtonLabel(state) {
     if (state.exportState === "loading") {
-      return "Exporting...";
+      return "导出中...";
     }
-    return "Export";
+    return "导出记录";
   }
 
   function getReplayButtonLabel(state) {
     if (state.replayState === "running") {
-      return "Replaying...";
+      return "回放中...";
     }
-    return "Replay Export";
+    return "回放记录";
   }
 
   function pushConnectionLog(state, message) {
@@ -841,22 +952,44 @@
       .replaceAll("'", "&#39;");
   }
 
+  function renderModuleState(rootDocument, elements, state) {
+    const activeModule = resolveModuleId(state.activeModule);
+    if (rootDocument.body && typeof rootDocument.body.dataset === "object") {
+      rootDocument.body.dataset.activeModule = activeModule;
+    }
+
+    const moduleButtons = [
+      [elements.moduleOptionCapture, "capture"],
+      [elements.moduleOptionAvatar, "avatar"],
+      [elements.moduleOptionConversation, "conversation"],
+      [elements.moduleOptionEmotion, "emotion"],
+      [elements.moduleOptionSession, "session"],
+    ];
+
+    moduleButtons.forEach(function ([button, moduleId]) {
+      if (!button || typeof button.dataset !== "object") {
+        return;
+      }
+      button.dataset.selected = moduleId === activeModule ? "true" : "false";
+    });
+  }
+
   function renderTimeline(elements, state) {
     let markup = "";
     let plainText = "";
-    let renderKey = "History | 等待会话历史...";
+    let renderKey = "对话记录 | 开始会话后，对话记录会显示在这里。";
 
     if (!state.timelineEntries.length) {
       markup = [
         '<article class="timeline-item system timeline-empty">',
-        '<span class="timeline-role">History</span>',
-        "<p>等待会话历史...</p>",
+        '<span class="timeline-role">对话记录</span>',
+        "<p>开始会话后，对话记录会显示在这里。</p>",
         "</article>",
       ].join("");
-      plainText = "History | 等待会话历史...";
+      plainText = "对话记录 | 开始会话后，对话记录会显示在这里。";
     } else {
       markup = state.timelineEntries.map(function (entry) {
-        const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "not started";
+        const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "未开始";
         return [
           `<article class="timeline-item ${escapeHtml(entry.kind)}">`,
           `<span class="timeline-role">${escapeHtml(entry.label)}</span>`,
@@ -867,7 +1000,7 @@
       }).join("");
 
       plainText = state.timelineEntries.map(function (entry) {
-        const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "not started";
+        const timestampLabel = entry.timestamp ? formatTimestamp(entry.timestamp) : "未开始";
         return `${entry.label} | ${timestampLabel} | ${entry.text}`;
       }).join("\n");
       renderKey = plainText;
@@ -942,11 +1075,24 @@
     if (elements.fusionEmotionValue) {
       elements.fusionEmotionValue.textContent = affectSnapshot.fusion.emotionState;
     }
-    elements.fusionRiskValue.textContent = (
+    if (elements.fusionEmotionLabelValue) {
+      elements.fusionEmotionLabelValue.textContent = (
+        affectSnapshot.fusion.emotionState && affectSnapshot.fusion.emotionState !== "pending"
+          ? affectSnapshot.fusion.emotionState
+          : "待更新"
+      );
+    }
+    const visibleRiskLevel = (
       affectSnapshot.fusion.riskLevel && affectSnapshot.fusion.riskLevel !== "pending"
         ? affectSnapshot.fusion.riskLevel
         : state.lastReplyRiskLevel
     );
+    elements.fusionRiskValue.textContent = visibleRiskLevel;
+    if (elements.fusionRiskLabelValue) {
+      elements.fusionRiskLabelValue.textContent = visibleRiskLevel && visibleRiskLevel !== "pending"
+        ? visibleRiskLevel
+        : "待更新";
+    }
     if (elements.fusionConfidenceValue) {
       elements.fusionConfidenceValue.textContent = formatConfidence(affectSnapshot.fusion.confidence);
     }
@@ -958,7 +1104,9 @@
     if (elements.fusionDetailValue) {
       elements.fusionDetailValue.textContent = affectSnapshot.fusion.detail;
     }
-    elements.fusionStageValue.textContent = `stage: ${state.stage} / next: ${state.lastReplyNextAction}`;
+    elements.fusionStageValue.textContent = state.lastReplyNextAction && state.lastReplyNextAction !== "pending"
+      ? `接下来会更偏向：${state.lastReplyNextAction}`
+      : "当前仍在了解你的状态";
     if (elements.emotionSourceOriginValue) {
       elements.emotionSourceOriginValue.textContent = affectSnapshot.sourceContext.origin;
     }
@@ -978,6 +1126,7 @@
   }
 
   function renderSessionState(rootDocument, elements, state, appConfig) {
+    renderModuleState(rootDocument, elements, state);
     const selectedAvatar = getAvatarProfile(state.activeAvatarId);
     const effectiveAvatar = getEffectiveAvatarProfile(state);
     const avatarExpressionPreset = resolveAvatarExpressionPreset(state);
@@ -988,13 +1137,19 @@
     );
     elements.sessionIdValue.textContent = state.sessionId || defaultSessionIdLabel;
     elements.sessionStatusValue.textContent = state.status;
+    if (elements.sessionStatusLabelValue) {
+      elements.sessionStatusLabelValue.textContent = getVisibleSessionStatusLabel(state);
+    }
     elements.sessionStageValue.textContent = state.stage;
-    elements.sessionTraceValue.textContent = state.traceId || "not assigned";
+    if (elements.sessionStageLabelValue) {
+      elements.sessionStageLabelValue.textContent = getVisibleSessionStageLabel(state);
+    }
+    elements.sessionTraceValue.textContent = state.traceId || "未分配";
     if (elements.lastUserTraceValue) {
-      elements.lastUserTraceValue.textContent = state.lastAcceptedTraceId || "not observed";
+      elements.lastUserTraceValue.textContent = state.lastAcceptedTraceId || "暂未记录";
     }
     if (elements.lastReplyTraceValue) {
-      elements.lastReplyTraceValue.textContent = state.lastReplyTraceId || "not observed";
+      elements.lastReplyTraceValue.textContent = state.lastReplyTraceId || "暂未记录";
     }
     elements.sessionUpdatedAtValue.textContent = formatTimestamp(state.updatedAt);
     elements.sessionApiBaseUrlValue.textContent = appConfig.apiBaseUrl;
@@ -1003,22 +1158,13 @@
     elements.startButton.textContent = getStartButtonLabel(state);
     elements.startButton.disabled = interactionLocked;
     if (elements.captureMicPill) {
-      elements.captureMicPill.textContent = `Mic: ${state.micPermissionState}`;
+      elements.captureMicPill.textContent = getVisibleCaptureMicLabel(state);
     }
     if (elements.captureCameraPill) {
-      elements.captureCameraPill.textContent = state.cameraState === "previewing"
-        ? "Camera: live"
-        : `Camera: ${state.cameraPermissionState}`;
+      elements.captureCameraPill.textContent = getVisibleCaptureCameraLabel(state);
     }
     if (elements.captureInputPill) {
-      const activeInputs = ["text"];
-      if (state.recordingState === "recording") {
-        activeInputs.push("audio");
-      }
-      if (state.cameraState === "previewing") {
-        activeInputs.push("video");
-      }
-      elements.captureInputPill.textContent = `Input: ${activeInputs.join(" + ")}`;
+      elements.captureInputPill.textContent = getVisibleCaptureInputLabel(state);
     }
     if (elements.cameraPermissionStatus) {
       elements.cameraPermissionStatus.textContent = getCameraPermissionStatusMessage(state);
@@ -1077,15 +1223,23 @@
     if (elements.cameraStopButton) {
       elements.cameraStopButton.disabled = state.cameraState !== "previewing";
     }
+    const micStartDisabled = (
+      state.micPermissionState !== "granted"
+      || state.recordingState === "recording"
+      || state.connectionStatus === "replay"
+    );
+    const micStopDisabled = state.recordingState !== "recording";
     if (elements.micStartButton) {
-      elements.micStartButton.disabled = (
-        state.micPermissionState !== "granted"
-        || state.recordingState === "recording"
-        || state.connectionStatus === "replay"
-      );
+      elements.micStartButton.disabled = micStartDisabled;
     }
     if (elements.micStopButton) {
-      elements.micStopButton.disabled = state.recordingState !== "recording";
+      elements.micStopButton.disabled = micStopDisabled;
+    }
+    if (elements.avatarMicStartButton) {
+      elements.avatarMicStartButton.disabled = micStartDisabled;
+    }
+    if (elements.avatarMicStopButton) {
+      elements.avatarMicStopButton.disabled = micStopDisabled;
     }
     if (elements.exportButton) {
       elements.exportButton.textContent = getExportButtonLabel(state);
@@ -1126,11 +1280,17 @@
       || state.textSubmitState === "sending"
     );
     elements.textSubmitStatus.textContent = getTextSubmitStatusMessage(state);
-    elements.textLastMessageIdValue.textContent = state.lastAcceptedMessageId || "not sent";
-    elements.textLastMessageTimeValue.textContent = formatTimestamp(state.lastAcceptedAt);
-    elements.transcriptUserFinalText.textContent = state.lastAcceptedText || "等待用户提交文本...";
-    elements.transcriptAssistantReplyText.textContent = state.lastReplyText || "等待 mock orchestrator reply...";
-    elements.avatarLatestReplyText.textContent = state.lastReplyText || "等待 mock reply...";
+    elements.textLastMessageIdValue.textContent = getLatestAcceptedMessageIdValue(state);
+    elements.textLastMessageTimeValue.textContent = getLatestAcceptedTimeValue(state);
+    if (elements.textLastMessageLabelValue) {
+      elements.textLastMessageLabelValue.textContent = getLatestAcceptedMessageLabel(state);
+    }
+    if (elements.textLastMessageTimeLabelValue) {
+      elements.textLastMessageTimeLabelValue.textContent = getLatestAcceptedTimeLabel(state);
+    }
+    elements.transcriptUserFinalText.textContent = state.lastAcceptedText || "等待你的第一条消息...";
+    elements.transcriptAssistantReplyText.textContent = state.lastReplyText || "等待新的回应...";
+    elements.avatarLatestReplyText.textContent = state.lastReplyText || "等待新的回应...";
     const avatarVisualState = getAvatarVisualState(state);
     if (elements.avatarBaselineCard && typeof elements.avatarBaselineCard.dataset === "object") {
       elements.avatarBaselineCard.dataset.avatarState = avatarVisualState;
@@ -1197,11 +1357,11 @@
       elements.timelineUserText.textContent = (
         state.lastAcceptedText
           || state.partialTranscriptText
-          || "等待用户消息..."
+          || "等待你开口说话..."
       );
     }
     if (elements.timelineAssistantText) {
-      elements.timelineAssistantText.textContent = state.lastReplyText || "等待系统回复...";
+      elements.timelineAssistantText.textContent = state.lastReplyText || "等待新的回应...";
     }
     if (elements.timelineStageText) {
       elements.timelineStageText.textContent = state.lastStageTransition;
@@ -1687,32 +1847,32 @@
 
     return {
       panelState: "ready",
-      panelMessage: "多模态占位结果已刷新，可继续挂接真实分析模块。",
+      panelMessage: "情绪摘要已更新，可继续查看这一轮的整体状态。",
       sourceContext: {
         origin: sourceContext.origin,
         dataset: sourceContext.dataset,
         recordId: sourceContext.record_id,
         note: typeof sourceContext.note === "string"
           ? sourceContext.note
-          : "enterprise sample pending binding",
+          : "等待会话样本信息",
       },
       text: {
         status: textResult.status || "pending",
         label: textResult.label,
         confidence: typeof textResult.confidence === "number" ? textResult.confidence : 0,
-        detail: typeof textResult.detail === "string" ? textResult.detail : "text lane pending",
+        detail: typeof textResult.detail === "string" ? textResult.detail : "文字线索尚未更新。",
       },
       audio: {
         status: audioResult.status || "pending",
         label: audioResult.label,
         confidence: typeof audioResult.confidence === "number" ? audioResult.confidence : 0,
-        detail: typeof audioResult.detail === "string" ? audioResult.detail : "audio lane pending",
+        detail: typeof audioResult.detail === "string" ? audioResult.detail : "语音线索尚未更新。",
       },
       video: {
         status: videoResult.status || "pending",
         label: videoResult.label,
         confidence: typeof videoResult.confidence === "number" ? videoResult.confidence : 0,
-        detail: typeof videoResult.detail === "string" ? videoResult.detail : "video lane pending",
+        detail: typeof videoResult.detail === "string" ? videoResult.detail : "画面线索尚未更新。",
       },
       fusion: {
         emotionState: fusionResult.emotion_state,
@@ -1722,7 +1882,7 @@
         conflictReason: typeof fusionResult.conflict_reason === "string"
           ? fusionResult.conflict_reason
           : null,
-        detail: typeof fusionResult.detail === "string" ? fusionResult.detail : "fusion pending",
+        detail: typeof fusionResult.detail === "string" ? fusionResult.detail : "等待更完整的情绪线索。",
       },
     };
   }
@@ -1917,7 +2077,7 @@
         timelineEntries.push({
           entryId: `timeline-${message.message_id}`,
           kind: "user",
-          label: "User",
+          label: "用户",
           text: message.content_text,
           timestamp: message.submitted_at,
         });
@@ -1939,7 +2099,7 @@
         timelineEntries.push({
           entryId: `timeline-${message.message_id}`,
           kind: "assistant",
-          label: "Assistant",
+          label: "陪伴方",
           text: message.content_text,
           timestamp: message.submitted_at,
         });
@@ -2252,7 +2412,7 @@
             : `session/${state.sessionId || "pending"}`,
           sample_note: currentSourceContext
             ? currentSourceContext.note
-            : "enterprise sample pending binding",
+            : "等待会话样本信息",
         },
         capture_state: {
           camera_state: state.cameraState,
@@ -2273,7 +2433,7 @@
       const requestToken = runtime.affectRequestToken + 1;
       runtime.affectRequestToken = requestToken;
       state.affectSnapshot.panelState = "loading";
-      state.affectSnapshot.panelMessage = "正在刷新文本、音频、视频和融合占位结果。";
+      state.affectSnapshot.panelMessage = "正在整理这一轮的情绪摘要。";
       renderAffectPanel(rootDocument, elements, state);
 
       try {
@@ -2290,7 +2450,7 @@
           state.affectSnapshot = {
             ...state.affectSnapshot,
             panelState: "error",
-            panelMessage: "affect-service 返回了非法结果，保留上一版展示。",
+            panelMessage: "这次情绪摘要暂时无法更新，先保留上一版结果。",
           };
         } else {
           state.affectSnapshot = normalized;
@@ -2303,8 +2463,8 @@
           ...state.affectSnapshot,
           panelState: "error",
           panelMessage: error instanceof Error
-            ? `affect-service unavailable: ${error.message}`
-            : `affect-service unavailable: ${String(error)}`,
+            ? `情绪摘要暂时不可用：${error.message}`
+            : `情绪摘要暂时不可用：${String(error)}`,
         };
       }
 
@@ -2710,7 +2870,7 @@
         appendTimelineEntry(state, {
           entryId: `timeline-${state.lastAcceptedMessageId || envelope.event_id}`,
           kind: "user",
-          label: "User",
+          label: "用户",
           text: state.lastAcceptedText || "user message",
           timestamp: state.lastAcceptedAt,
         });
@@ -2788,7 +2948,7 @@
         appendTimelineEntry(state, {
           entryId: timelineEntryId,
           kind: "assistant",
-          label: "Assistant",
+          label: "陪伴方",
           text: payload.reply,
           timestamp: replyTimestamp,
         });
@@ -3121,7 +3281,7 @@
       state.lastStageTransition = "idle → idle";
       state.affectSnapshot = createInitialAffectSnapshot();
       state.ttsPlaybackState = "idle";
-      state.ttsPlaybackMessage = "等待系统回复并合成语音。";
+      state.ttsPlaybackMessage = "等待新的回应并准备语音。";
       state.ttsAudioUrl = null;
       state.ttsAudioFormat = "pending";
       state.ttsVoiceId = "pending";
@@ -3130,11 +3290,11 @@
       state.avatarMouthState = "closed";
       state.avatarMouthTransitionCount = 0;
       state.exportState = "idle";
-      state.exportMessage = "创建或恢复会话后可导出当前 JSON。";
+      state.exportMessage = "开始或恢复会话后，就可以导出当前记录。";
       state.lastExportedAt = null;
       state.lastExportFileName = null;
       state.replayState = "idle";
-      state.replayMessage = "导出 JSON 后可进入回放模式。";
+      state.replayMessage = "导出当前记录后，就可以回放这段对话。";
       state.replayEventCount = 0;
       state.replaySourceName = null;
       state.audioUploadState = "idle";
@@ -3181,12 +3341,23 @@
       return { ...state };
     }
 
+    function setActiveModule(nextModuleId) {
+      const resolvedModuleId = resolveModuleId(nextModuleId);
+      if (resolvedModuleId === state.activeModule) {
+        return { ...state };
+      }
+      state.activeModule = resolvedModuleId;
+      renderSessionState(rootDocument, elements, state, appConfig);
+      return { ...state };
+    }
+
     function selectAvatar(nextAvatarId) {
       const resolvedAvatarId = resolveAvatarId(nextAvatarId);
       if (resolvedAvatarId === state.activeAvatarId) {
         return { ...state };
       }
       state.activeAvatarId = resolvedAvatarId;
+      state.activeModule = "avatar";
       appConfig.activeAvatarId = resolvedAvatarId;
       if (!state.sessionId) {
         state.ttsPlaybackState = "idle";
@@ -3271,7 +3442,7 @@
       state.lastReplyNextAction = "pending";
       state.lastStageTransition = `${state.stage} → ${state.stage}`;
       state.ttsPlaybackState = "idle";
-      state.ttsPlaybackMessage = "等待系统回复并合成语音。";
+      state.ttsPlaybackMessage = "等待新的回应并准备语音。";
       state.ttsAudioUrl = null;
       state.ttsAudioFormat = "pending";
       state.ttsVoiceId = "pending";
@@ -3782,7 +3953,7 @@
       state.lastReplyNextAction = "pending";
       state.lastStageTransition = `${state.stage} → ${state.stage}`;
       state.ttsPlaybackState = "idle";
-      state.ttsPlaybackMessage = "等待系统回复并合成语音。";
+      state.ttsPlaybackMessage = "等待新的回应并准备语音。";
       state.ttsAudioUrl = null;
       state.ttsAudioFormat = "pending";
       state.ttsVoiceId = "pending";
@@ -4006,7 +4177,33 @@
       return true;
     }
 
+    if (elements.moduleOptionCapture) {
+      elements.moduleOptionCapture.addEventListener("click", function () {
+        return setActiveModule("capture");
+      });
+    }
+    if (elements.moduleOptionAvatar) {
+      elements.moduleOptionAvatar.addEventListener("click", function () {
+        return setActiveModule("avatar");
+      });
+    }
+    if (elements.moduleOptionConversation) {
+      elements.moduleOptionConversation.addEventListener("click", function () {
+        return setActiveModule("conversation");
+      });
+    }
+    if (elements.moduleOptionEmotion) {
+      elements.moduleOptionEmotion.addEventListener("click", function () {
+        return setActiveModule("emotion");
+      });
+    }
+    if (elements.moduleOptionSession) {
+      elements.moduleOptionSession.addEventListener("click", function () {
+        return setActiveModule("session");
+      });
+    }
     elements.startButton.addEventListener("click", function () {
+      state.activeModule = "session";
       return startSession();
     });
     if (elements.cameraRequestButton) {
@@ -4044,8 +4241,20 @@
         return startRecording();
       });
     }
+    if (elements.avatarMicStartButton) {
+      elements.avatarMicStartButton.addEventListener("click", function () {
+        state.activeModule = "avatar";
+        return startRecording();
+      });
+    }
     if (elements.micStopButton) {
       elements.micStopButton.addEventListener("click", function () {
+        return stopRecording();
+      });
+    }
+    if (elements.avatarMicStopButton) {
+      elements.avatarMicStopButton.addEventListener("click", function () {
+        state.activeModule = "avatar";
         return stopRecording();
       });
     }
@@ -4143,7 +4352,7 @@
           return;
         }
         state.ttsPlaybackState = "ready";
-        state.ttsPlaybackMessage = "语音资源已生成，但浏览器未能加载音频资源，可点击 Replay Voice 重试。";
+        state.ttsPlaybackMessage = "语音资源已生成，但浏览器未能加载音频资源，可点击重播语音重试。";
         stopAvatarMouthAnimation();
         renderSessionState(rootDocument, elements, state, appConfig);
       });

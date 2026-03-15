@@ -1,0 +1,87 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - paragraph [ref=e5]: 情绪支持陪伴
+      - heading "情绪关怀对话台" [level=1] [ref=e6]
+      - paragraph [ref=e7]: 在这里，你可以用文字或语音慢慢开口，随时查看最新回应、情绪摘要和对话进展。
+    - generic [ref=e8]:
+      - generic [ref=e9]: 陪伴式回应
+      - generic [ref=e10]: 文字与语音
+      - generic [ref=e11]: 实时情绪摘要
+  - navigation "功能模块" [ref=e12]:
+    - button "01 准备 摄像头、麦克风与输入准备" [ref=e13] [cursor=pointer]:
+      - generic [ref=e14]: 01 准备
+      - generic [ref=e15]: 摄像头、麦克风与输入准备
+    - button "02 互动 选角色、说话，也可补充一点文字" [active] [ref=e16] [cursor=pointer]:
+      - generic [ref=e17]: 02 互动
+      - generic [ref=e18]: 选角色、说话，也可补充一点文字
+    - button "03 对话 查看正在说的话与完整对话过程" [ref=e19] [cursor=pointer]:
+      - generic [ref=e20]: 03 对话
+      - generic [ref=e21]: 查看正在说的话与完整对话过程
+    - button "04 情绪 查看当前情绪摘要" [ref=e22] [cursor=pointer]:
+      - generic [ref=e23]: 04 情绪
+      - generic [ref=e24]: 查看当前情绪摘要
+    - button "05 会话 开始、导出与回放当前记录" [ref=e25] [cursor=pointer]:
+      - generic [ref=e26]: 05 会话
+      - generic [ref=e27]: 开始、导出与回放当前记录
+  - main [ref=e28]:
+    - generic [ref=e84]:
+      - generic [ref=e85]:
+        - paragraph [ref=e86]: "02"
+        - heading "语音互动" [level=2] [ref=e87]
+      - paragraph [ref=e88]: 先选一个陪伴角色，直接开始说话；如果一时不想开口，也可以用下方小卡片补充一点文字。
+      - generic [ref=e89]:
+        - generic "角色选择" [ref=e90]:
+          - button "陪伴角色 A 温和接住情绪 / 晓晓语音 当前使用" [ref=e91]:
+            - generic [ref=e92]: 陪伴角色 A
+            - generic [ref=e93]: 温和接住情绪 / 晓晓语音
+            - text: 当前使用
+          - button "引导角色 B 帮助梳理重点 / 云希语音" [ref=e94]:
+            - generic [ref=e95]: 引导角色 B
+            - generic [ref=e96]: 帮助梳理重点 / 云希语音
+        - generic [ref=e97]:
+          - generic [ref=e98]:
+            - generic [ref=e99]:
+              - paragraph [ref=e100]: 陪伴角色 A
+              - paragraph [ref=e101]: 温和、稳定、陪你慢慢说
+            - generic [ref=e102]: idle
+          - paragraph [ref=e113]: 陪伴角色已准备好开始回应。
+          - paragraph [ref=e114]: 更适合温和接住情绪、慢慢展开对话。
+        - generic [ref=e115]:
+          - generic [ref=e116]: 最新回应
+          - strong [ref=e117]: 等待新的回应...
+        - generic [ref=e118]:
+          - button "开始录音" [disabled] [ref=e119]
+          - button "结束录音" [disabled] [ref=e120]
+        - button "重播语音" [disabled] [ref=e122]
+        - generic [ref=e123]:
+          - generic [ref=e124]:
+            - generic [ref=e125]:
+              - paragraph [ref=e126]: 补充一点文字
+              - paragraph [ref=e127]: 语音是主入口；如果暂时不想开口，也可以在这里补充一句。
+            - generic [ref=e128]: 会话仍请在 05 开始
+          - generic [ref=e129]: 补充文字
+          - textbox "补充文字" [ref=e130]: 我这两天总是睡不好，脑子停不下来。
+          - button "发送文字" [disabled] [ref=e132]
+          - paragraph [ref=e133]: 开始会话并连接后，就可以发送文字。
+          - generic [ref=e134]:
+            - generic [ref=e135]: 最近一次发送内容
+            - strong [ref=e136]: 还没有发送新的文字。
+            - generic [ref=e137]: 发送后会在这里显示接收时间。
+        - generic [ref=e138]:
+          - generic [ref=e139]:
+            - generic [ref=e140]: 语音状态
+            - strong [ref=e141]: idle
+            - generic [ref=e142]: 等待新的回应并准备语音。
+          - generic [ref=e143]:
+            - generic [ref=e144]: 当前声线
+            - strong [ref=e145]: zh-CN-XiaoxiaoNeural
+            - generic [ref=e146]: 0.0s / preview
+          - generic [ref=e147]:
+            - generic [ref=e148]: 嘴型状态
+            - strong [ref=e149]: closed
+            - generic [ref=e150]: 当前嘴型闭合。
+          - generic [ref=e151]:
+            - generic [ref=e152]: 表情预设
+            - strong [ref=e153]: ready_idle
+            - generic [ref=e154]: 当前保持平稳自然的待机表情。

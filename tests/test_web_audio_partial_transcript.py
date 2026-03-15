@@ -30,7 +30,7 @@ def test_web_audio_partial_transcript_appears_before_stop():
     assert payload["duringRecording"]["recordingState"] == "recording"
     assert payload["duringRecording"]["partialTranscriptState"] == "streaming"
     assert payload["duringRecording"]["partialTranscriptText"].startswith("Bonjour")
-    assert payload["duringRecording"]["userFinalText"] == "等待用户提交文本..."
+    assert payload["duringRecording"]["userFinalText"] == "等待你的第一条消息..."
 
 
 def test_web_audio_partial_transcript_preview_call_happens_before_finalize():

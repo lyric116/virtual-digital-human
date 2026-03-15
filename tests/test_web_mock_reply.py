@@ -50,7 +50,7 @@ def test_web_mock_reply_invalid_payload_is_intercepted():
 
     assert payload["afterReply"]["dialogueReplyState"] == "invalid"
     assert payload["afterReply"]["stage"] == "engage"
-    assert payload["afterReply"]["assistantReply"] == "等待 mock orchestrator reply..."
+    assert payload["afterReply"]["assistantReply"] == "等待新的回应..."
     assert "dialogue reply rejected" in payload["afterReply"]["connectionLog"]
 
 

@@ -32,7 +32,7 @@ def run_harness(mode: str) -> dict:
     return json.loads(result.stdout)
 
 
-def test_web_emotion_panel_renders_lane_results_and_source_fields():
+def test_web_emotion_panel_renders_summary_with_backing_lane_fields():
     payload = run_harness("mock-live")
     after = payload["afterAffect"]
 

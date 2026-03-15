@@ -29,14 +29,13 @@ def test_web_shell_assets_exist():
         assert path.exists(), f"missing web asset: {path}"
 
 
-def test_web_shell_contains_all_six_panels():
+def test_web_shell_contains_five_panels_after_transcript_removal():
     parser = PanelParser()
     parser.feed(HTML_FILE.read_text(encoding="utf-8"))
 
     assert parser.panel_ids == [
         "capture",
         "avatar",
-        "transcript",
         "emotion",
         "chat",
         "control",
@@ -51,10 +50,16 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert '<link rel="icon" href="./favicon.svg" type="image/svg+xml"' in content
     assert '<script src="./config.js"></script>' in content
     assert '<script src="./app.js"></script>' in content
-    assert 'id="session-start-button"' in content
+    assert 'id="module-option-capture"' in content
+    assert 'id="module-option-avatar"' in content
+    assert 'id="module-option-conversation"' in content
+    assert 'id="module-option-emotion"' in content
+    assert 'id="module-option-session"' in content
+    assert 'data-module-option="conversation"' in content
     assert 'class="capture-action-stack"' in content
     assert 'class="capture-control-grid"' in content
-    assert 'class="button-row capture-submit-row"' in content
+    assert 'class="button-row capture-submit-row avatar-text-submit-row"' in content
+    assert 'id="session-start-button"' in content
     assert 'id="camera-request-button"' in content
     assert 'id="camera-start-button"' in content
     assert 'id="camera-stop-button"' in content
@@ -66,8 +71,8 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="video-upload-detail-value"' in content
     assert 'id="text-input-field"' in content
     assert 'id="mic-request-button"' in content
-    assert 'id="mic-start-button"' in content
-    assert 'id="mic-stop-button"' in content
+    assert 'id="avatar-mic-start-button"' in content
+    assert 'id="avatar-mic-stop-button"' in content
     assert 'id="mic-permission-status"' in content
     assert 'id="mic-recording-state-value"' in content
     assert 'id="mic-recording-detail-value"' in content
@@ -119,6 +124,7 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="timeline-assistant-text"' not in content
     assert 'id="timeline-stage-text"' not in content
     assert 'id="session-id-value"' in content
+    assert 'class="session-chip session-chip-hidden" hidden aria-hidden="true"' in content
     assert 'id="session-status-value"' in content
     assert 'class="session-runtime-meta" aria-hidden="true"' in content
     assert 'id="last-user-trace-value"' in content
@@ -128,13 +134,23 @@ def test_web_shell_js_is_valid_and_page_markup_is_ready():
     assert 'id="session-export-button"' in content
     assert 'id="session-export-status"' in content
     css_content = CSS_FILE.read_text(encoding="utf-8")
+    assert ".module-nav {\n  display: grid;\n  grid-template-columns: repeat(5, minmax(0, 1fr));\n  gap: 12px;\n  margin-bottom: 18px;\n}" in css_content
+    assert ".module-option-card[data-selected=\"true\"]" in css_content
+    assert "body[data-active-module=\"conversation\"] [data-panel]:not([data-panel=\"chat\"])" in css_content
     assert ".panel {\n  display: flex;\n  flex-direction: column;\n  gap: 16px;\n  min-width: 0;\n" in css_content
-    assert ".avatar-action-row {\n  grid-column: span 1;\n  align-self: end;\n}" in css_content
+    assert ".avatar-live-action-row,\n.avatar-action-row {\n  grid-column: span 1;\n}" in css_content
+    assert ".avatar-action-row {\n  align-self: end;\n}" in css_content
     assert ".avatar-action-row button {\n  height: 48px;\n  min-width: 128px;\n  padding: 0 22px;\n  line-height: 1;\n  white-space: nowrap;\n  background: var(--accent);\n}" in css_content
     assert ".emotion-panel {\n  grid-column: span 2;\n}" in css_content
     assert ".timeline {\n  max-height: 520px;\n  overflow-y: auto;\n}" in css_content
     assert ".session-runtime-meta {\n  display: none;\n}" in css_content
     assert "overflow-wrap: anywhere;" in css_content
-    assert "Emotion Care Console" in content
-    assert "Capture Panel" in content
-    assert "Session Control" in content
+    assert "情绪关怀对话台" in content
+    assert "设备准备" in content
+    assert "会话控制" in content
+    assert "01 准备" in content
+    assert "02 互动" in content
+    assert "03 对话" in content
+    assert "04 情绪" in content
+    assert "05 会话" in content
+    assert "补充一点文字" in content

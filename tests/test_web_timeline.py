@@ -39,8 +39,8 @@ def test_web_timeline_renders_three_turns_in_order():
     assert payload["afterThreeTurns"]["timelineEntryCount"] == 6
     assert payload["afterThreeTurns"]["stage"] == "reassess"
     assert payload["afterThreeTurns"]["latestStage"] == "intervene → reassess"
-    assert "User |" in payload["afterThreeTurns"]["timelineText"]
-    assert "Assistant |" in payload["afterThreeTurns"]["timelineText"]
+    assert "用户 |" in payload["afterThreeTurns"]["timelineText"]
+    assert "陪伴方 |" in payload["afterThreeTurns"]["timelineText"]
     assert "Stage |" not in payload["afterThreeTurns"]["timelineText"]
     assert "engage → assess" not in payload["afterThreeTurns"]["timelineText"]
     assert "assess → intervene" not in payload["afterThreeTurns"]["timelineText"]

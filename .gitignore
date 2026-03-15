@@ -17,3 +17,4 @@ tmp_logs/
 
 /data/derived/test_avatar_driver_assets/
 /picture
+/.playwright-cli

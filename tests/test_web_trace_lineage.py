@@ -26,7 +26,7 @@ def run_harness() -> dict:
 def test_web_trace_lineage_surfaces_same_trace_for_session_user_and_reply():
     payload = run_harness()
 
-    assert payload["beforeCreate"]["sessionTrace"] == "not assigned"
+    assert payload["beforeCreate"]["sessionTrace"] == "未分配"
     assert payload["afterReply"]["connectionStatus"] == "connected"
     assert payload["afterReply"]["textSubmitState"] == "sent"
     assert payload["afterReply"]["dialogueReplyState"] == "received"

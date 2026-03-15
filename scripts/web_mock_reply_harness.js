@@ -95,36 +95,38 @@ class FakeDocument {
     this.panelMap = new Map();
     this.idMap = new Map();
 
-    ["capture", "avatar", "transcript", "emotion", "chat", "control"].forEach((panelId) => {
+    ["capture", "avatar", "emotion", "chat", "control"].forEach((panelId) => {
       this.panelMap.set(panelId, new FakeElement({ panelId }));
     });
 
     const elements = [
-      ["session-start-button", "Start Session", ""],
+      ["session-start-button", "开始会话", ""],
       ["text-input-field", "", "我这两天总是睡不好，脑子停不下来。"],
-      ["text-submit-button", "Send Text", ""],
-      ["text-submit-status", "建立会话并连接实时通道后可发送文本。", ""],
+      ["text-submit-button", "发送文字", ""],
+      ["text-submit-status", "开始会话并连接后，就可以发送文字。", ""],
+      ["text-last-message-label-value", "还没有发送新的文字。", ""],
+      ["text-last-message-time-label-value", "发送后会在这里显示接收时间。", ""],
       ["text-last-message-id-value", "not sent", ""],
       ["text-last-message-time-value", "not accepted", ""],
-      ["transcript-user-final-text", "等待用户提交文本...", ""],
-      ["transcript-assistant-reply-text", "等待 mock orchestrator reply...", ""],
-      ["avatar-latest-reply-text", "等待 mock reply...", ""],
+      ["transcript-user-final-text", "等待你的第一条消息...", ""],
+      ["transcript-assistant-reply-text", "等待新的回应...", ""],
+      ["avatar-latest-reply-text", "等待新的回应...", ""],
       ["fusion-risk-value", "pending", ""],
-      ["fusion-stage-value", "stage: idle / next: pending", ""],
+      ["fusion-stage-value", "当前仍在了解你的状态", ""],
       ["timeline-user-text", "等待用户消息...", ""],
       ["timeline-assistant-text", "等待系统回复...", ""],
       ["timeline-stage-text", "idle → idle", ""],
-      ["chat-timeline-list", "History | 等待会话历史...", ""],
+      ["chat-timeline-list", "对话记录 | 开始会话后，对话记录会显示在这里。", ""],
       ["session-id-value", "未创建", ""],
       ["session-status-value", "idle", ""],
       ["session-stage-value", "idle", ""],
-      ["session-trace-value", "not assigned", ""],
-      ["session-updated-at-value", "not started", ""],
+      ["session-trace-value", "未分配", ""],
+      ["session-updated-at-value", "未开始", ""],
       ["session-api-base-url-value", "http://127.0.0.1:8000", ""],
       ["session-ws-url-value", "ws://127.0.0.1:8000/ws", ""],
-      ["session-feedback", "点击 Start Session 创建新的会话编号。", ""],
+      ["session-feedback", "点击 开始会话 开始一次新的对话。", ""],
       ["connection-status-value", "idle", ""],
-      ["connection-heartbeat-value", "not started", ""],
+      ["connection-heartbeat-value", "未开始", ""],
       ["connection-log", "realtime idle", ""],
     ];
 

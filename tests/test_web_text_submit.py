@@ -40,6 +40,7 @@ def test_web_text_submit_reaches_sent_state_and_clears_input():
     assert payload["afterSubmit"]["textSubmitState"] == "sent"
     assert payload["afterSubmit"]["status"] == "active"
     assert payload["afterSubmit"]["lastMessageId"] == "msg_mock_text_001"
+    assert payload["afterSubmit"]["lastMessageLabel"] == "最近总觉得脑子停不下来，晚上更明显。\n想先试着说出来。"
     assert payload["afterSubmit"]["draftText"] == ""
 
 
@@ -47,7 +48,8 @@ def test_web_text_submit_acknowledgement_message_is_visible():
     payload = run_harness()
 
     assert "发送成功" in payload["afterSubmit"]["textSubmitStatus"]
-    assert payload["afterSubmit"]["lastMessageTime"] != "not started"
+    assert payload["afterSubmit"]["lastMessageTime"] != "not accepted"
+    assert payload["afterSubmit"]["lastMessageTimeLabel"] != "发送后会在这里显示接收时间。"
     assert "message accepted" in payload["afterSubmit"]["connectionLog"]
 
 

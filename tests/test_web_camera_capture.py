@@ -40,7 +40,7 @@ def test_web_camera_capture_allow_flow_uploads_frames_and_stops_cleanly():
     assert payload["duringPreview"]["uploadedVideoFrameCount"] >= 2
     assert payload["afterStop"]["cameraState"] == "stopped"
     assert payload["afterStop"]["videoUploadState"] == "completed"
-    assert payload["afterStop"]["inputPill"] == "Input: text"
+    assert payload["afterStop"]["inputPill"] == "当前输入：文字"
     assert payload["uploadCalls"][0]["frameSeq"] == 1
 
 

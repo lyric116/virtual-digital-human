@@ -35,8 +35,8 @@ def test_web_audio_final_transcript_flow_updates_transcript_and_reply():
     assert payload["afterReply"]["dialogueReplyState"] == "received"
     assert payload["afterReply"]["timelineStageText"] == "engage → assess"
     assert payload["afterReply"]["timelineEntryCount"] == 2
-    assert "User |" in payload["afterReply"]["timelineText"]
-    assert "Assistant |" in payload["afterReply"]["timelineText"]
+    assert "用户 |" in payload["afterReply"]["timelineText"]
+    assert "陪伴方 |" in payload["afterReply"]["timelineText"]
     assert "Stage |" not in payload["afterReply"]["timelineText"]
 
 

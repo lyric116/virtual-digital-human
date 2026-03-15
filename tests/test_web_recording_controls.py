@@ -29,7 +29,7 @@ def test_web_recording_allow_flow_updates_permission_and_recording_states():
     assert payload["afterPermission"]["micPermissionState"] == "granted"
     assert payload["afterPermission"]["startDisabled"] is False
     assert payload["duringRecording"]["recordingState"] == "recording"
-    assert payload["duringRecording"]["inputPill"] == "Input: text + audio"
+    assert payload["duringRecording"]["inputPill"] == "当前输入：文字 + 语音"
     assert "已收集" in payload["duringRecording"]["recordingDetail"]
     assert payload["afterStop"]["recordingState"] == "stopped"
     assert payload["afterStop"]["stopDisabled"] is True
