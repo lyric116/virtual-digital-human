@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-16 - emotion_app bootstrap should mirror the existing browser config model
+
+- emotion_app should load runtime endpoints through window.__APP_CONFIG__ just like apps/web, with config.js loaded before the app and a small in-app fallback for local defaults; React code should not rely on browser .env access at runtime.
+- For the migration path, the first React bootstrap layer should normalize both camelCase browser keys and the snake_case fields returned by the gateway runtime config endpoint so Phase A can stay protocol-compatible while later phases choose where to source config from.
+- Repairing the local CRA environment required recreating emotion_app/node_modules with npm ci; the prior install had a broken react-scripts launcher and incomplete cross-spawn package contents, so future local verification should prefer npm ci when the generated dependency tree looks corrupted.
+
 ## 2026-03-16 - emotion_app is the migration target while apps/web remains authoritative
 
 - emotion_app should be treated as the future React frontend migration target, but apps/web remains the authoritative browser reference until session, realtime, audio, video/affect, TTS/avatar, and export/replay parity are all verified.

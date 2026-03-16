@@ -21,6 +21,31 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-16 - emotion_app Phase A bootstrap compatibility added
+
+### Scope
+
+emotion_app CRA environment repair, runtime config bootstrap, focused verification
+
+### Outputs
+
+- Rebuilt emotion_app node_modules with npm ci so react-scripts now resolves correctly and npm run build/test work again locally.
+- Added a minimal runtime config bootstrap in emotion_app/src/index.js that reads window.__APP_CONFIG__ using apps/web-compatible keys with stable local defaults.
+- Added emotion_app/public/config.js and updated emotion_app/public/index.html to load config.js first, then apply a window.__APP_CONFIG__ fallback block matching the existing browser config model.
+- Added a visible Phase A runtime-config baseline card in emotion_app/src/App.jsx and updated emotion_app/src/App.test.js to verify the bootstrap UI renders configured endpoints.
+
+### Checks
+
+- Ran npm run build in /home/lyricx/code/virtual_huamn/emotion_app successfully.
+- Ran CI=true npm test -- --watch=false in /home/lyricx/code/virtual_huamn/emotion_app successfully.
+- Confirmed emotion_app now accepts both camelCase and snake_case runtime config keys for api/ws/tts/affect/avatar/storage compatibility.
+- Current Phase A build still reports pre-existing App.jsx lint warnings for unused cameraErrorMsg state and a missing useEffect dependency list, but the bootstrap compatibility path works.
+
+### Next
+
+- Begin Phase B by wiring session creation, session restore, and text submit to the existing gateway contract without changing payload or event semantics.
+- Keep apps/web as the behavioral reference while moving the first real session state into emotion_app.
+
 ## 2026-03-16 - Emotion app migration baseline documented
 
 ### Scope
