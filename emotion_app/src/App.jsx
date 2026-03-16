@@ -1,9 +1,18 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
-  Video, Mic, Heart, Clock, Globe, User, 
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Video, Mic, Heart, Clock, Globe, User,
   Sun, Wind, Leaf, Sparkles, MessageCircleHeart,
   MoreHorizontal, Send, X
 } from 'lucide-react';
+import {
+  clearStoredSessionId,
+  pollSessionStateForReply,
+  readStoredSessionId,
+  requestSession,
+  requestSessionState,
+  requestTextMessage,
+  writeStoredSessionId,
+} from './sessionApi';
 
 // 多语言字典
 const i18n = {
@@ -63,7 +72,40 @@ const i18n = {
     goReg: '请先注册',
     hasAcc: '已有心苑通证？',
     goLogin: '直接入住',
-    micTestText: '“今天阳光很好，感觉心里也暖暖的。”'
+    micTestText: '“今天阳光很好，感觉心里也暖暖的。”',
+    phaseBTitle: 'Phase B 会话基线',
+    phaseBDesc: '当前 React 前端已接入 session create、state restore 和 text submit，并继续复用旧前端的 gateway 契约。此阶段仍未接入 WebSocket realtime。',
+    createSession: '创建会话',
+    restoreState: '恢复会话',
+    restoring: '恢复中...',
+    restoreReady: '检测到本地会话，可恢复历史消息。',
+    noStoredSession: '当前没有本地缓存的会话。',
+    clearSession: '清除会话',
+    submitText: '发送文本',
+    sending: '发送中...',
+    sessionLabel: '会话 ID',
+    traceLabel: 'Trace ID',
+    stageLabel: '当前阶段',
+    statusLabel: '会话状态',
+    messageCountLabel: '消息数',
+    sessionPending: '未创建',
+    sessionIdle: '等待创建或恢复会话',
+    sessionCreating: '正在创建会话...',
+    sessionRestoring: '正在恢复会话状态...',
+    sessionReady: '会话已就绪，可继续发送文本。',
+    sessionSubmitting: '正在提交文本并等待回复...',
+    sessionRestoreFailed: '恢复失败，请重新创建会话。',
+    sessionSubmitSuccess: '文本已提交，已同步最新会话状态。',
+    sessionSubmitNeedSession: '请先创建或恢复会话。',
+    sessionSubmitEmpty: '请输入内容后再发送。',
+    assistantReplies: '对话记录',
+    assistantEmpty: '创建或恢复会话后，这里会显示用户消息和助手回复。',
+    userRoleLabel: '你',
+    assistantRoleLabel: '陪伴助手',
+    systemRoleLabel: '系统',
+    restoreSource: '恢复来源',
+    storageKeyLabel: '存储键',
+    sourceEmotionApp: 'emotion_app',
   },
   en: {
     title: 'Sanctuary of Light',
@@ -121,7 +163,40 @@ const i18n = {
     goReg: 'Register first',
     hasAcc: 'Already have an access pass? ',
     goLogin: 'Direct Login',
-    micTestText: '"The sun is beautiful today, my heart feels warm."'
+    micTestText: '"The sun is beautiful today, my heart feels warm."',
+    phaseBTitle: 'Phase B session baseline',
+    phaseBDesc: 'The React frontend now connects session create, state restore, and text submit while keeping the existing gateway contract from apps/web. WebSocket realtime is still out of scope for this step.',
+    createSession: 'Create session',
+    restoreState: 'Restore session',
+    restoring: 'Restoring...',
+    restoreReady: 'A stored session was found and can be restored.',
+    noStoredSession: 'No stored session is available yet.',
+    clearSession: 'Clear session',
+    submitText: 'Send text',
+    sending: 'Sending...',
+    sessionLabel: 'Session ID',
+    traceLabel: 'Trace ID',
+    stageLabel: 'Stage',
+    statusLabel: 'Status',
+    messageCountLabel: 'Messages',
+    sessionPending: 'Not created',
+    sessionIdle: 'Create or restore a session to continue.',
+    sessionCreating: 'Creating session...',
+    sessionRestoring: 'Restoring session state...',
+    sessionReady: 'Session is ready for text input.',
+    sessionSubmitting: 'Submitting text and waiting for reply...',
+    sessionRestoreFailed: 'Restore failed. Create a new session to continue.',
+    sessionSubmitSuccess: 'Text submitted and latest session state synced.',
+    sessionSubmitNeedSession: 'Create or restore a session first.',
+    sessionSubmitEmpty: 'Enter some text before sending.',
+    assistantReplies: 'Conversation log',
+    assistantEmpty: 'User and assistant messages will appear here after a session is created or restored.',
+    userRoleLabel: 'You',
+    assistantRoleLabel: 'Companion',
+    systemRoleLabel: 'System',
+    restoreSource: 'Restore source',
+    storageKeyLabel: 'Storage key',
+    sourceEmotionApp: 'emotion_app',
   },
   de: {
     title: 'Lichtoase',
@@ -179,7 +254,40 @@ const i18n = {
     goReg: 'Zuerst registrieren',
     hasAcc: 'Schon einen Zugangspass? ',
     goLogin: 'Direktes Login',
-    micTestText: '"Die Sonne scheint heute schön, mein Herz fühlt sich warm an."'
+    micTestText: '"Die Sonne scheint heute schön, mein Herz fühlt sich warm an."',
+    phaseBTitle: 'Phase-B Sitzungsbasis',
+    phaseBDesc: 'Das React-Frontend nutzt jetzt Session-Erstellung, Status-Wiederherstellung und Textversand und behält dabei den bestehenden Gateway-Vertrag aus apps/web bei. WebSocket-Realtime bleibt in diesem Schritt noch außen vor.',
+    createSession: 'Sitzung erstellen',
+    restoreState: 'Sitzung laden',
+    restoring: 'Wird geladen...',
+    restoreReady: 'Eine gespeicherte Sitzung wurde gefunden und kann wiederhergestellt werden.',
+    noStoredSession: 'Derzeit ist keine gespeicherte Sitzung vorhanden.',
+    clearSession: 'Sitzung löschen',
+    submitText: 'Text senden',
+    sending: 'Wird gesendet...',
+    sessionLabel: 'Sitzungs-ID',
+    traceLabel: 'Trace-ID',
+    stageLabel: 'Phase',
+    statusLabel: 'Status',
+    messageCountLabel: 'Nachrichten',
+    sessionPending: 'Nicht erstellt',
+    sessionIdle: 'Erstelle oder lade zuerst eine Sitzung.',
+    sessionCreating: 'Sitzung wird erstellt...',
+    sessionRestoring: 'Sitzungsstatus wird geladen...',
+    sessionReady: 'Sitzung ist bereit für Texteingaben.',
+    sessionSubmitting: 'Text wird gesendet, Antwort wird abgewartet...',
+    sessionRestoreFailed: 'Wiederherstellung fehlgeschlagen. Bitte neue Sitzung erstellen.',
+    sessionSubmitSuccess: 'Text gesendet und aktueller Sitzungsstatus synchronisiert.',
+    sessionSubmitNeedSession: 'Bitte zuerst eine Sitzung erstellen oder laden.',
+    sessionSubmitEmpty: 'Bitte zuerst Text eingeben.',
+    assistantReplies: 'Gesprächsverlauf',
+    assistantEmpty: 'Nach dem Erstellen oder Laden einer Sitzung erscheinen hier Nutzer- und Assistentennachrichten.',
+    userRoleLabel: 'Du',
+    assistantRoleLabel: 'Begleiter',
+    systemRoleLabel: 'System',
+    restoreSource: 'Wiederherstellungsquelle',
+    storageKeyLabel: 'Speicherschlüssel',
+    sourceEmotionApp: 'emotion_app',
   },
   fr: {
     title: 'Sanctuaire de Lumière',
@@ -237,7 +345,40 @@ const i18n = {
     goReg: "Inscrivez-vous d'abord",
     hasAcc: 'Déjà un pass ? ',
     goLogin: 'Connexion directe',
-    micTestText: '"Le soleil est magnifique aujourd\'hui, mon cœur se sent chaleureux."'
+    micTestText: '"Le soleil est magnifique aujourd\'hui, mon cœur se sent chaleureux."',
+    phaseBTitle: 'Base de session phase B',
+    phaseBDesc: 'Le frontend React prend désormais en charge la création de session, la restauration d’état et l’envoi de texte tout en conservant le contrat gateway existant de apps/web. Le temps réel WebSocket reste hors périmètre pour cette étape.',
+    createSession: 'Créer une session',
+    restoreState: 'Restaurer la session',
+    restoring: 'Restauration...',
+    restoreReady: 'Une session locale a été trouvée et peut être restaurée.',
+    noStoredSession: 'Aucune session locale n’est encore disponible.',
+    clearSession: 'Effacer la session',
+    submitText: 'Envoyer le texte',
+    sending: 'Envoi...',
+    sessionLabel: 'ID de session',
+    traceLabel: 'Trace ID',
+    stageLabel: 'Étape',
+    statusLabel: 'Statut',
+    messageCountLabel: 'Messages',
+    sessionPending: 'Non créée',
+    sessionIdle: 'Créez ou restaurez une session pour continuer.',
+    sessionCreating: 'Création de la session...',
+    sessionRestoring: 'Restauration de l’état de session...',
+    sessionReady: 'La session est prête pour la saisie texte.',
+    sessionSubmitting: 'Envoi du texte et attente de la réponse...',
+    sessionRestoreFailed: 'La restauration a échoué. Créez une nouvelle session pour continuer.',
+    sessionSubmitSuccess: 'Texte envoyé et dernier état synchronisé.',
+    sessionSubmitNeedSession: 'Créez ou restaurez d’abord une session.',
+    sessionSubmitEmpty: 'Saisissez un texte avant l’envoi.',
+    assistantReplies: 'Historique de conversation',
+    assistantEmpty: 'Les messages utilisateur et assistant apparaîtront ici après création ou restauration d’une session.',
+    userRoleLabel: 'Vous',
+    assistantRoleLabel: 'Compagnon',
+    systemRoleLabel: 'Système',
+    restoreSource: 'Source de restauration',
+    storageKeyLabel: 'Clé de stockage',
+    sourceEmotionApp: 'emotion_app',
   }
 };
 
@@ -261,6 +402,7 @@ export default function App({ appConfig }) {
   const [cameraErrorMsg, setCameraErrorMsg] = useState('');
   const modalVideoRef = useRef(null);
   const mainVideoRef = useRef(null);
+  const autoRestoreAttemptedRef = useRef(false);
 
   // 麦克风测试状态管理
   const [isMicModalOpen, setIsMicModalOpen] = useState(false);
@@ -270,6 +412,13 @@ export default function App({ appConfig }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+
+  const [sessionState, setSessionState] = useState(null);
+  const [sessionRequestState, setSessionRequestState] = useState('idle');
+  const [sessionStatusMessage, setSessionStatusMessage] = useState('');
+  const [sessionErrorMessage, setSessionErrorMessage] = useState('');
+  const [storedSessionId, setStoredSessionId] = useState(null);
+  const [clientSeq, setClientSeq] = useState(1);
 
   const runtimeConfig = useMemo(
     () => ({
@@ -286,6 +435,61 @@ export default function App({ appConfig }) {
     }),
     [appConfig],
   );
+
+  const syncSessionFromState = useCallback((payload, statusMessage) => {
+    const nextSessionId = payload?.session?.session_id || null;
+    const nextMessages = Array.isArray(payload?.messages) ? payload.messages : [];
+    const nextUserMessageCount = nextMessages.filter((message) => message?.role === 'user').length;
+
+    setSessionState(payload);
+    setSessionErrorMessage('');
+    setSessionStatusMessage(statusMessage || t.sessionReady);
+    setStoredSessionId(nextSessionId);
+    setClientSeq(nextUserMessageCount + 1);
+
+    if (nextSessionId) {
+      writeStoredSessionId(runtimeConfig.activeSessionStorageKey, nextSessionId);
+    }
+  }, [runtimeConfig.activeSessionStorageKey, t.sessionReady]);
+
+  const restoreSession = useCallback(async (targetSessionId) => {
+    if (!targetSessionId) {
+      setSessionErrorMessage('');
+      setSessionStatusMessage(t.noStoredSession);
+      return;
+    }
+
+    setSessionRequestState('restoring');
+    setSessionErrorMessage('');
+    setSessionStatusMessage(t.sessionRestoring);
+
+    try {
+      const payload = await requestSessionState(runtimeConfig.apiBaseUrl, targetSessionId);
+      syncSessionFromState(payload, t.sessionReady);
+      setSessionRequestState('ready');
+    } catch (error) {
+      clearStoredSessionId(runtimeConfig.activeSessionStorageKey);
+      setStoredSessionId(null);
+      setSessionState(null);
+      setSessionRequestState('error');
+      setSessionErrorMessage(error.message || t.sessionRestoreFailed);
+      setSessionStatusMessage(t.sessionRestoreFailed);
+    }
+  }, [runtimeConfig.activeSessionStorageKey, runtimeConfig.apiBaseUrl, syncSessionFromState, t.noStoredSession, t.sessionReady, t.sessionRestoreFailed, t.sessionRestoring]);
+
+  useEffect(() => {
+    const cachedSessionId = readStoredSessionId(runtimeConfig.activeSessionStorageKey);
+    setStoredSessionId(cachedSessionId);
+    setSessionStatusMessage(cachedSessionId ? t.restoreReady : t.sessionIdle);
+  }, [runtimeConfig.activeSessionStorageKey, t.restoreReady, t.sessionIdle]);
+
+  useEffect(() => {
+    if (!storedSessionId || autoRestoreAttemptedRef.current) {
+      return;
+    }
+    autoRestoreAttemptedRef.current = true;
+    restoreSession(storedSessionId);
+  }, [restoreSession, storedSessionId]);
 
   useEffect(() => {
     let index = 0;
@@ -370,13 +574,113 @@ export default function App({ appConfig }) {
     }
   }, [isCameraModalOpen, cameraStream]);
 
-  // 全局唯一定义 timelineData
+  const createSessionBaseline = useCallback(async () => {
+    setSessionRequestState('creating');
+    setSessionErrorMessage('');
+    setSessionStatusMessage(t.sessionCreating);
+
+    try {
+      const payload = await requestSession(runtimeConfig.apiBaseUrl, runtimeConfig.defaultAvatarId);
+      syncSessionFromState({ session: payload, messages: [] }, t.sessionReady);
+      setSessionRequestState('ready');
+    } catch (error) {
+      setSessionState(null);
+      setSessionRequestState('error');
+      setSessionErrorMessage(error.message || t.sessionRestoreFailed);
+      setSessionStatusMessage(error.message || t.sessionRestoreFailed);
+    }
+  }, [runtimeConfig.apiBaseUrl, runtimeConfig.defaultAvatarId, syncSessionFromState, t.sessionCreating, t.sessionReady, t.sessionRestoreFailed]);
+
+  const clearSessionBaseline = useCallback(() => {
+    clearStoredSessionId(runtimeConfig.activeSessionStorageKey);
+    autoRestoreAttemptedRef.current = true;
+    setStoredSessionId(null);
+    setSessionState(null);
+    setSessionRequestState('idle');
+    setSessionErrorMessage('');
+    setSessionStatusMessage(t.sessionIdle);
+    setClientSeq(1);
+  }, [runtimeConfig.activeSessionStorageKey, t.sessionIdle]);
+
+  const submitTextBaseline = useCallback(async () => {
+    const contentText = inputText.trim();
+
+    if (!contentText) {
+      setSessionErrorMessage(t.sessionSubmitEmpty);
+      setSessionStatusMessage(t.sessionSubmitEmpty);
+      return;
+    }
+
+    const activeSessionId = sessionState?.session?.session_id || storedSessionId;
+    if (!activeSessionId) {
+      setSessionErrorMessage(t.sessionSubmitNeedSession);
+      setSessionStatusMessage(t.sessionSubmitNeedSession);
+      return;
+    }
+
+    setSessionRequestState('submitting');
+    setSessionErrorMessage('');
+    setSessionStatusMessage(t.sessionSubmitting);
+
+    const previousMessageCount = Array.isArray(sessionState?.messages) ? sessionState.messages.length : 0;
+
+    try {
+      await requestTextMessage(runtimeConfig.apiBaseUrl, activeSessionId, contentText, clientSeq);
+      setInputText('');
+      const payload = await pollSessionStateForReply(
+        runtimeConfig.apiBaseUrl,
+        activeSessionId,
+        previousMessageCount,
+      );
+      syncSessionFromState(payload, t.sessionSubmitSuccess);
+      setSessionRequestState('ready');
+    } catch (error) {
+      setSessionRequestState('error');
+      setSessionErrorMessage(error.message || t.sessionRestoreFailed);
+      setSessionStatusMessage(error.message || t.sessionRestoreFailed);
+    }
+  }, [clientSeq, inputText, runtimeConfig.apiBaseUrl, sessionState, storedSessionId, syncSessionFromState, t.sessionRestoreFailed, t.sessionSubmitEmpty, t.sessionSubmitNeedSession, t.sessionSubmitSuccess, t.sessionSubmitting]);
+
   const timelineData = [
     { time: '14:02', emotion: t.log1Emo, desc: t.log1Desc, color: 'bg-green-100 text-green-700' },
     { time: '14:06', emotion: t.log2Emo, desc: t.log2Desc, color: 'bg-orange-100 text-orange-700' },
     { time: '14:10', emotion: t.log3Emo, desc: t.log3Desc, color: 'bg-amber-100 text-amber-700' },
     { time: '14:15', emotion: t.log4Emo, desc: t.log4Desc, color: 'bg-teal-100 text-teal-700' },
   ];
+
+  const sessionSummary = sessionState?.session || null;
+  const sessionMessages = Array.isArray(sessionState?.messages) ? sessionState.messages : [];
+
+  const visibleStatuses = useMemo(() => {
+    const statusMap = {
+      idle: t.sessionIdle,
+      creating: t.sessionCreating,
+      restoring: t.sessionRestoring,
+      ready: t.sessionReady,
+      submitting: t.sessionSubmitting,
+      error: sessionErrorMessage || t.sessionRestoreFailed,
+    };
+
+    return [
+      t.statuses[0],
+      t.statuses[1],
+      t.statuses[2],
+      statusMap[sessionRequestState] || sessionStatusMessage || t.statuses[4],
+      sessionStatusMessage || statusMap[sessionRequestState] || t.statuses[4],
+    ];
+  }, [sessionErrorMessage, sessionRequestState, sessionStatusMessage, t]);
+
+  const storedSessionNotice = storedSessionId ? t.restoreReady : t.noStoredSession;
+
+  const formatRoleLabel = useCallback((role) => {
+    if (role === 'assistant') {
+      return t.assistantRoleLabel;
+    }
+    if (role === 'user') {
+      return t.userRoleLabel;
+    }
+    return t.systemRoleLabel;
+  }, [t.assistantRoleLabel, t.systemRoleLabel, t.userRoleLabel]);
 
   return (
     <div 
@@ -534,6 +838,107 @@ export default function App({ appConfig }) {
             <div className="rounded-2xl border border-[#F0E5D8] bg-[#FDFBF7] p-4">
               <div className="text-xs text-[#A6998E] mb-1">Active session storage key</div>
               <div className="break-all text-[#5C4D42] font-medium">{runtimeConfig.activeSessionStorageKey}</div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white/85 backdrop-blur-sm p-5 rounded-3xl border border-[#F0E5D8] shadow-sm flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#A6998E]">{t.phaseBTitle}</p>
+              <h2 className="text-lg font-semibold text-[#5C4D42] mt-1">session create / state restore / text submit</h2>
+              <p className="text-sm text-[#8C7A6B] mt-2 leading-relaxed">{t.phaseBDesc}</p>
+            </div>
+            <div className="self-start text-xs text-[#6B9080] bg-[#E8F3EE] border border-green-100 rounded-full px-3 py-1.5">
+              {t.restoreSource}: {t.sourceEmotionApp}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-4">
+            <div className="rounded-3xl border border-[#F0E5D8] bg-[#FDFBF7] p-4 flex flex-col gap-4">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={createSessionBaseline}
+                  disabled={sessionRequestState === 'creating' || sessionRequestState === 'submitting'}
+                  className="px-4 py-2 rounded-xl text-sm font-medium bg-[#D97757] text-white shadow-md hover:bg-[#c26649] disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {sessionRequestState === 'creating' ? t.sessionCreating : t.createSession}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => restoreSession(storedSessionId)}
+                  disabled={!storedSessionId || sessionRequestState === 'creating' || sessionRequestState === 'restoring' || sessionRequestState === 'submitting'}
+                  className="px-4 py-2 rounded-xl text-sm font-medium bg-[#FFF0E5] text-[#D97757] border border-[#F0E5D8] hover:bg-[#FFE5D0] disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {sessionRequestState === 'restoring' ? t.restoring : t.restoreState}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearSessionBaseline}
+                  disabled={!storedSessionId && !sessionSummary}
+                  className="px-4 py-2 rounded-xl text-sm font-medium bg-white text-[#8C7A6B] border border-[#F0E5D8] hover:bg-[#F8F2EA] disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {t.clearSession}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">{t.sessionLabel}</div>
+                  <div className="break-all text-[#5C4D42] font-medium">{sessionSummary?.session_id || storedSessionId || t.sessionPending}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">{t.traceLabel}</div>
+                  <div className="break-all text-[#5C4D42] font-medium">{sessionSummary?.trace_id || '—'}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">{t.stageLabel}</div>
+                  <div className="text-[#5C4D42] font-medium">{sessionSummary?.stage || 'idle'}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">{t.statusLabel}</div>
+                  <div className="text-[#5C4D42] font-medium">{sessionSummary?.status || sessionRequestState}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">{t.messageCountLabel}</div>
+                  <div className="text-[#5C4D42] font-medium">{sessionMessages.length}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">{t.storageKeyLabel}</div>
+                  <div className="break-all text-[#5C4D42] font-medium">{runtimeConfig.activeSessionStorageKey}</div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#F0E5D8] bg-[#FFF9F3] px-4 py-3 text-sm text-[#8C7A6B]">
+                <div>{storedSessionNotice}</div>
+                <div className="mt-1 text-[#5C4D42]">{sessionStatusMessage || t.sessionIdle}</div>
+                {sessionErrorMessage && (
+                  <div className="mt-2 text-red-500">{sessionErrorMessage}</div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-[#F0E5D8] bg-[#FDFBF7] p-4 flex flex-col gap-3 min-h-[280px]">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-medium text-[#8C7A6B]">{t.assistantReplies}</h3>
+                <span className="text-xs text-[#A6998E]">client_seq {clientSeq}</span>
+              </div>
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-3">
+                {sessionMessages.length ? sessionMessages.map((message) => (
+                  <div key={message.message_id} className="rounded-2xl border border-[#F0E5D8] bg-white px-4 py-3">
+                    <div className="flex items-center justify-between gap-3 text-xs text-[#A6998E] mb-1">
+                      <span>{formatRoleLabel(message.role)}</span>
+                      <span>{message.source_kind}</span>
+                    </div>
+                    <p className="text-sm text-[#5C4D42] leading-relaxed whitespace-pre-wrap">{message.content_text}</p>
+                  </div>
+                )) : (
+                  <div className="h-full min-h-[180px] rounded-2xl border border-dashed border-[#E5D8C8] bg-white/60 flex items-center justify-center text-sm text-[#A6998E] text-center px-6">
+                    {t.assistantEmpty}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -707,7 +1112,7 @@ export default function App({ appConfig }) {
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-sm font-medium text-[#D97757] animate-pulse">
-              {t.statuses[systemStatusIndex]}
+              {visibleStatuses[systemStatusIndex]}
             </div>
           </div>
 
@@ -740,15 +1145,11 @@ export default function App({ appConfig }) {
                 <Mic size={18} strokeWidth={isRecording ? 2.5 : 2} className={isRecording ? 'animate-pulse' : ''} />
               </button>
               
-              <button 
-                onClick={() => {
-                  if(inputText.trim()) {
-                    setInputText(''); // 模拟发送后清空
-                    setSystemStatusIndex(3); // '正在整理回复...'
-                  }
-                }}
-                className={`p-2.5 rounded-full transition-all duration-300 flex items-center justify-center ${inputText.trim() ? 'bg-[#D97757] text-white shadow-md hover:bg-[#c26649] hover:-translate-y-0.5' : 'bg-[#F0E5D8] text-[#A6998E] cursor-not-allowed opacity-60'}`}
-                disabled={!inputText.trim()}
+              <button
+                onClick={submitTextBaseline}
+                className={`p-2.5 rounded-full transition-all duration-300 flex items-center justify-center ${inputText.trim() && sessionRequestState !== 'submitting' ? 'bg-[#D97757] text-white shadow-md hover:bg-[#c26649] hover:-translate-y-0.5' : 'bg-[#F0E5D8] text-[#A6998E] cursor-not-allowed opacity-60'}`}
+                disabled={!inputText.trim() || sessionRequestState === 'submitting'}
+                title={sessionRequestState === 'submitting' ? t.sending : t.submitText}
               >
                 <Send size={16} strokeWidth={2.5} className={inputText.trim() ? "translate-x-0.5 -translate-y-0.5" : ""} />
               </button>

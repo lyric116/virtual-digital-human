@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-16 - emotion_app Phase B session baseline added
+
+### Scope
+
+emotion_app now restores gateway-backed sessions, submits text through the existing session endpoints, and polls session state for the assistant reply without changing the backend contract.
+
+### Outputs
+
+- Added emotion_app/src/sessionApi.js to wrap POST /api/session/create, GET /api/session/{session_id}/state, POST /api/session/{session_id}/text, reply polling, and localStorage session persistence helpers.
+- Updated emotion_app/src/App.jsx to auto-restore a stored session, create a new session, clear local session state, submit text through the gateway contract, and render restored conversation history plus session metadata.
+- Updated emotion_app/src/App.test.js to cover the visible Phase B session baseline controls alongside the existing Phase A runtime-config baseline.
+
+### Checks
+
+- Ran npm run build in /home/lyricx/code/virtual_huamn/emotion_app successfully; build still reports the same pre-existing camera-related CRA warnings.
+- Ran CI=true npm test -- --watch=false in /home/lyricx/code/virtual_huamn/emotion_app successfully.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest tests/test_memory_bank.py successfully.
+
+### Next
+
+- Phase C can attach the existing websocket/realtime envelope flow to replace the temporary state polling reply path.
+- Keep apps/web as the authoritative behavior reference until realtime and later media/export phases reach parity.
+
 ## 2026-03-16 - emotion_app Phase A bootstrap compatibility added
 
 ### Scope

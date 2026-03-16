@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-16 - emotion_app Phase B should reuse gateway session endpoints before realtime
+
+- emotion_app should preserve the existing browser/backend contract by using POST /api/session/create, GET /api/session/{session_id}/state, and POST /api/session/{session_id}/text exactly as apps/web does, including stable session_id/trace_id/message_id fields and localStorage-based active session restoration.
+- Before websocket parity exists, emotion_app can safely provide a minimal text conversation loop by restoring state from localStorage and polling session state for the assistant reply after text submit; this is a temporary frontend migration step, not a contract change.
+
 ## 2026-03-16 - emotion_app bootstrap should mirror the existing browser config model
 
 - emotion_app should load runtime endpoints through window.__APP_CONFIG__ just like apps/web, with config.js loaded before the app and a small in-app fallback for local defaults; React code should not rely on browser .env access at runtime.
