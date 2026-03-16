@@ -5,8 +5,10 @@ import {
   MoreHorizontal, Send, X
 } from 'lucide-react';
 import {
+  buildHeartbeatMessage,
+  buildRealtimeSocketUrl,
   clearStoredSessionId,
-  pollSessionStateForReply,
+  isTerminalRealtimeClose,
   readStoredSessionId,
   requestSession,
   requestSessionState,
@@ -382,6 +384,126 @@ const i18n = {
   }
 };
 
+function normalizeMessage(message) {
+  const metadata = message?.metadata && typeof message.metadata === 'object'
+    ? message.metadata
+    : {};
+
+  return {
+    message_id: typeof message?.message_id === 'string' ? message.message_id : '',
+    session_id: typeof message?.session_id === 'string' ? message.session_id : null,
+    trace_id: typeof message?.trace_id === 'string' ? message.trace_id : null,
+    role: typeof message?.role === 'string' ? message.role : 'system',
+    status: typeof message?.status === 'string' ? message.status : null,
+    source_kind: typeof message?.source_kind === 'string' ? message.source_kind : 'text',
+    content_text: typeof message?.content_text === 'string' ? message.content_text : '',
+    submitted_at: message?.submitted_at || null,
+    metadata,
+  };
+}
+
+function upsertMessageById(messages, nextMessage) {
+  if (!nextMessage?.message_id) {
+    return Array.isArray(messages) ? messages : [];
+  }
+
+  const currentMessages = Array.isArray(messages) ? messages : [];
+  const existingIndex = currentMessages.findIndex(
+    (message) => message?.message_id === nextMessage.message_id,
+  );
+
+  if (existingIndex === -1) {
+    return [...currentMessages, nextMessage];
+  }
+
+  const nextMessages = [...currentMessages];
+  nextMessages[existingIndex] = {
+    ...nextMessages[existingIndex],
+    ...nextMessage,
+    metadata: nextMessage.metadata || nextMessages[existingIndex]?.metadata || {},
+  };
+  return nextMessages;
+}
+
+function hasMessageId(messages, messageId) {
+  if (!messageId) {
+    return false;
+  }
+  return Array.isArray(messages)
+    && messages.some((message) => message?.message_id === messageId);
+}
+
+function normalizeSessionStatePayload(payload) {
+  const session = payload?.session && typeof payload.session === 'object'
+    ? payload.session
+    : null;
+  const messages = Array.isArray(payload?.messages)
+    ? payload.messages.reduce((items, message) => upsertMessageById(items, normalizeMessage(message)), [])
+    : [];
+
+  return {
+    session,
+    messages,
+  };
+}
+
+function buildAcceptedMessageFromEnvelope(envelope) {
+  const payload = envelope?.payload && typeof envelope.payload === 'object'
+    ? envelope.payload
+    : null;
+  const messageId = payload?.message_id || envelope?.message_id;
+
+  if (typeof messageId !== 'string' || !messageId.trim()) {
+    return null;
+  }
+
+  return normalizeMessage({
+    message_id: messageId,
+    session_id: payload?.session_id || envelope?.session_id || null,
+    trace_id: payload?.trace_id || envelope?.trace_id || null,
+    role: payload?.role || 'user',
+    status: payload?.status || 'accepted',
+    source_kind: payload?.source_kind || 'text',
+    content_text: payload?.content_text || '',
+    submitted_at: payload?.submitted_at || envelope?.emitted_at || null,
+    metadata: payload?.metadata && typeof payload.metadata === 'object' ? payload.metadata : {},
+  });
+}
+
+function buildReplyMessageFromEnvelope(envelope) {
+  const payload = envelope?.payload && typeof envelope.payload === 'object'
+    ? envelope.payload
+    : null;
+  const messageId = payload?.message_id || envelope?.message_id;
+  const replyText = payload?.reply;
+
+  if (
+    typeof messageId !== 'string'
+    || !messageId.trim()
+    || typeof replyText !== 'string'
+    || !replyText.trim()
+  ) {
+    return null;
+  }
+
+  return normalizeMessage({
+    message_id: messageId,
+    session_id: payload?.session_id || envelope?.session_id || null,
+    trace_id: payload?.trace_id || envelope?.trace_id || null,
+    role: 'assistant',
+    status: 'completed',
+    source_kind: 'text',
+    content_text: replyText,
+    submitted_at: payload?.submitted_at || envelope?.emitted_at || null,
+    metadata: {
+      stage: payload?.stage,
+      emotion: payload?.emotion,
+      risk_level: payload?.risk_level,
+      next_action: payload?.next_action,
+    },
+  });
+}
+
 export default function App({ appConfig }) {
   // 语言状态管理
   const [lang, setLang] = useState('zh');
@@ -399,7 +521,6 @@ export default function App({ appConfig }) {
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
   const [cameraStatus, setCameraStatus] = useState('idle'); // idle, requesting, success, error
-  const [cameraErrorMsg, setCameraErrorMsg] = useState('');
   const modalVideoRef = useRef(null);
   const mainVideoRef = useRef(null);
   const autoRestoreAttemptedRef = useRef(false);
@@ -419,6 +540,24 @@ export default function App({ appConfig }) {
   const [sessionErrorMessage, setSessionErrorMessage] = useState('');
   const [storedSessionId, setStoredSessionId] = useState(null);
   const [clientSeq, setClientSeq] = useState(1);
+  const [connectionStatus, setConnectionStatus] = useState('idle');
+  const [lastHeartbeatAt, setLastHeartbeatAt] = useState(null);
+  const [textSubmitState, setTextSubmitState] = useState('idle');
+  const [dialogueReplyState, setDialogueReplyState] = useState('idle');
+  const [pendingMessageId, setPendingMessageId] = useState(null);
+  const [connectionStatusMessage, setConnectionStatusMessage] = useState('');
+
+  const socketRef = useRef(null);
+  const heartbeatTimerRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const manualCloseRef = useRef(false);
+  const connectionTokenRef = useRef(0);
+  const connectRealtimeRef = useRef(null);
+  const shouldRecoverOnNextConnectRef = useRef(false);
+  const sessionStateRef = useRef(sessionState);
+  const connectionStatusRef = useRef(connectionStatus);
+  const textSubmitStateRef = useRef(textSubmitState);
+  const pendingMessageIdRef = useRef(pendingMessageId);
 
   const runtimeConfig = useMemo(
     () => ({
@@ -431,26 +570,95 @@ export default function App({ appConfig }) {
         appConfig?.activeSessionStorageKey || 'virtual-human-active-session-id',
       exportCacheStorageKey:
         appConfig?.exportCacheStorageKey || 'virtual-human-last-export',
+      heartbeatIntervalMs:
+        Number.isFinite(Number(appConfig?.heartbeatIntervalMs)) && Number(appConfig?.heartbeatIntervalMs) > 0
+          ? Number(appConfig.heartbeatIntervalMs)
+          : 5000,
+      reconnectDelayMs:
+        Number.isFinite(Number(appConfig?.reconnectDelayMs)) && Number(appConfig?.reconnectDelayMs) > 0
+          ? Number(appConfig.reconnectDelayMs)
+          : 1000,
       sourceLabel: appConfig?.sourceLabel || 'built-in defaults',
     }),
     [appConfig],
   );
 
   const syncSessionFromState = useCallback((payload, statusMessage) => {
-    const nextSessionId = payload?.session?.session_id || null;
-    const nextMessages = Array.isArray(payload?.messages) ? payload.messages : [];
+    const normalizedPayload = normalizeSessionStatePayload(payload);
+    const nextSessionId = normalizedPayload?.session?.session_id || null;
+    const nextMessages = normalizedPayload.messages;
     const nextUserMessageCount = nextMessages.filter((message) => message?.role === 'user').length;
 
-    setSessionState(payload);
+    autoRestoreAttemptedRef.current = true;
+    shouldRecoverOnNextConnectRef.current = false;
+    setSessionState(normalizedPayload);
     setSessionErrorMessage('');
     setSessionStatusMessage(statusMessage || t.sessionReady);
     setStoredSessionId(nextSessionId);
     setClientSeq(nextUserMessageCount + 1);
+    setTextSubmitState('idle');
+    setDialogueReplyState('idle');
+    setPendingMessageId(null);
+    setLastHeartbeatAt(null);
+    setConnectionStatusMessage('');
 
     if (nextSessionId) {
       writeStoredSessionId(runtimeConfig.activeSessionStorageKey, nextSessionId);
     }
   }, [runtimeConfig.activeSessionStorageKey, t.sessionReady]);
+
+  const recoverSessionFromState = useCallback((payload) => {
+    const normalizedPayload = normalizeSessionStatePayload(payload);
+    const nextSessionId = normalizedPayload?.session?.session_id || null;
+    const nextMessages = normalizedPayload.messages;
+    const nextUserMessageCount = nextMessages.filter((message) => message?.role === 'user').length;
+    const expectedPendingMessageId = pendingMessageIdRef.current;
+    const acceptedIndex = expectedPendingMessageId
+      ? nextMessages.findIndex((message) => message?.message_id === expectedPendingMessageId)
+      : -1;
+    const hasAssistantAfterPending = acceptedIndex >= 0
+      && nextMessages.slice(acceptedIndex + 1).some((message) => message?.role === 'assistant');
+
+    autoRestoreAttemptedRef.current = true;
+    shouldRecoverOnNextConnectRef.current = false;
+    setSessionState(normalizedPayload);
+    setStoredSessionId(nextSessionId);
+    setClientSeq(nextUserMessageCount + 1);
+    setSessionErrorMessage('');
+
+    if (nextSessionId) {
+      writeStoredSessionId(runtimeConfig.activeSessionStorageKey, nextSessionId);
+    }
+
+    if (acceptedIndex === -1 && expectedPendingMessageId) {
+      setPendingMessageId(expectedPendingMessageId);
+      setTextSubmitState('awaiting_ack');
+      setDialogueReplyState('idle');
+      setSessionStatusMessage(t.sessionSubmitting);
+      return;
+    }
+
+    if (acceptedIndex >= 0 && !hasAssistantAfterPending) {
+      setPendingMessageId(null);
+      setTextSubmitState('awaiting_reply');
+      setDialogueReplyState('idle');
+      setSessionStatusMessage(t.sessionSubmitting);
+      return;
+    }
+
+    if (hasAssistantAfterPending) {
+      setPendingMessageId(null);
+      setTextSubmitState('idle');
+      setDialogueReplyState('received');
+      setSessionStatusMessage(t.sessionSubmitSuccess);
+      return;
+    }
+
+    setPendingMessageId(null);
+    setTextSubmitState('idle');
+    setDialogueReplyState('idle');
+    setSessionStatusMessage(t.sessionReady);
+  }, [runtimeConfig.activeSessionStorageKey, t.sessionReady, t.sessionSubmitSuccess, t.sessionSubmitting]);
 
   const restoreSession = useCallback(async (targetSessionId) => {
     if (!targetSessionId) {
@@ -474,6 +682,12 @@ export default function App({ appConfig }) {
       setSessionRequestState('error');
       setSessionErrorMessage(error.message || t.sessionRestoreFailed);
       setSessionStatusMessage(t.sessionRestoreFailed);
+      setConnectionStatusMessage('');
+      setConnectionStatus('idle');
+      setLastHeartbeatAt(null);
+      setTextSubmitState('idle');
+      setDialogueReplyState('idle');
+      setPendingMessageId(null);
     }
   }, [runtimeConfig.activeSessionStorageKey, runtimeConfig.apiBaseUrl, syncSessionFromState, t.noStoredSession, t.sessionReady, t.sessionRestoreFailed, t.sessionRestoring]);
 
@@ -492,6 +706,314 @@ export default function App({ appConfig }) {
   }, [restoreSession, storedSessionId]);
 
   useEffect(() => {
+    sessionStateRef.current = sessionState;
+  }, [sessionState]);
+
+  useEffect(() => {
+    connectionStatusRef.current = connectionStatus;
+  }, [connectionStatus]);
+
+  useEffect(() => {
+    textSubmitStateRef.current = textSubmitState;
+  }, [textSubmitState]);
+
+  useEffect(() => {
+    pendingMessageIdRef.current = pendingMessageId;
+  }, [pendingMessageId]);
+
+  const clearHeartbeatTimer = useCallback(() => {
+    if (heartbeatTimerRef.current) {
+      window.clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+  }, []);
+
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }, []);
+
+  const teardownRealtime = useCallback((manualClose = true) => {
+    manualCloseRef.current = manualClose;
+    clearReconnectTimer();
+    clearHeartbeatTimer();
+    const socket = socketRef.current;
+    socketRef.current = null;
+    if (socket && (socket.readyState === 0 || socket.readyState === 1)) {
+      socket.close();
+    }
+  }, [clearHeartbeatTimer, clearReconnectTimer]);
+
+  const sendHeartbeat = useCallback((connectionToken = connectionTokenRef.current) => {
+    const socket = socketRef.current;
+    if (!socket || connectionToken !== connectionTokenRef.current) {
+      return;
+    }
+
+    if (typeof window?.WebSocket !== 'function' || socket.readyState !== window.WebSocket.OPEN) {
+      return;
+    }
+
+    const activeSession = sessionStateRef.current?.session;
+    if (!activeSession?.session_id) {
+      return;
+    }
+
+    socket.send(
+      JSON.stringify(buildHeartbeatMessage(activeSession.session_id, activeSession.trace_id)),
+    );
+  }, []);
+
+  const applyRealtimeEnvelope = useCallback((envelope) => {
+    if (!envelope || typeof envelope !== 'object') {
+      return;
+    }
+
+    const activeSessionId = sessionStateRef.current?.session?.session_id;
+    if (activeSessionId && envelope.session_id && envelope.session_id !== activeSessionId) {
+      return;
+    }
+
+    if (envelope.event_type === 'session.connection.ready') {
+      setConnectionStatus('connected');
+      setConnectionStatusMessage('realtime ready');
+      if (
+        shouldRecoverOnNextConnectRef.current
+        && activeSessionId
+        && (textSubmitStateRef.current === 'awaiting_ack' || textSubmitStateRef.current === 'awaiting_reply')
+      ) {
+        shouldRecoverOnNextConnectRef.current = false;
+        void requestSessionState(runtimeConfig.apiBaseUrl, activeSessionId)
+          .then((payload) => {
+            recoverSessionFromState(payload);
+            setSessionRequestState('ready');
+          })
+          .catch((error) => {
+            setSessionErrorMessage(error.message || t.sessionRestoreFailed);
+            setSessionStatusMessage(error.message || t.sessionRestoreFailed);
+            setTextSubmitState('error');
+            setDialogueReplyState('error');
+          });
+      }
+      return;
+    }
+
+    if (envelope.event_type === 'session.heartbeat') {
+      const heartbeatTime = envelope?.payload?.server_time || envelope?.emitted_at || null;
+      setConnectionStatus('connected');
+      setLastHeartbeatAt(heartbeatTime);
+      setConnectionStatusMessage('heartbeat acknowledged');
+      return;
+    }
+
+    if (envelope.event_type === 'message.accepted') {
+      const acceptedMessage = buildAcceptedMessageFromEnvelope(envelope);
+      if (!acceptedMessage) {
+        setTextSubmitState('error');
+        setSessionErrorMessage('Invalid message.accepted payload.');
+        setSessionStatusMessage('Invalid message.accepted payload.');
+        return;
+      }
+
+      setSessionState((previousState) => {
+        const baseState = normalizeSessionStatePayload(previousState);
+        return {
+          session: baseState.session
+            ? {
+              ...baseState.session,
+              status: 'active',
+              updated_at: acceptedMessage.submitted_at || envelope?.emitted_at || baseState.session.updated_at,
+            }
+            : baseState.session,
+          messages: upsertMessageById(baseState.messages, acceptedMessage),
+        };
+      });
+      setPendingMessageId(null);
+      setInputText('');
+      setSessionErrorMessage('');
+      setTextSubmitState('awaiting_reply');
+      setDialogueReplyState('idle');
+      setSessionStatusMessage(t.sessionSubmitting);
+      return;
+    }
+
+    if (envelope.event_type === 'dialogue.reply') {
+      const replyMessage = buildReplyMessageFromEnvelope(envelope);
+      if (!replyMessage) {
+        setDialogueReplyState('invalid');
+        setSessionErrorMessage('Invalid dialogue.reply payload.');
+        setSessionStatusMessage('Invalid dialogue.reply payload.');
+        return;
+      }
+
+      setSessionState((previousState) => {
+        const baseState = normalizeSessionStatePayload(previousState);
+        return {
+          session: baseState.session
+            ? {
+              ...baseState.session,
+              status: 'active',
+              stage: replyMessage.metadata?.stage || baseState.session.stage,
+              updated_at: replyMessage.submitted_at || envelope?.emitted_at || baseState.session.updated_at,
+            }
+            : baseState.session,
+          messages: upsertMessageById(baseState.messages, replyMessage),
+        };
+      });
+      setPendingMessageId(null);
+      setTextSubmitState('idle');
+      setDialogueReplyState('received');
+      setSessionErrorMessage('');
+      setSessionStatusMessage(t.sessionSubmitSuccess);
+      return;
+    }
+
+    if (envelope.event_type === 'session.error') {
+      const errorPayload = envelope?.payload && typeof envelope.payload === 'object'
+        ? envelope.payload
+        : {};
+      const errorCode = typeof errorPayload.error_code === 'string' ? errorPayload.error_code : 'session_error';
+      const errorMessage = typeof errorPayload.message === 'string' && errorPayload.message.trim()
+        ? errorPayload.message.trim()
+        : errorCode;
+      setSessionErrorMessage(errorMessage);
+      setSessionStatusMessage(errorMessage);
+      setConnectionStatusMessage(`error: ${errorCode}`);
+      if (textSubmitStateRef.current !== 'idle' || errorCode.startsWith('dialogue_')) {
+        setTextSubmitState('error');
+        setDialogueReplyState('error');
+      }
+    }
+  }, [recoverSessionFromState, runtimeConfig.apiBaseUrl, t.sessionRestoreFailed, t.sessionSubmitSuccess, t.sessionSubmitting]);
+
+  const connectRealtime = useCallback(() => {
+    const activeSession = sessionStateRef.current?.session;
+    if (!activeSession?.session_id || !activeSession?.trace_id) {
+      return;
+    }
+
+    if (typeof window?.WebSocket !== 'function') {
+      setConnectionStatus('unsupported');
+      setConnectionStatusMessage('WebSocket unsupported in current runtime');
+      return;
+    }
+
+    teardownRealtime(false);
+    manualCloseRef.current = false;
+    clearReconnectTimer();
+    clearHeartbeatTimer();
+    connectionTokenRef.current += 1;
+    const connectionToken = connectionTokenRef.current;
+    const socketUrl = buildRealtimeSocketUrl(
+      runtimeConfig.wsUrl,
+      activeSession.session_id,
+      activeSession.trace_id,
+    );
+    const socket = new window.WebSocket(socketUrl);
+    socketRef.current = socket;
+    setConnectionStatus(
+      connectionStatusRef.current === 'reconnecting' ? 'reconnecting' : 'connecting',
+    );
+    setConnectionStatusMessage(socketUrl);
+
+    socket.addEventListener('open', () => {
+      if (connectionToken !== connectionTokenRef.current) {
+        return;
+      }
+      setConnectionStatus('connected');
+      setConnectionStatusMessage('socket connected');
+      sendHeartbeat(connectionToken);
+      clearHeartbeatTimer();
+      heartbeatTimerRef.current = window.setInterval(() => {
+        sendHeartbeat(connectionToken);
+      }, runtimeConfig.heartbeatIntervalMs);
+    });
+
+    socket.addEventListener('message', (event) => {
+      if (connectionToken !== connectionTokenRef.current) {
+        return;
+      }
+      try {
+        applyRealtimeEnvelope(JSON.parse(event.data));
+      } catch (error) {
+        setSessionErrorMessage('Received invalid realtime payload.');
+        setSessionStatusMessage('Received invalid realtime payload.');
+      }
+    });
+
+    socket.addEventListener('error', () => {
+      if (connectionToken !== connectionTokenRef.current) {
+        return;
+      }
+      setConnectionStatusMessage('socket transport error');
+    });
+
+    socket.addEventListener('close', (event) => {
+      if (connectionToken !== connectionTokenRef.current) {
+        return;
+      }
+      clearHeartbeatTimer();
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+      }
+      if (manualCloseRef.current) {
+        return;
+      }
+      if (isTerminalRealtimeClose(event)) {
+        const closeReason = event?.reason || 'session_not_found';
+        setConnectionStatus('closed');
+        setConnectionStatusMessage(closeReason);
+        if (textSubmitStateRef.current !== 'idle') {
+          setTextSubmitState('error');
+          setDialogueReplyState('error');
+          setSessionErrorMessage(closeReason);
+          setSessionStatusMessage(closeReason);
+        }
+        return;
+      }
+
+      setConnectionStatus('reconnecting');
+      setConnectionStatusMessage(`reconnect scheduled (${runtimeConfig.reconnectDelayMs}ms)`);
+      clearReconnectTimer();
+      reconnectTimerRef.current = window.setTimeout(() => {
+        if (connectionToken !== connectionTokenRef.current) {
+          return;
+        }
+        connectRealtimeRef.current?.();
+      }, runtimeConfig.reconnectDelayMs);
+    });
+  }, [applyRealtimeEnvelope, clearHeartbeatTimer, clearReconnectTimer, runtimeConfig.heartbeatIntervalMs, runtimeConfig.reconnectDelayMs, runtimeConfig.wsUrl, sendHeartbeat, teardownRealtime]);
+
+  useEffect(() => {
+    connectRealtimeRef.current = connectRealtime;
+  }, [connectRealtime]);
+
+  const activeSessionId = sessionState?.session?.session_id || null;
+  const activeTraceId = sessionState?.session?.trace_id || null;
+
+  useEffect(() => {
+    if (!activeSessionId || !activeTraceId) {
+      teardownRealtime(true);
+      setLastHeartbeatAt(null);
+      if (typeof window?.WebSocket === 'function') {
+        setConnectionStatus('idle');
+        setConnectionStatusMessage('');
+      } else {
+        setConnectionStatus('unsupported');
+        setConnectionStatusMessage('WebSocket unsupported in current runtime');
+      }
+      return undefined;
+    }
+
+    connectRealtime();
+    return () => {
+      teardownRealtime(true);
+    };
+  }, [activeSessionId, activeTraceId, connectRealtime, teardownRealtime]);
+
+  useEffect(() => {
     let index = 0;
     const interval = setInterval(() => {
       index = (index + 1) % 5;
@@ -508,35 +1030,33 @@ export default function App({ appConfig }) {
   }, []);
 
   // 开启摄像头功能
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
     setCameraStatus('requesting');
-    setCameraErrorMsg('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
       setCameraStream(stream);
       setCameraStatus('success');
     } catch (err) {
       setCameraStatus('error');
-      setCameraErrorMsg(t.camErr);
     }
-  };
+  }, []);
 
   // 关闭摄像头功能
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
       setCameraStatus('idle');
       setIsCameraModalOpen(false);
     }
-  };
+  }, [cameraStream]);
 
   // 监听模态框打开，自动请求权限
   useEffect(() => {
     if (isCameraModalOpen && !cameraStream) {
       startCamera();
     }
-  }, [isCameraModalOpen]);
+  }, [cameraStream, isCameraModalOpen, startCamera]);
 
   // 麦克风模拟测试逻辑
   const startMicTest = () => {
@@ -588,6 +1108,12 @@ export default function App({ appConfig }) {
       setSessionRequestState('error');
       setSessionErrorMessage(error.message || t.sessionRestoreFailed);
       setSessionStatusMessage(error.message || t.sessionRestoreFailed);
+      setConnectionStatus('idle');
+      setConnectionStatusMessage('');
+      setLastHeartbeatAt(null);
+      setTextSubmitState('idle');
+      setDialogueReplyState('idle');
+      setPendingMessageId(null);
     }
   }, [runtimeConfig.apiBaseUrl, runtimeConfig.defaultAvatarId, syncSessionFromState, t.sessionCreating, t.sessionReady, t.sessionRestoreFailed]);
 
@@ -600,46 +1126,79 @@ export default function App({ appConfig }) {
     setSessionErrorMessage('');
     setSessionStatusMessage(t.sessionIdle);
     setClientSeq(1);
+    setTextSubmitState('idle');
+    setDialogueReplyState('idle');
+    setPendingMessageId(null);
+    setLastHeartbeatAt(null);
+    setConnectionStatusMessage('');
   }, [runtimeConfig.activeSessionStorageKey, t.sessionIdle]);
 
   const submitTextBaseline = useCallback(async () => {
     const contentText = inputText.trim();
 
     if (!contentText) {
+      setTextSubmitState('error');
       setSessionErrorMessage(t.sessionSubmitEmpty);
       setSessionStatusMessage(t.sessionSubmitEmpty);
       return;
     }
 
-    const activeSessionId = sessionState?.session?.session_id || storedSessionId;
+    const activeSession = sessionStateRef.current?.session;
+    const activeSessionId = activeSession?.session_id || storedSessionId;
     if (!activeSessionId) {
+      setTextSubmitState('error');
       setSessionErrorMessage(t.sessionSubmitNeedSession);
       setSessionStatusMessage(t.sessionSubmitNeedSession);
+      return;
+    }
+
+    if (connectionStatusRef.current !== 'connected') {
+      setTextSubmitState('error');
+      setSessionErrorMessage('Realtime connection is not ready.');
+      setSessionStatusMessage('Realtime connection is not ready.');
+      return;
+    }
+
+    if (textSubmitStateRef.current !== 'idle') {
+      setTextSubmitState('error');
+      setSessionErrorMessage('A text turn is already in flight.');
+      setSessionStatusMessage('A text turn is already in flight.');
       return;
     }
 
     setSessionRequestState('submitting');
     setSessionErrorMessage('');
     setSessionStatusMessage(t.sessionSubmitting);
-
-    const previousMessageCount = Array.isArray(sessionState?.messages) ? sessionState.messages.length : 0;
+    setTextSubmitState('sending');
+    setDialogueReplyState('idle');
+    setPendingMessageId(null);
 
     try {
-      await requestTextMessage(runtimeConfig.apiBaseUrl, activeSessionId, contentText, clientSeq);
-      setInputText('');
-      const payload = await pollSessionStateForReply(
+      const payload = await requestTextMessage(
         runtimeConfig.apiBaseUrl,
         activeSessionId,
-        previousMessageCount,
+        contentText,
+        clientSeq,
       );
-      syncSessionFromState(payload, t.sessionSubmitSuccess);
+      shouldRecoverOnNextConnectRef.current = true;
       setSessionRequestState('ready');
+      if (textSubmitStateRef.current === 'sending') {
+        setPendingMessageId(payload?.message_id || null);
+        if (hasMessageId(sessionStateRef.current?.messages, payload?.message_id)) {
+          setTextSubmitState('awaiting_reply');
+        } else {
+          setTextSubmitState('awaiting_ack');
+        }
+      }
+      sendHeartbeat();
     } catch (error) {
       setSessionRequestState('error');
+      setTextSubmitState('error');
+      setDialogueReplyState('error');
       setSessionErrorMessage(error.message || t.sessionRestoreFailed);
       setSessionStatusMessage(error.message || t.sessionRestoreFailed);
     }
-  }, [clientSeq, inputText, runtimeConfig.apiBaseUrl, sessionState, storedSessionId, syncSessionFromState, t.sessionRestoreFailed, t.sessionSubmitEmpty, t.sessionSubmitNeedSession, t.sessionSubmitSuccess, t.sessionSubmitting]);
+  }, [clientSeq, inputText, runtimeConfig.apiBaseUrl, sendHeartbeat, storedSessionId, t.sessionRestoreFailed, t.sessionSubmitEmpty, t.sessionSubmitNeedSession, t.sessionSubmitting]);
 
   const timelineData = [
     { time: '14:02', emotion: t.log1Emo, desc: t.log1Desc, color: 'bg-green-100 text-green-700' },
@@ -661,16 +1220,39 @@ export default function App({ appConfig }) {
       error: sessionErrorMessage || t.sessionRestoreFailed,
     };
 
+    const realtimeStatusMap = {
+      idle: 'realtime idle',
+      connecting: 'realtime connecting',
+      connected: 'realtime connected',
+      reconnecting: 'realtime reconnecting',
+      closed: 'realtime closed',
+      unsupported: 'realtime unsupported',
+    };
+
+    const submitStatusMap = {
+      idle: sessionStatusMessage || statusMap[sessionRequestState] || t.statuses[4],
+      sending: 'text sending',
+      awaiting_ack: 'waiting for message.accepted',
+      awaiting_reply: 'waiting for dialogue.reply',
+      error: sessionErrorMessage || 'text submit error',
+    };
+
     return [
-      t.statuses[0],
-      t.statuses[1],
-      t.statuses[2],
-      statusMap[sessionRequestState] || sessionStatusMessage || t.statuses[4],
+      realtimeStatusMap[connectionStatus] || t.statuses[0],
+      lastHeartbeatAt ? `heartbeat ${lastHeartbeatAt}` : t.statuses[1],
+      connectionStatusMessage || t.statuses[2],
+      submitStatusMap[textSubmitState] || statusMap[sessionRequestState] || t.statuses[4],
       sessionStatusMessage || statusMap[sessionRequestState] || t.statuses[4],
     ];
-  }, [sessionErrorMessage, sessionRequestState, sessionStatusMessage, t]);
+  }, [connectionStatus, connectionStatusMessage, lastHeartbeatAt, sessionErrorMessage, sessionRequestState, sessionStatusMessage, t, textSubmitState]);
 
   const storedSessionNotice = storedSessionId ? t.restoreReady : t.noStoredSession;
+  const heartbeatLabel = lastHeartbeatAt || '—';
+  const canSubmitText = Boolean(inputText.trim())
+    && connectionStatus === 'connected'
+    && textSubmitState === 'idle'
+    && sessionRequestState !== 'creating'
+    && sessionRequestState !== 'restoring';
 
   const formatRoleLabel = useCallback((role) => {
     if (role === 'assistant') {
@@ -860,7 +1442,7 @@ export default function App({ appConfig }) {
                 <button
                   type="button"
                   onClick={createSessionBaseline}
-                  disabled={sessionRequestState === 'creating' || sessionRequestState === 'submitting'}
+                  disabled={sessionRequestState === 'creating' || textSubmitState !== 'idle'}
                   className="px-4 py-2 rounded-xl text-sm font-medium bg-[#D97757] text-white shadow-md hover:bg-[#c26649] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {sessionRequestState === 'creating' ? t.sessionCreating : t.createSession}
@@ -868,7 +1450,7 @@ export default function App({ appConfig }) {
                 <button
                   type="button"
                   onClick={() => restoreSession(storedSessionId)}
-                  disabled={!storedSessionId || sessionRequestState === 'creating' || sessionRequestState === 'restoring' || sessionRequestState === 'submitting'}
+                  disabled={!storedSessionId || sessionRequestState === 'creating' || sessionRequestState === 'restoring' || textSubmitState !== 'idle'}
                   className="px-4 py-2 rounded-xl text-sm font-medium bg-[#FFF0E5] text-[#D97757] border border-[#F0E5D8] hover:bg-[#FFE5D0] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {sessionRequestState === 'restoring' ? t.restoring : t.restoreState}
@@ -905,6 +1487,26 @@ export default function App({ appConfig }) {
                   <div className="text-[#5C4D42] font-medium">{sessionMessages.length}</div>
                 </div>
                 <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">Connection</div>
+                  <div className="text-[#5C4D42] font-medium">{connectionStatus}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">Last heartbeat</div>
+                  <div className="break-all text-[#5C4D42] font-medium">{heartbeatLabel}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">Text submit</div>
+                  <div className="text-[#5C4D42] font-medium">{textSubmitState}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">Dialogue reply</div>
+                  <div className="text-[#5C4D42] font-medium">{dialogueReplyState}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">Pending message</div>
+                  <div className="break-all text-[#5C4D42] font-medium">{pendingMessageId || '—'}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
                   <div className="text-xs text-[#A6998E] mb-1">{t.storageKeyLabel}</div>
                   <div className="break-all text-[#5C4D42] font-medium">{runtimeConfig.activeSessionStorageKey}</div>
                 </div>
@@ -913,6 +1515,11 @@ export default function App({ appConfig }) {
               <div className="rounded-2xl border border-[#F0E5D8] bg-[#FFF9F3] px-4 py-3 text-sm text-[#8C7A6B]">
                 <div>{storedSessionNotice}</div>
                 <div className="mt-1 text-[#5C4D42]">{sessionStatusMessage || t.sessionIdle}</div>
+                <div className="mt-2 text-xs text-[#8C7A6B]">realtime: {connectionStatus}</div>
+                <div className="mt-1 text-xs text-[#8C7A6B]">heartbeat: {heartbeatLabel}</div>
+                {connectionStatusMessage && (
+                  <div className="mt-1 text-xs text-[#8C7A6B]">{connectionStatusMessage}</div>
+                )}
                 {sessionErrorMessage && (
                   <div className="mt-2 text-red-500">{sessionErrorMessage}</div>
                 )}
@@ -1147,9 +1754,9 @@ export default function App({ appConfig }) {
               
               <button
                 onClick={submitTextBaseline}
-                className={`p-2.5 rounded-full transition-all duration-300 flex items-center justify-center ${inputText.trim() && sessionRequestState !== 'submitting' ? 'bg-[#D97757] text-white shadow-md hover:bg-[#c26649] hover:-translate-y-0.5' : 'bg-[#F0E5D8] text-[#A6998E] cursor-not-allowed opacity-60'}`}
-                disabled={!inputText.trim() || sessionRequestState === 'submitting'}
-                title={sessionRequestState === 'submitting' ? t.sending : t.submitText}
+                className={`p-2.5 rounded-full transition-all duration-300 flex items-center justify-center ${canSubmitText ? 'bg-[#D97757] text-white shadow-md hover:bg-[#c26649] hover:-translate-y-0.5' : 'bg-[#F0E5D8] text-[#A6998E] cursor-not-allowed opacity-60'}`}
+                disabled={!canSubmitText}
+                title={textSubmitState === 'sending' ? t.sending : t.submitText}
               >
                 <Send size={16} strokeWidth={2.5} className={inputText.trim() ? "translate-x-0.5 -translate-y-0.5" : ""} />
               </button>

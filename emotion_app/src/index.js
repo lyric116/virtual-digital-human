@@ -11,6 +11,8 @@ const defaultAppConfig = {
   defaultAvatarId: 'companion_female_01',
   activeSessionStorageKey: 'virtual-human-active-session-id',
   exportCacheStorageKey: 'virtual-human-last-export',
+  heartbeatIntervalMs: 5000,
+  reconnectDelayMs: 1000,
 };
 
 function readStringConfigValue(config, keys, fallback) {
@@ -18,6 +20,17 @@ function readStringConfigValue(config, keys, fallback) {
     const value = config[key];
     if (typeof value === 'string' && value.trim()) {
       return value.trim();
+    }
+  }
+  return fallback;
+}
+
+function readNumberConfigValue(config, keys, fallback) {
+  for (const key of keys) {
+    const rawValue = config[key];
+    const numericValue = Number(rawValue);
+    if (Number.isFinite(numericValue) && numericValue > 0) {
+      return numericValue;
     }
   }
   return fallback;
@@ -57,6 +70,16 @@ function resolveAppConfig(rootWindow) {
       config,
       ['exportCacheStorageKey', 'export_cache_storage_key'],
       defaultAppConfig.exportCacheStorageKey,
+    ),
+    heartbeatIntervalMs: readNumberConfigValue(
+      config,
+      ['heartbeatIntervalMs', 'heartbeat_interval_ms'],
+      defaultAppConfig.heartbeatIntervalMs,
+    ),
+    reconnectDelayMs: readNumberConfigValue(
+      config,
+      ['reconnectDelayMs', 'reconnect_delay_ms'],
+      defaultAppConfig.reconnectDelayMs,
     ),
   };
 }

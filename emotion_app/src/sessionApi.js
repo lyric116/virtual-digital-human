@@ -91,6 +91,33 @@ export async function pollSessionStateForReply(apiBaseUrl, sessionId, previousMe
   return lastPayload;
 }
 
+export function buildRealtimeSocketUrl(wsUrl, sessionId, traceId) {
+  const baseUrl = typeof wsUrl === 'string' ? wsUrl.replace(/\/+$/, '') : '';
+  return `${baseUrl}/session/${encodeURIComponent(sessionId)}?trace_id=${encodeURIComponent(traceId || '')}`;
+}
+
+export function buildHeartbeatMessage(sessionId, traceId) {
+  return {
+    type: 'ping',
+    session_id: sessionId,
+    trace_id: traceId || '',
+    sent_at: new Date().toISOString(),
+  };
+}
+
+export function isTerminalRealtimeClose(event) {
+  if (!event || typeof event !== 'object') {
+    return false;
+  }
+
+  const closeCode = typeof event.code === 'number' ? event.code : 1000;
+  const closeReason = typeof event.reason === 'string' ? event.reason : '';
+  if (closeCode === 4404) {
+    return true;
+  }
+  return closeReason === 'session_not_found';
+}
+
 export function readStoredSessionId(storageKey) {
   try {
     return window?.localStorage?.getItem(storageKey) || null;

@@ -21,6 +21,30 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-17 - emotion_app Phase C realtime text baseline added
+
+### Scope
+
+emotion_app now keeps session create and state restore on the existing gateway contract while switching the normal text turn completion path from GET /state polling to websocket realtime message.accepted/dialogue.reply handling, with heartbeat, reconnect, terminal-close handling, and a narrow /state catch-up fallback after reconnect.
+
+### Outputs
+
+- Extended emotion_app/src/index.js runtime config parsing with heartbeatIntervalMs and reconnectDelayMs defaults aligned with apps/web.
+- Added websocket protocol helpers to emotion_app/src/sessionApi.js for realtime URL building, heartbeat ping payloads, and terminal close detection while keeping REST helpers intact.
+- Updated emotion_app/src/App.jsx to connect realtime from the active session identity, incrementally upsert realtime messages by message_id, drive text submit through websocket acknowledgement/reply events, surface connection state in the Phase B card, and keep GET /state limited to restore plus one-shot reconnect recovery.
+- Expanded emotion_app/src/App.test.js with mocked fetch/WebSocket coverage for create, restore, submit, heartbeat, dedupe, reconnect, terminal close, and session.error regressions.
+
+### Checks
+
+- Ran npm run build in /home/lyricx/code/virtual_huamn/emotion_app successfully.
+- Ran CI=true npm test -- --watch=false in /home/lyricx/code/virtual_huamn/emotion_app successfully.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest tests/test_memory_bank.py successfully.
+
+### Next
+
+- Use apps/web as the behavior reference for the next migration slice and keep backend realtime event names and websocket semantics unchanged.
+- Keep GET /api/session/{session_id}/state as the authority for restore and narrow catch-up only; do not reintroduce it as the normal reply completion path.
+
 ## 2026-03-16 - emotion_app Phase B session baseline added
 
 ### Scope

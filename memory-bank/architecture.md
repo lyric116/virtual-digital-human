@@ -63,6 +63,11 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-17 - emotion_app Phase C text realtime should stay WS-first with state fallback
+
+- emotion_app text turns should keep POST /api/session/{session_id}/text as the submit boundary but treat websocket message.accepted and dialogue.reply as the normal completion path; GET /api/session/{session_id}/state remains the authority for restore and only a narrow reconnect catch-up fallback.
+- For the current frontend migration step, emotion_app should dedupe and upsert realtime user/assistant messages by message_id so reconnect flushes, repeated envelopes, and restore hydration cannot duplicate visible turns.
+
 ## 2026-03-16 - emotion_app Phase B should reuse gateway session endpoints before realtime
 
 - emotion_app should preserve the existing browser/backend contract by using POST /api/session/create, GET /api/session/{session_id}/state, and POST /api/session/{session_id}/text exactly as apps/web does, including stable session_id/trace_id/message_id fields and localStorage-based active session restoration.
