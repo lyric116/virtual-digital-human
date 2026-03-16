@@ -63,6 +63,12 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-16 - emotion_app is the migration target while apps/web remains authoritative
+
+- emotion_app should be treated as the future React frontend migration target, but apps/web remains the authoritative browser reference until session, realtime, audio, video/affect, TTS/avatar, and export/replay parity are all verified.
+- The migration is a frontend responsibility transfer, not a protocol rewrite: emotion_app must preserve the existing browser/backend contract defined by apps/api-gateway/main.py, docs/shared_contracts.md, apps/web/app.js, and the window.__APP_CONFIG__ runtime configuration model.
+- The current emotion_app structure is still a monolithic visual prototype centered on src/App.jsx, so future migration steps should introduce clear boundaries for bootstrap, session state, realtime, media, affect/TTS/avatar, and export/replay instead of layering real runtime state into the existing single-file local-state design.
+
 ## 2026-03-11 - 2026-03-11 - Browser TTS Playback Must Not Depend On Docker-Internal Hostnames
 
 - The browser-facing TTS path now has two fixed constraints: tts-service should return audio_url using the current request base URL, and the frontend should normalize any leaked Docker-internal host such as tts-service:8040 back to the configured public ttsBaseUrl before playback. Transient media-load failures should remain retryable ready-state events rather than terminal UI errors.

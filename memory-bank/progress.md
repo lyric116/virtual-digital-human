@@ -21,6 +21,29 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-16 - Emotion app migration baseline documented
+
+### Scope
+
+emotion_app frontend baseline, migration planning, verification
+
+### Outputs
+
+- Added docs/emotion_app_frontend_understanding.md to freeze the current React frontend structure, real browser behaviors, simulated flows, future UI responsibilities, and capability gaps versus apps/web.
+- Updated docs/implementation_plan.md with a dedicated emotion_app migration section that preserves apps/web as the runtime reference, behavior baseline, and rollback path.
+
+### Checks
+
+- Read and compared emotion_app bootstrap files, App.jsx behavior, apps/web/app.js runtime responsibilities, apps/api-gateway/main.py endpoints, and docs/shared_contracts.md browser/backend contracts.
+- Ran pytest tests/test_memory_bank.py successfully.
+- Ran python -m py_compile on scripts/update_memory_bank.py successfully.
+- Attempted emotion_app build verification, but the local CRA environment is currently blocked by react-scripts execution and missing node_modules dependency issues rather than by the baseline documentation changes.
+
+### Next
+
+- Repair or replace the local emotion_app dependency install so CRA start/build checks can run reliably before Phase A implementation begins.
+- After the environment is healthy, start only Phase A runtime-config/bootstrap compatibility work without changing the browser/backend contract.
+
 ## 2026-03-11 - 2026-03-11 - Frontend TTS Playback Now Uses Browser-Reachable Audio URLs
 
 ### Scope

@@ -508,7 +508,232 @@
 - 验证测试：每个赛题要求都要有对应的演示证据、日志证据或评测证据，不能只写“已完成”。
 - 通过标准：项目当前状态可直接用于答辩准备和冲刺优化。
 
-## 11. 首轮落地后的优化顺序
+## 11. Emotion App 前端迁移计划（保留 `apps/web` 作为参考与回退基线）
+
+### 迁移背景
+
+当前方向已经改变：未来主前端不再继续以 `apps/web` 为扩展中心，而是逐步迁移到 `emotion_app/` 这个 React 前端。
+
+但当前阶段有明确边界：
+
+- 不删除旧前端 `apps/web`
+- 旧前端继续作为运行参考实现、行为对照组和回退基线
+- 本轮工作的目标不是重写后端协议，而是让 `emotion_app` 逐步接入现有稳定浏览器契约
+
+### 当前事实基线
+
+- `emotion_app` 是 Create React App 项目
+- 入口简单，主逻辑高度集中在 `emotion_app/src/App.jsx`
+- 当前更接近视觉原型，不是已接入系统的正式客户端
+- 现阶段真正可用的只有语言切换、局部 UI 状态、摄像头预览
+- 麦克风识别、聊天、情绪结果、认证、角色互动大多仍是本地模拟
+- 当前稳定浏览器契约仍以 `apps/api-gateway/main.py`、`docs/shared_contracts.md`、`apps/web/app.js` 为准
+
+### 执行总则
+
+- 一次只做一个可验证的小步骤
+- 每个步骤完成后必须先自检通过，再进入下一步
+- 每一步完成后必须更新 `memory-bank/progress.md`
+- 每一步如果发现新的稳定架构约束，必须更新 `memory-bank/architecture.md`
+- 每一步完成后必须 commit 并 push
+- 禁止使用 `rm` 做粗暴清理；如需回退，优先走 git 回滚路径或先征得用户同意
+- 在迁移完成前，不主动修改 payload 字段名、事件名、导出结构、trace 语义
+
+### 第一执行步骤
+
+第一个执行步骤不是立刻接 API，而是先冻结对 `emotion_app` 的理解，并把迁移计划落到仓库 canonical 文档中：
+
+- 新增 `docs/emotion_app_frontend_understanding.md`
+- 更新 `docs/implementation_plan.md`
+
+其中理解文档至少应覆盖：
+
+- 当前目录结构与构建方式
+- `App.jsx` 的主要功能块
+- 哪些行为是真实的，哪些是模拟的
+- 当前 UI 各区域分别对应未来系统里的什么职责
+- 与 `apps/web` 的能力差距清单
+
+### 必须保留的浏览器/后端契约
+
+迁移期间应保持以下语义稳定：
+
+- `session_id`
+- `trace_id`
+- `message_id`
+- `avatar_id`
+- realtime `event_type` envelope
+- `window.__APP_CONFIG__` 的浏览器配置注入方式或等价兼容层
+- `GET /api/session/{session_id}/state` 的恢复语义
+- `GET /api/session/{session_id}/export` 的导出语义
+- `WS /ws/session/{session_id}` 的实时连接语义
+- 当前 direct-to-service 的 TTS 与 affect 调用方式
+
+### 推荐职责拆分方向
+
+迁移时不要继续把真实业务状态堆在单个 `App.jsx` 中，后续应逐步引入清晰职责边界，例如：
+
+- 页面壳与布局组件
+- 会话状态层
+- API client 层
+- realtime/WebSocket 层
+- media capture 层
+- affect/TTS/avatar 集成层
+- export/replay 层
+
+### 分阶段迁移顺序
+
+#### Phase A：启动与配置兼容
+
+目标：让 `emotion_app` 具备与现有部署方式兼容的启动能力。
+
+范围：
+- 读取运行时配置
+- 确定 API / WS / TTS / affect 基础地址
+- 建立前端自己的最小 bootstrap
+- 保证不依赖旧前端页面才能运行
+
+验证：
+- 新前端能启动并读到实际运行配置
+- 没有把关键地址写死在组件内部
+- 不破坏旧 `apps/web` 的配置方式
+
+#### Phase B：会话创建、恢复、文本闭环
+
+目标：先完成最小可用主链路：会话启动、文本发送、页面展示、刷新恢复。
+
+范围：
+- `POST /api/session/create`
+- `GET /api/session/{session_id}/state`
+- `POST /api/session/{session_id}/text`
+- 当前会话号、状态、阶段展示
+- 本地保存 active session id
+- 刷新后恢复当前会话与历史消息
+
+验证：
+- 可以从新前端创建新会话
+- 发送文本后能收到并渲染用户消息与系统回复
+- 刷新页面后能恢复当前会话
+- 旧会话不会污染新会话状态
+- 对照 `apps/web` 的文本行为，语义一致
+
+#### Phase C：接入 WebSocket 与实时状态
+
+目标：让新前端具备和旧前端同等级的实时连接能力。
+
+范围：
+- `WS /ws/session/{session_id}`
+- `session.connection.ready`
+- `session.heartbeat`
+- `message.accepted`
+- `transcript.partial`
+- `transcript.final`
+- `affect.snapshot`
+- `knowledge.retrieved`
+- `dialogue.reply`
+- `session.error`
+- 心跳、断线重连、状态恢复
+
+验证：
+- 正常建立连接
+- 断线后能恢复
+- 重连后不会重复渲染旧消息
+- 事件按 envelope 正确解析
+- 页面上连接状态清晰可见
+
+#### Phase D：替换麦克风模拟流程，接入真实音频链路
+
+目标：把 `emotion_app` 里当前的模拟 mic 测试替换成真实录音/上传/转写主链路。
+
+范围：
+- 麦克风权限处理
+- 开始/停止录音
+- `POST /api/session/{session_id}/audio/chunk`
+- `POST /api/session/{session_id}/audio/preview`
+- `POST /api/session/{session_id}/audio/finalize`
+- partial transcript / final transcript UI
+- 录音中、识别中、已提交、失败等真实状态展示
+
+验证：
+- 允许与拒绝权限时 UI 都稳定
+- 录音过程中能看到 partial transcript（如果当前链路启用）
+- 停止录音后能得到 final transcript
+- final transcript 会继续进入正常对话链路
+- 不再依赖 `setTimeout` 模拟识别
+
+#### Phase E：把摄像头预览接到真实视频与 affect 链路
+
+目标：保留 `emotion_app` 视觉上较好的摄像头区，但把当前静态/模拟情绪内容换成系统真实结果。
+
+范围：
+- 摄像头权限与预览
+- `POST /api/session/{session_id}/video/frame`
+- affect 调用与面板渲染
+- 把当前静态 emotion card / timeline 映射为真实 affect 数据展示
+- 支持 text/audio/video/fusion lanes 以及 risk/conflict 等信息
+
+验证：
+- 摄像头可开可关
+- 摄像头不可用时不影响文本/语音主链路
+- affect 面板来自真实契约数据，不再只是写死文案
+- 数据字段与 `docs/shared_contracts.md` 一致
+
+#### Phase F：接入 TTS、播放态与 avatar 行为
+
+目标：把当前装饰性角色展示升级成真正参与系统播放状态的前端层。
+
+范围：
+- direct TTS service 调用
+- assistant audio 播放
+- autoplay / replay latest audio
+- avatar 选择与显示
+- 播放开始/结束时的角色状态变化
+- 与当前 `avatar_id` / voice 语义保持一致
+
+验证：
+- assistant reply 可被合成和播放
+- 播放状态能驱动页面角色状态
+- avatar 选择不会破坏 session 语义
+- 播放失败不会打断文本主链路
+
+#### Phase G：补齐导出与回放
+
+目标：在新前端达到完整可演示、可追溯、可回放能力。
+
+范围：
+- `GET /api/session/{session_id}/export`
+- 前端导出缓存
+- 基于 export JSON 的本地 replay
+- 回放模式下的 UI 锁定与状态重建
+
+验证：
+- 可以导出完整会话
+- 导出的 JSON 能在新前端本地回放
+- 回放不依赖 live gateway 再次返回结果
+- 回放不会污染 live session
+
+### 旧前端保留策略
+
+在新前端达到完整 parity 前，`apps/web` 不能直接删。
+
+旧前端当前承担三种角色：
+
+- 当前可运行参考实现
+- 契约与交互语义对照组
+- 新前端出现问题时的回退基线
+
+因此真正的切换时机应当在以下能力全部验证后再单独决策：
+
+- 文本
+- 实时
+- 音频
+- 视频 / affect
+- TTS / avatar
+- export / replay
+
+删除旧前端不属于当前迁移首轮范围。
+
+## 12. 首轮落地后的优化顺序
 
 基础闭环全部通过后，再按以下顺序进入第二轮优化：
 
@@ -519,7 +744,7 @@
 5. 加强高风险识别召回和异常恢复策略。
 6. 补齐压测、演示脚本、答辩图表和模型工程整理。
 
-## 12. 对 AI 开发者的交付要求
+## 13. 对 AI 开发者的交付要求
 
 每一步交付时必须同时提交以下内容：
 
@@ -531,7 +756,7 @@
 
 这样可以确保开发过程始终保持“范围受控、可验证、可回退”。
 
-## 13. 当前数据资产与下一轮迭代要求
+## 14. 当前数据资产与下一轮迭代要求
 
 当前仓库已经具备第一批数据规范资产：
 
