@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify frontend websocket connection, heartbeat, and reconnect against the live gateway."""
+"""Verify frontend websocket connection, heartbeat, reconnect, and missing-session close semantics against the live gateway."""
 
 from __future__ import annotations
 
@@ -122,6 +122,14 @@ def main() -> None:
         raise RuntimeError("frontend did not reconnect after forced socket drop")
     if "reconnect attempt" not in payload["afterReconnect"]["connectionLog"]:
         raise RuntimeError("frontend log did not record reconnect activity")
+    if payload["missingSessionProbe"]["opened"] is not True:
+        raise RuntimeError("missing-session websocket did not complete the websocket handshake")
+    if payload["missingSessionProbe"]["failedAtHandshake"] is not False:
+        raise RuntimeError("missing-session websocket failed during handshake instead of closing after accept")
+    if payload["missingSessionProbe"]["closeCode"] != 4404:
+        raise RuntimeError("missing-session websocket did not close with terminal code 4404")
+    if payload["missingSessionProbe"]["closeReason"] != "session_not_found":
+        raise RuntimeError("missing-session websocket did not close with reason session_not_found")
 
     database_url = resolve_database_url(env)
     with psycopg.connect(database_url, row_factory=dict_row) as conn:
@@ -145,6 +153,7 @@ def main() -> None:
                 "before_create": payload["beforeCreate"],
                 "after_connect": payload["afterConnect"],
                 "after_reconnect": payload["afterReconnect"],
+                "missing_session_probe": payload["missingSessionProbe"],
                 "database_row": dict(row),
             },
             ensure_ascii=False,

@@ -169,6 +169,80 @@ function buildEnvelope(sessionId, traceId, eventType, payload, messageId = null)
   };
 }
 
+function buildMissingSessionProbeUrl(wsUrl) {
+  const baseUrl = typeof wsUrl === "string" ? wsUrl.replace(/\/+$/, "") : "";
+  return `${baseUrl}/session/sess_missing_probe_001?trace_id=trace_missing_probe_001`;
+}
+
+async function runMissingSessionProbe(WebSocketImpl, wsUrl) {
+  return await new Promise((resolve) => {
+    const probe = {
+      url: buildMissingSessionProbeUrl(wsUrl),
+      opened: false,
+      closeCode: null,
+      closeReason: "",
+      failedAtHandshake: false,
+      sawError: false,
+      timedOut: false,
+    };
+    let settled = false;
+    let errorBeforeOpen = false;
+    let timeoutId = null;
+
+    const settle = (overrides = {}) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      resolve({ ...probe, ...overrides });
+    };
+
+    let socket = null;
+    try {
+      socket = new WebSocketImpl(probe.url);
+    } catch (error) {
+      settle({
+        sawError: true,
+        failedAtHandshake: true,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    socket.addEventListener("open", () => {
+      probe.opened = true;
+    });
+
+    socket.addEventListener("error", (event) => {
+      probe.sawError = true;
+      if (!probe.opened) {
+        errorBeforeOpen = true;
+      }
+      if (event && typeof event.message === "string" && event.message) {
+        probe.errorMessage = event.message;
+      }
+    });
+
+    socket.addEventListener("close", (event = {}) => {
+      settle({
+        closeCode: typeof event.code === "number" ? event.code : null,
+        closeReason: typeof event.reason === "string" ? event.reason : "",
+        failedAtHandshake: !probe.opened || errorBeforeOpen,
+      });
+    });
+
+    timeoutId = setTimeout(() => {
+      settle({
+        timedOut: true,
+        failedAtHandshake: !probe.opened || errorBeforeOpen,
+      });
+    }, 5000);
+  });
+}
+
 function createMockWebSocket(closeScenario = "normal") {
   let forcedCloseCount = 0;
 
@@ -183,6 +257,11 @@ function createMockWebSocket(closeScenario = "normal") {
       setTimeout(() => {
         this.readyState = MockWebSocket.OPEN;
         this.emit("open", {});
+        if (this.sessionId === "sess_missing_probe_001") {
+          this.readyState = MockWebSocket.CLOSED;
+          this.emit("close", { code: 4404, reason: "session_not_found" });
+          return;
+        }
         this.emit("message", {
           data: JSON.stringify(
             buildEnvelope(this.sessionId, this.traceId, "session.connection.ready", {
@@ -364,6 +443,7 @@ async function main() {
   );
 
   const afterReconnect = collectSnapshot(runtime.document);
+  const missingSessionProbe = await runMissingSessionProbe(WebSocketImpl, args.wsUrl);
 
   let afterTerminalClose = null;
   if (args.closeScenario === "terminal_missing_session") {
@@ -378,7 +458,7 @@ async function main() {
   }
 
   controller.shutdownForTest();
-  process.stdout.write(`${JSON.stringify({ beforeCreate, afterConnect, afterReconnect, afterTerminalClose }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ beforeCreate, afterConnect, afterReconnect, missingSessionProbe, afterTerminalClose }, null, 2)}\n`);
 }
 
 main().catch((error) => {

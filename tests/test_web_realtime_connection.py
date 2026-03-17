@@ -54,6 +54,16 @@ def test_web_realtime_recovers_after_forced_drop():
     assert "socket connected" in payload["afterReconnect"]["connectionLog"]
 
 
+def test_web_realtime_missing_session_probe_returns_terminal_websocket_close():
+    payload = run_harness()
+
+    assert payload["missingSessionProbe"]["opened"] is True
+    assert payload["missingSessionProbe"]["failedAtHandshake"] is False
+    assert payload["missingSessionProbe"]["closeCode"] == 4404
+    assert payload["missingSessionProbe"]["closeReason"] == "session_not_found"
+    assert payload["missingSessionProbe"]["timedOut"] is False
+
+
 def test_web_realtime_stops_after_terminal_missing_session_close():
     payload = run_harness(close_scenario="terminal_missing_session")
 

@@ -21,6 +21,33 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-17 - emotion_app Phase D realtime audio baseline added
+
+### Scope
+
+emotion_app now replaces the remaining fake microphone flow with the existing gateway raw-audio contract, keeps audio turn completion on websocket realtime events instead of timer simulation, and has user-confirmed local voice self-test evidence that normal complete voice input is working end to end.
+
+### Outputs
+
+- Extended emotion_app/src/index.js runtime config parsing with enableAudioPreview, enableAudioFinalize, and audioPreviewChunkThreshold defaults aligned with apps/web.
+- Added raw-blob audio helpers to emotion_app/src/sessionApi.js for POST /api/session/{session_id}/audio/chunk, /audio/preview, and /audio/finalize without changing gateway contracts.
+- Updated emotion_app/src/App.jsx to require an active session plus connected realtime before recording, request microphone permission, record through MediaRecorder, upload chunks/previews/finalize requests, surface real audio runtime states, and drive partial/final transcript from realtime instead of setTimeout simulation.
+- Expanded emotion_app/src/App.test.js with mocked microphone/audio upload/realtime coverage for successful audio turns, stale recording guards, permission denial, unsupported browser handling, and upload/finalize failures.
+- Updated docs/implementation_plan.md to record that the local voice self-test passed and that Phase E is the next migration slice.
+
+### Checks
+
+- Ran CI=true npm test -- --watch=false src/App.test.js in /home/lyricx/code/virtual_huamn/emotion_app successfully.
+- Ran npm run build in /home/lyricx/code/virtual_huamn/emotion_app successfully.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest tests/test_api_gateway_audio_chunk.py tests/test_api_gateway_audio_preview.py tests/test_api_gateway_audio_finalize.py successfully.
+- Ran UV_CACHE_DIR=.uv-cache uv run pytest tests/test_web_audio_chunk_upload.py tests/test_web_audio_partial_transcript.py tests/test_web_audio_final_transcript.py successfully.
+- User confirmed on 2026-03-17 that local voice self-test passed and emotion_app can now receive normal complete voice input.
+
+### Next
+
+- Begin Phase E by mirroring apps/web camera frame upload and affect refresh/render behavior in emotion_app without changing docs/shared_contracts.md or gateway event semantics.
+- Keep the new audio contract and WS-first audio completion flow stable while the video/affect migration slice lands.
+
 ## 2026-03-17 - emotion_app Phase C realtime text baseline added
 
 ### Scope

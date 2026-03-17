@@ -8,7 +8,10 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
+import pytest
+from starlette.websockets import WebSocketDisconnect
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1014,6 +1017,50 @@ def test_dispatch_pipeline_enqueues_message_accepted_before_llm_reply(monkeypatc
         )
     )
     observed = {"before_llm": []}
+    affect_snapshot = module.AffectAnalyzeResponse(
+        session_id="sess_fake_001",
+        trace_id="trace_fake_001",
+        current_stage="engage",
+        generated_at=datetime.now(timezone.utc),
+        source_context=module.AffectSourceContext(
+            origin="test_dispatch_pipeline_enqueues_message_accepted_before_llm_reply",
+            dataset="test",
+            record_id="record_test_001",
+            note="test affect snapshot",
+        ),
+        text_result=module.AffectLaneResult(
+            status="ready",
+            label="calm",
+            confidence=0.6,
+            evidence=[],
+            detail="text lane",
+        ),
+        audio_result=module.AffectLaneResult(
+            status="pending",
+            label="pending",
+            confidence=0.0,
+            evidence=[],
+            detail="audio lane",
+        ),
+        video_result=module.AffectLaneResult(
+            status="pending",
+            label="pending",
+            confidence=0.0,
+            evidence=[],
+            detail="video lane",
+        ),
+        fusion_result=module.AffectFusionResult(
+            emotion_state="calm",
+            risk_level="low",
+            confidence=0.6,
+            conflict=False,
+            conflict_reason="",
+            detail="fusion lane",
+        ),
+    )
+
+    def fake_request_affect_snapshot(settings, session, message):
+        return affect_snapshot
 
     def fake_request_dialogue_reply(
         settings,
@@ -1043,6 +1090,7 @@ def test_dispatch_pipeline_enqueues_message_accepted_before_llm_reply(monkeypatc
         return func(*args, **kwargs)
 
     monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_affect_snapshot", fake_request_affect_snapshot)
     monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
 
     asyncio.run(
@@ -1064,7 +1112,7 @@ def test_dispatch_pipeline_enqueues_message_accepted_before_llm_reply(monkeypatc
                     "role": "user",
                     "status": "accepted",
                     "source_kind": "text",
-                    "content_text": "最近总觉得脑子停不下来。",
+                    "content_text": "帮我梳理一下今天的重点。",
                     "submitted_at": "2026-03-07T14:01:00Z",
                 },
             },
@@ -2022,6 +2070,39 @@ def test_gateway_app_and_readme_document_endpoints():
     assert "GET /api/session/{session_id}/export" in content
     assert "POST /api/session/{session_id}/text" in content
     assert "uvicorn" in content
+
+
+def test_missing_session_websocket_closes_with_terminal_code():
+    module = load_gateway_module()
+
+    class MissingSessionRepository(FakeSessionRepository):
+        def get_session_summary(self, session_id: str):
+            return None
+
+    app = module.create_app(repository=MissingSessionRepository())
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/session/sess_missing_001") as websocket:
+            with pytest.raises(WebSocketDisconnect) as exc_info:
+                websocket.receive_json()
+
+    assert exc_info.value.code == 4404
+    assert exc_info.value.reason == "session_not_found"
+    assert app.state.connection_registry._connections.get("sess_missing_001") is None
+
+
+def test_valid_session_websocket_emits_connection_ready_event():
+    module = load_gateway_module()
+    app = module.create_app(repository=FakeSessionRepository())
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/session/sess_fake_001") as websocket:
+            envelope = websocket.receive_json()
+
+    assert envelope["event_type"] == "session.connection.ready"
+    assert envelope["session_id"] == "sess_fake_001"
+    assert envelope["trace_id"] == "trace_fake_001"
+    assert envelope["payload"]["connection_status"] == "connected"
+    assert envelope["payload"]["reconnectable"] is True
 
 
 def test_gateway_event_envelope_matches_shared_shape():

@@ -63,6 +63,17 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-17 - emotion_app Phase D audio should stay on the existing raw-blob plus realtime contract
+
+- emotion_app audio capture should only start when an active session exists and websocket realtime is connected; the React migration does not introduce a local-only recording path detached from the gateway session contract.
+- The frontend should mirror apps/web by sending raw Blob bodies to POST /api/session/{session_id}/audio/chunk, /audio/preview, and /audio/finalize with the existing query parameters; do not switch this path to multipart or invent new browser/backend payload shapes.
+- transcript.partial remains preview-only and must be stale-guarded by recording_id plus preview_seq, while message.accepted with source_kind=audio and the following dialogue.reply remain the authoritative completion path for an audio turn.
+
+## 2026-03-17 - emotion_app Phase E should layer real video upload and affect refresh onto the existing preview shell
+
+- emotion_app already has real getUserMedia camera preview and inbound affect.snapshot handling, so the next migration slice should add apps/web-style frame capture/upload plus affect refresh behavior instead of rewriting session, realtime, or audio flows.
+- The authoritative parity reference remains apps/web/app.js state and contract behavior: camera permission, video upload state, POST /api/session/{session_id}/video/frame, and text/audio/video/fusion affect lanes should be mirrored without changing docs/shared_contracts.md or gateway envelope names.
+
 ## 2026-03-17 - emotion_app Phase C text realtime should stay WS-first with state fallback
 
 - emotion_app text turns should keep POST /api/session/{session_id}/text as the submit boundary but treat websocket message.accepted and dialogue.reply as the normal completion path; GET /api/session/{session_id}/state remains the authority for restore and only a narrow reconnect catch-up fallback.

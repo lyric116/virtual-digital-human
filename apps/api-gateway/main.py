@@ -3635,13 +3635,13 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
     @app.websocket("/ws/session/{session_id}")
     async def session_realtime(websocket: WebSocket, session_id: str) -> None:
         repository = websocket.app.state.session_repository
+        await websocket.accept()
         session = repository.get_session_summary(session_id)
         if session is None:
             await websocket.close(code=4404, reason="session_not_found")
             return
 
         registry: ConnectionRegistry = websocket.app.state.connection_registry
-        await websocket.accept()
         await registry.add(session_id, websocket)
         await websocket.send_json(
             build_event_envelope(
