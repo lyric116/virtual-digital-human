@@ -14,8 +14,10 @@ import {
   requestAudioFinalize,
   requestAudioPreview,
   requestAffectAnalysis,
+  requestRuntimeEvent,
   requestSession,
   requestSessionState,
+  requestTTSSynthesis,
   requestTextMessage,
   requestVideoFrameUpload,
   writeStoredSessionId,
@@ -746,6 +748,218 @@ function createRecordingId() {
   return `rec_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
 }
 
+const dialogueStages = new Set(['engage', 'assess', 'intervene', 'reassess', 'handoff']);
+const dialogueRiskLevels = new Set(['low', 'medium', 'high']);
+const avatarProfiles = {
+  companion_female_01: {
+    avatarId: 'companion_female_01',
+    profileId: 'companion',
+    label: '陪伴角色 A',
+    meta: '温和、稳定、陪你慢慢说',
+    stageNote: '更适合温和接住情绪、慢慢展开对话。',
+    idleDetail: '陪伴角色已准备好开始回应。',
+    speakingDetail: '陪伴角色正在温和回应。',
+    voicePreview: 'zh-CN-XiaoxiaoNeural',
+  },
+  coach_male_01: {
+    avatarId: 'coach_male_01',
+    profileId: 'coach',
+    label: '引导角色 B',
+    meta: '帮助梳理重点，陪你往下走',
+    stageNote: '更适合帮助梳理重点，带着你往下一步走。',
+    idleDetail: '引导角色已准备好继续对话。',
+    speakingDetail: '引导角色正在给出更清晰的建议。',
+    voicePreview: 'zh-CN-YunxiNeural',
+  },
+};
+
+const avatarExpressionPresets = {
+  ready_idle: {
+    presetId: 'ready_idle',
+    label: 'ready_idle',
+    detail: '当前保持平稳自然的待机表情。',
+    valence: 0.12,
+    arousal: 0.04,
+  },
+  open_warm: {
+    presetId: 'open_warm',
+    label: 'open_warm',
+    detail: '建立联系阶段保持开放和低压，表情轻微上扬。',
+    valence: 0.38,
+    arousal: 0.16,
+  },
+  focused_assess: {
+    presetId: 'focused_assess',
+    label: 'focused_assess',
+    detail: '评估阶段收敛动作，表情更专注，方便继续追问。',
+    valence: 0.08,
+    arousal: 0.1,
+  },
+  steady_support: {
+    presetId: 'steady_support',
+    label: 'steady_support',
+    detail: '干预阶段保持稳定支持，动作柔和，不做夸张变化。',
+    valence: 0.24,
+    arousal: 0.14,
+  },
+  calm_checkin: {
+    presetId: 'calm_checkin',
+    label: 'calm_checkin',
+    detail: '再评估阶段回到中性稳定，观察用户反馈变化。',
+    valence: 0.16,
+    arousal: 0.08,
+  },
+  guarded_handoff: {
+    presetId: 'guarded_handoff',
+    label: 'guarded_handoff',
+    detail: '高风险或 handoff 阶段降低轻快感，保持严肃和稳定。',
+    valence: -0.08,
+    arousal: 0.12,
+  },
+};
+
+function resolveAvatarId(candidateAvatarId, fallbackAvatarId = 'companion_female_01') {
+  if (typeof candidateAvatarId === 'string' && avatarProfiles[candidateAvatarId]) {
+    return candidateAvatarId;
+  }
+  if (typeof fallbackAvatarId === 'string' && avatarProfiles[fallbackAvatarId]) {
+    return fallbackAvatarId;
+  }
+  return 'companion_female_01';
+}
+
+function getAvatarProfile(candidateAvatarId, fallbackAvatarId = 'companion_female_01') {
+  return avatarProfiles[resolveAvatarId(candidateAvatarId, fallbackAvatarId)];
+}
+
+function normalizeEmotionLabel(value) {
+  if (typeof value !== 'string') {
+    return 'pending';
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized || 'pending';
+}
+
+function resolveAvatarExpressionPreset({ stage, riskLevel, emotion }) {
+  const currentStage = dialogueStages.has(stage) ? stage : 'idle';
+  const currentRiskLevel = dialogueRiskLevels.has(riskLevel) ? riskLevel : 'low';
+  const currentEmotion = normalizeEmotionLabel(emotion);
+
+  if (currentStage === 'idle' || currentEmotion === 'pending') {
+    return avatarExpressionPresets.ready_idle;
+  }
+  if (currentRiskLevel === 'high' || currentStage === 'handoff') {
+    return avatarExpressionPresets.guarded_handoff;
+  }
+  if (currentStage === 'reassess') {
+    return avatarExpressionPresets.calm_checkin;
+  }
+  if (currentStage === 'intervene') {
+    return avatarExpressionPresets.steady_support;
+  }
+  if (currentStage === 'assess') {
+    return avatarExpressionPresets.focused_assess;
+  }
+  if (currentEmotion.includes('distress') || currentEmotion.includes('anxious')) {
+    return avatarExpressionPresets.open_warm;
+  }
+  return avatarExpressionPresets.open_warm;
+}
+
+function resolvePlayableTtsAudioUrl(audioUrl, appConfig) {
+  if (typeof audioUrl !== 'string' || !audioUrl.trim()) {
+    return null;
+  }
+  const normalized = audioUrl.trim();
+  if (normalized.startsWith('data:') || normalized.startsWith('blob:')) {
+    return normalized;
+  }
+
+  try {
+    const publicBaseUrl = new URL(appConfig.ttsBaseUrl);
+    const candidateUrl = new URL(normalized, publicBaseUrl);
+    const internalHosts = new Set(['tts-service', '0.0.0.0', '::']);
+    if (
+      candidateUrl.pathname.startsWith('/media/tts/')
+      && internalHosts.has(candidateUrl.hostname.toLowerCase())
+    ) {
+      return new URL(
+        `${candidateUrl.pathname}${candidateUrl.search}${candidateUrl.hash}`,
+        publicBaseUrl,
+      ).toString();
+    }
+    return candidateUrl.toString();
+  } catch (error) {
+    return normalized;
+  }
+}
+
+function sameAudioSource(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+  try {
+    return new URL(left).toString() === new URL(right).toString();
+  } catch (error) {
+    return left === right;
+  }
+}
+
+function getAudioPlaybackRetryMessage(error) {
+  const rawMessage = error instanceof Error ? error.message : String(error || '');
+  const normalized = rawMessage.toLowerCase();
+  if (normalized.includes('supported source')) {
+    return '语音资源已生成，但浏览器未能加载音频资源，可点击重播语音重试。';
+  }
+  if (normalized.includes("user didn't interact") || normalized.includes('notallowederror')) {
+    return '语音资源已生成，但浏览器拦截了自动播放，可点击重播语音继续。';
+  }
+  return '语音资源已生成，但当前未能开始播放，可点击重播语音重试。';
+}
+
+function buildMouthCueSequence(text, durationMs) {
+  const safeDurationMs = Math.max(1200, durationMs || 0);
+  const characters = Array.from(String(text || '').trim());
+  if (!characters.length) {
+    return [{ startMs: 0, endMs: safeDurationMs, mouthState: 'closed' }];
+  }
+
+  const visibleCharacters = characters.filter((character) => !/\s/.test(character));
+  const cueCharacters = visibleCharacters.length ? visibleCharacters : characters;
+  const stepMs = Math.max(90, Math.min(220, Math.floor(safeDurationMs / Math.max(cueCharacters.length, 1))));
+  const cues = [];
+  let cursorMs = 0;
+
+  cueCharacters.forEach((character, index) => {
+    const codePoint = character.codePointAt(0) || 0;
+    const isPause = /[，。！？,.!?、；;：:]/.test(character);
+    let mouthState = 'closed';
+    if (!isPause) {
+      const variant = (codePoint + index) % 3;
+      mouthState = variant === 0 ? 'small' : variant === 1 ? 'wide' : 'round';
+    }
+
+    cues.push({
+      startMs: cursorMs,
+      endMs: Math.min(safeDurationMs, cursorMs + stepMs),
+      mouthState,
+    });
+    cursorMs += stepMs;
+  });
+
+  if (!cues.length || cues[cues.length - 1].mouthState !== 'closed') {
+    cues.push({
+      startMs: Math.min(cursorMs, safeDurationMs),
+      endMs: safeDurationMs,
+      mouthState: 'closed',
+    });
+  } else {
+    cues[cues.length - 1].endMs = safeDurationMs;
+  }
+
+  return cues;
+}
+
 export default function App({ appConfig }) {
   // 语言状态管理
   const [lang, setLang] = useState('zh');
@@ -808,6 +1022,17 @@ export default function App({ appConfig }) {
   const [affectSnapshot, setAffectSnapshot] = useState(createInitialAffectSnapshot);
   const [affectHistory, setAffectHistory] = useState([]);
   const [knowledgeState, setKnowledgeState] = useState(createInitialKnowledgeState);
+  const [selectedAvatarId, setSelectedAvatarId] = useState(() => resolveAvatarId(appConfig?.defaultAvatarId));
+  const [sessionAvatarId, setSessionAvatarId] = useState(null);
+  const [ttsPlaybackState, setTtsPlaybackState] = useState('idle');
+  const [ttsPlaybackMessage, setTtsPlaybackMessage] = useState('');
+  const [ttsAudioUrl, setTtsAudioUrl] = useState(null);
+  const [ttsAudioFormat, setTtsAudioFormat] = useState('pending');
+  const [ttsVoiceId, setTtsVoiceId] = useState('pending');
+  const [ttsDurationMs, setTtsDurationMs] = useState(0);
+  const [ttsGeneratedAt, setTtsGeneratedAt] = useState(null);
+  const [ttsMessageId, setTtsMessageId] = useState(null);
+  const [avatarMouthState, setAvatarMouthState] = useState('closed');
 
   const socketRef = useRef(null);
   const heartbeatTimerRef = useRef(null);
@@ -851,6 +1076,15 @@ export default function App({ appConfig }) {
   const affectRefreshTimerRef = useRef(null);
   const affectSnapshotTimestampRef = useRef(0);
   const pendingSessionAffectReasonRef = useRef(null);
+  const assistantAudioRef = useRef(null);
+  const ttsRequestTokenRef = useRef(0);
+  const avatarMouthTimerRef = useRef(null);
+  const avatarMouthCueSequenceRef = useRef([]);
+  const avatarMouthPlaybackStartedAtRef = useRef(null);
+  const ttsMessageIdRef = useRef(null);
+  const ttsAudioUrlRef = useRef(null);
+  const ttsPlaybackStateRef = useRef(ttsPlaybackState);
+  const synthesizeAssistantAudioRef = useRef(null);
 
   const runtimeConfig = useMemo(
     () => ({
@@ -858,7 +1092,7 @@ export default function App({ appConfig }) {
       wsUrl: appConfig?.wsUrl || 'ws://127.0.0.1:8000/ws',
       ttsBaseUrl: appConfig?.ttsBaseUrl || 'http://127.0.0.1:8040',
       affectBaseUrl: appConfig?.affectBaseUrl || 'http://127.0.0.1:8060',
-      defaultAvatarId: appConfig?.defaultAvatarId || 'companion_female_01',
+      defaultAvatarId: resolveAvatarId(appConfig?.defaultAvatarId),
       activeSessionStorageKey:
         appConfig?.activeSessionStorageKey || 'virtual-human-active-session-id',
       exportCacheStorageKey:
@@ -881,10 +1115,45 @@ export default function App({ appConfig }) {
         Number.isFinite(Number(appConfig?.videoFrameUploadIntervalMs)) && Number(appConfig?.videoFrameUploadIntervalMs) > 0
           ? Number(appConfig.videoFrameUploadIntervalMs)
           : 1800,
+      autoplayAssistantAudio: appConfig?.autoplayAssistantAudio !== false,
       sourceLabel: appConfig?.sourceLabel || 'built-in defaults',
     }),
     [appConfig],
   );
+
+  const effectiveAvatarId = sessionAvatarId
+    ? resolveAvatarId(sessionAvatarId, runtimeConfig.defaultAvatarId)
+    : resolveAvatarId(selectedAvatarId, runtimeConfig.defaultAvatarId);
+  const effectiveAvatarProfile = getAvatarProfile(effectiveAvatarId, runtimeConfig.defaultAvatarId);
+  const latestAssistantReplyMetadata = useMemo(() => {
+    const messages = Array.isArray(sessionState?.messages) ? sessionState.messages : [];
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const candidateMessage = messages[index];
+      if (
+        candidateMessage?.role === 'assistant'
+        && candidateMessage.metadata
+        && typeof candidateMessage.metadata === 'object'
+      ) {
+        return candidateMessage.metadata;
+      }
+    }
+    return {};
+  }, [sessionState]);
+  const currentAvatarStage = dialogueStages.has(sessionState?.session?.stage)
+    ? sessionState.session.stage
+    : latestAssistantReplyMetadata.stage;
+  const currentAvatarRiskLevel = dialogueRiskLevels.has(latestAssistantReplyMetadata.risk_level)
+    ? latestAssistantReplyMetadata.risk_level
+    : affectSnapshot.fusion.riskLevel;
+  const currentAvatarEmotion = normalizeEmotionLabel(latestAssistantReplyMetadata.emotion) !== 'pending'
+    ? latestAssistantReplyMetadata.emotion
+    : affectSnapshot.fusion.emotionState;
+  const currentAvatarStageLabel = currentAvatarStage || affectSnapshot.currentStage || 'idle';
+  const currentAvatarExpressionPreset = resolveAvatarExpressionPreset({
+    stage: currentAvatarStageLabel,
+    riskLevel: currentAvatarRiskLevel,
+    emotion: currentAvatarEmotion,
+  });
 
   const activeSessionId = sessionState?.session?.session_id || null;
   const activeTraceId = sessionState?.session?.trace_id || null;
@@ -909,6 +1178,62 @@ export default function App({ appConfig }) {
       affectRefreshTimerRef.current = null;
     }
   }, []);
+
+  const clearAvatarMouthTimer = useCallback(() => {
+    if (avatarMouthTimerRef.current) {
+      window.clearInterval(avatarMouthTimerRef.current);
+      avatarMouthTimerRef.current = null;
+    }
+  }, []);
+
+  const stopAvatarMouthAnimation = useCallback(() => {
+    clearAvatarMouthTimer();
+    avatarMouthPlaybackStartedAtRef.current = null;
+    avatarMouthCueSequenceRef.current = [];
+    setAvatarMouthState('closed');
+  }, [clearAvatarMouthTimer]);
+
+  const updateAvatarMouthFromElapsed = useCallback((elapsedMs) => {
+    const cues = avatarMouthCueSequenceRef.current;
+    if (!cues.length) {
+      setAvatarMouthState('closed');
+      return;
+    }
+    const activeCue = cues.find((cue) => elapsedMs >= cue.startMs && elapsedMs < cue.endMs) || cues[cues.length - 1];
+    setAvatarMouthState(activeCue?.mouthState || 'closed');
+  }, []);
+
+  const startAvatarMouthAnimation = useCallback(() => {
+    clearAvatarMouthTimer();
+    avatarMouthPlaybackStartedAtRef.current = Date.now();
+    updateAvatarMouthFromElapsed(0);
+    avatarMouthTimerRef.current = window.setInterval(() => {
+      const startedAt = avatarMouthPlaybackStartedAtRef.current || Date.now();
+      updateAvatarMouthFromElapsed(Math.max(0, Date.now() - startedAt));
+    }, 90);
+  }, [clearAvatarMouthTimer, updateAvatarMouthFromElapsed]);
+
+  const stopAssistantAudioPlayback = useCallback(() => {
+    stopAvatarMouthAnimation();
+    const audioElement = assistantAudioRef.current;
+    if (!audioElement) {
+      return;
+    }
+    try {
+      if (typeof audioElement.pause === 'function') {
+        audioElement.pause();
+      }
+    } catch (error) {
+      // Ignore teardown races.
+    }
+    if ('currentTime' in audioElement) {
+      try {
+        audioElement.currentTime = 0;
+      } catch (error) {
+        // Ignore currentTime reset races.
+      }
+    }
+  }, [stopAvatarMouthAnimation]);
 
   const teardownCamera = useCallback((stopTracks = true) => {
     clearCameraFrameTimer();
@@ -1149,11 +1474,19 @@ export default function App({ appConfig }) {
     const nextSessionId = normalizedPayload?.session?.session_id || null;
     const nextMessages = normalizedPayload.messages;
     const nextUserMessageCount = nextMessages.filter((message) => message?.role === 'user').length;
+    const nextSessionAvatarId = resolveAvatarId(
+      normalizedPayload?.session?.avatar_id,
+      runtimeConfig.defaultAvatarId,
+    );
 
     autoRestoreAttemptedRef.current = true;
     shouldRecoverOnNextConnectRef.current = false;
     sessionStateRef.current = normalizedPayload;
+    sessionAvatarId && stopAssistantAudioPlayback();
+    ttsRequestTokenRef.current += 1;
     setSessionState(normalizedPayload);
+    setSessionAvatarId(nextSessionAvatarId);
+    setSelectedAvatarId(nextSessionAvatarId);
     setSessionErrorMessage('');
     setSessionStatusMessage(statusMessage || t.sessionReady);
     pendingMessageIdRef.current = null;
@@ -1172,20 +1505,31 @@ export default function App({ appConfig }) {
     setAffectSnapshot(createInitialAffectSnapshot());
     setAffectHistory([]);
     setKnowledgeState(createInitialKnowledgeState());
+    setTtsPlaybackState('idle');
+    setTtsPlaybackMessage('');
+    setTtsAudioUrl(null);
+    setTtsAudioFormat('pending');
+    setTtsVoiceId('pending');
+    setTtsDurationMs(0);
+    setTtsGeneratedAt(null);
+    setTtsMessageId(null);
+    setAvatarMouthState('closed');
 
     if (nextSessionId) {
       writeStoredSessionId(runtimeConfig.activeSessionStorageKey, nextSessionId);
-    }
-    if (nextSessionId) {
       scheduleAffectRefresh('session_snapshot_applied', 40);
     }
-  }, [runtimeConfig.activeSessionStorageKey, scheduleAffectRefresh, t.sessionReady]);
+  }, [runtimeConfig.activeSessionStorageKey, runtimeConfig.defaultAvatarId, scheduleAffectRefresh, sessionAvatarId, stopAssistantAudioPlayback, t.sessionReady]);
 
   const recoverInFlightTurnFromState = useCallback((payload) => {
     const normalizedPayload = normalizeSessionStatePayload(payload);
     const nextSessionId = normalizedPayload?.session?.session_id || null;
     const nextMessages = normalizedPayload.messages;
     const nextUserMessageCount = nextMessages.filter((message) => message?.role === 'user').length;
+    const nextSessionAvatarId = resolveAvatarId(
+      normalizedPayload?.session?.avatar_id,
+      runtimeConfig.defaultAvatarId,
+    );
     const currentTurnState = textSubmitStateRef.current;
     const expectedPendingMessageId = pendingMessageIdRef.current;
     const acceptedIndex = expectedPendingMessageId
@@ -1208,6 +1552,7 @@ export default function App({ appConfig }) {
     shouldRecoverOnNextConnectRef.current = false;
     sessionStateRef.current = normalizedPayload;
     setSessionState(normalizedPayload);
+    setSessionAvatarId(nextSessionAvatarId);
     setStoredSessionId(nextSessionId);
     setClientSeq(nextUserMessageCount + 1);
     setSessionErrorMessage('');
@@ -1265,7 +1610,7 @@ export default function App({ appConfig }) {
     setTextSubmitState('idle');
     setDialogueReplyState('idle');
     setSessionStatusMessage(t.sessionReady);
-  }, [runtimeConfig.activeSessionStorageKey, t.sessionReady, t.sessionSubmitSuccess, t.sessionSubmitting]);
+  }, [runtimeConfig.activeSessionStorageKey, runtimeConfig.defaultAvatarId, t.sessionReady, t.sessionSubmitSuccess, t.sessionSubmitting]);
 
   const clearHeartbeatTimer = useCallback(() => {
     if (heartbeatTimerRef.current) {
@@ -1316,8 +1661,11 @@ export default function App({ appConfig }) {
     connectionStatusRef.current = nextConnectionStatus;
     pendingVideoUploadsRef.current = 0;
     pendingSessionAffectReasonRef.current = null;
+    ttsRequestTokenRef.current += 1;
+    stopAssistantAudioPlayback();
     setStoredSessionId(null);
     setSessionState(null);
+    setSessionAvatarId(null);
     setSessionRequestState(nextSessionRequestState);
     setSessionErrorMessage(nextSessionErrorMessage);
     setSessionStatusMessage(nextSessionStatusMessage);
@@ -1333,6 +1681,15 @@ export default function App({ appConfig }) {
     setAffectSnapshot(createInitialAffectSnapshot());
     setAffectHistory([]);
     setKnowledgeState(createInitialKnowledgeState());
+    setTtsPlaybackState('idle');
+    setTtsPlaybackMessage('');
+    setTtsAudioUrl(null);
+    setTtsAudioFormat('pending');
+    setTtsVoiceId('pending');
+    setTtsDurationMs(0);
+    setTtsGeneratedAt(null);
+    setTtsMessageId(null);
+    setAvatarMouthState('closed');
     setCameraPermissionState('idle');
     setCameraPermissionMessage('');
     setCameraState('idle');
@@ -1344,7 +1701,7 @@ export default function App({ appConfig }) {
     setLastVideoUploadedAt(null);
     setNextVideoFrameSeq(1);
     setIsCameraModalOpen(false);
-  }, [clearAffectRefreshTimer, runtimeConfig.activeSessionStorageKey, t.sessionIdle, teardownCamera, teardownMicrophone, teardownRealtime]);
+  }, [clearAffectRefreshTimer, runtimeConfig.activeSessionStorageKey, stopAssistantAudioPlayback, t.sessionIdle, teardownCamera, teardownMicrophone, teardownRealtime]);
 
   const restoreSession = useCallback(async (targetSessionId) => {
     if (!targetSessionId) {
@@ -1434,6 +1791,18 @@ export default function App({ appConfig }) {
     }
     scheduleAffectRefresh(pendingSessionAffectReasonRef.current, 40);
   }, [activeSessionId, scheduleAffectRefresh]);
+
+  useEffect(() => {
+    ttsPlaybackStateRef.current = ttsPlaybackState;
+  }, [ttsPlaybackState]);
+
+  useEffect(() => {
+    ttsMessageIdRef.current = ttsMessageId;
+  }, [ttsMessageId]);
+
+  useEffect(() => {
+    ttsAudioUrlRef.current = ttsAudioUrl;
+  }, [ttsAudioUrl]);
 
   useEffect(() => {
     pendingMessageIdRef.current = pendingMessageId;
@@ -1683,6 +2052,7 @@ export default function App({ appConfig }) {
           ? envelope.payload.knowledge_refs.filter((item) => typeof item === 'string' && item.trim())
           : previousState.groundedRefs,
       }));
+      void synthesizeAssistantAudioRef.current?.(envelope.payload || null);
       return;
     }
 
@@ -1812,7 +2182,8 @@ export default function App({ appConfig }) {
     teardownMicrophone();
     teardownCamera(true);
     clearAffectRefreshTimer();
-  }, [clearAffectRefreshTimer, teardownCamera, teardownMicrophone]);
+    stopAssistantAudioPlayback();
+  }, [clearAffectRefreshTimer, stopAssistantAudioPlayback, teardownCamera, teardownMicrophone]);
 
   useEffect(() => {
     if (!activeSessionId || !activeTraceId) {
@@ -1820,6 +2191,7 @@ export default function App({ appConfig }) {
       teardownMicrophone();
       teardownCamera(true);
       clearAffectRefreshTimer();
+      stopAssistantAudioPlayback();
       setLastHeartbeatAt(null);
       if (typeof window?.WebSocket === 'function') {
         if (connectionStatusRef.current === 'closed') {
@@ -1839,7 +2211,7 @@ export default function App({ appConfig }) {
     return () => {
       teardownRealtime(true);
     };
-  }, [activeSessionId, activeTraceId, clearAffectRefreshTimer, connectRealtime, teardownCamera, teardownMicrophone, teardownRealtime]);
+  }, [activeSessionId, activeTraceId, clearAffectRefreshTimer, connectRealtime, stopAssistantAudioPlayback, teardownCamera, teardownMicrophone, teardownRealtime]);
 
   useEffect(() => {
     let index = 0;
@@ -2412,13 +2784,256 @@ export default function App({ appConfig }) {
     }
   }, [cameraPermissionState, cameraState, isCameraModalOpen]);
 
+  const logRuntimeEvent = useCallback(async (eventType, payload, messageId) => {
+    if (!activeSessionId) {
+      return null;
+    }
+    try {
+      return await requestRuntimeEvent(runtimeConfig.apiBaseUrl, activeSessionId, {
+        event_type: eventType,
+        message_id: messageId || null,
+        payload,
+      });
+    } catch (error) {
+      return null;
+    }
+  }, [activeSessionId, runtimeConfig.apiBaseUrl]);
+
+  const replayAssistantAudio = useCallback(async (overrideAudioUrl = null) => {
+    const currentAudioUrl = overrideAudioUrl || ttsAudioUrlRef.current || ttsAudioUrl;
+    if (!currentAudioUrl || !assistantAudioRef.current || typeof assistantAudioRef.current.play !== 'function') {
+      setTtsPlaybackState('error');
+      setTtsPlaybackMessage('当前环境不支持语音播放。');
+      return false;
+    }
+
+    try {
+      if (assistantAudioRef.current.src !== currentAudioUrl) {
+        assistantAudioRef.current.src = currentAudioUrl;
+        if (typeof assistantAudioRef.current.load === 'function') {
+          assistantAudioRef.current.load();
+        }
+      }
+      const playResult = assistantAudioRef.current.play();
+      if (playResult && typeof playResult.then === 'function') {
+        await playResult;
+      }
+      return true;
+    } catch (error) {
+      setTtsPlaybackState('ready');
+      setTtsPlaybackMessage(getAudioPlaybackRetryMessage(error));
+      return false;
+    }
+  }, [ttsAudioUrl]);
+
+  const synthesizeAssistantAudio = useCallback(async (replyPayload) => {
+    const replyText = typeof replyPayload?.reply === 'string' ? replyPayload.reply.trim() : '';
+    if (!replyText || !activeSessionId) {
+      return;
+    }
+
+    const requestToken = ttsRequestTokenRef.current + 1;
+    ttsRequestTokenRef.current = requestToken;
+    stopAssistantAudioPlayback();
+    setTtsPlaybackState('synthesizing');
+    setTtsPlaybackMessage('正在合成语音。');
+    setTtsAudioUrl(null);
+    setTtsAudioFormat('pending');
+    setTtsVoiceId('pending');
+    setTtsDurationMs(0);
+    setTtsGeneratedAt(null);
+    setTtsMessageId(typeof replyPayload.message_id === 'string' ? replyPayload.message_id : null);
+    setAvatarMouthState('closed');
+    avatarMouthCueSequenceRef.current = [];
+
+    try {
+      const payload = await requestTTSSynthesis(runtimeConfig.ttsBaseUrl, {
+        text: replyText,
+        voice_id: effectiveAvatarId,
+        session_id: activeSessionId,
+        trace_id: replyPayload.trace_id || activeTraceId,
+        message_id: replyPayload.message_id,
+        subtitle: replyText,
+      });
+
+      if (requestToken !== ttsRequestTokenRef.current) {
+        return;
+      }
+
+      const normalizedAudioUrl = resolvePlayableTtsAudioUrl(payload.audio_url, runtimeConfig);
+      const nextDurationMs = typeof payload.duration_ms === 'number' ? payload.duration_ms : 0;
+      const nextVoiceId = payload.voice_id || effectiveAvatarProfile.voicePreview;
+      const subtitle = payload.subtitle || replyText;
+      avatarMouthCueSequenceRef.current = buildMouthCueSequence(subtitle, nextDurationMs);
+      ttsAudioUrlRef.current = normalizedAudioUrl;
+      setTtsAudioUrl(normalizedAudioUrl);
+      setTtsAudioFormat(payload.audio_format || 'pending');
+      setTtsVoiceId(nextVoiceId);
+      setTtsDurationMs(nextDurationMs);
+      setTtsGeneratedAt(payload.generated_at || new Date().toISOString());
+      setTtsPlaybackState('ready');
+      setTtsPlaybackMessage('语音已生成，准备播放。');
+      await logRuntimeEvent(
+        'tts.synthesized',
+        {
+          tts_id: payload.tts_id || null,
+          voice_id: payload.voice_id || null,
+          audio_format: payload.audio_format || null,
+          duration_ms: nextDurationMs || null,
+          provider_used: payload.provider_used || null,
+          avatar_id: effectiveAvatarId,
+          stage: currentAvatarStageLabel,
+          risk_level: currentAvatarRiskLevel,
+          emotion: currentAvatarEmotion,
+        },
+        replyPayload.message_id,
+      );
+
+      if (normalizedAudioUrl && runtimeConfig.autoplayAssistantAudio) {
+        if (assistantAudioRef.current && typeof assistantAudioRef.current.load === 'function') {
+          assistantAudioRef.current.src = normalizedAudioUrl;
+          assistantAudioRef.current.load();
+        }
+        await replayAssistantAudio(normalizedAudioUrl);
+      }
+    } catch (error) {
+      if (requestToken !== ttsRequestTokenRef.current) {
+        return;
+      }
+      setTtsPlaybackState('error');
+      setTtsPlaybackMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [activeSessionId, activeTraceId, currentAvatarEmotion, currentAvatarRiskLevel, currentAvatarStageLabel, effectiveAvatarId, effectiveAvatarProfile.voicePreview, logRuntimeEvent, replayAssistantAudio, runtimeConfig, stopAssistantAudioPlayback]);
+
+  useEffect(() => {
+    synthesizeAssistantAudioRef.current = synthesizeAssistantAudio;
+  }, [synthesizeAssistantAudio]);
+
+  useEffect(() => {
+    const audioElement = assistantAudioRef.current;
+    if (!audioElement) {
+      return undefined;
+    }
+
+    const handlePlay = () => {
+      setTtsPlaybackState('playing');
+      setTtsPlaybackMessage('数字人语音播放中。');
+      startAvatarMouthAnimation();
+      void logRuntimeEvent(
+        'tts.playback.started',
+        {
+          avatar_id: effectiveAvatarId,
+          voice_id: ttsVoiceId,
+          duration_ms: ttsDurationMs,
+          audio_format: ttsAudioFormat,
+        },
+        ttsMessageIdRef.current,
+      );
+      void logRuntimeEvent(
+        'avatar.command',
+        {
+          session_id: activeSessionId,
+          trace_id: activeTraceId,
+          message_id: ttsMessageIdRef.current,
+          avatar_id: effectiveAvatarId,
+          audio_url: ttsAudioUrlRef.current,
+          tts_voice_id: ttsVoiceId,
+          expression: {
+            preset_id: currentAvatarExpressionPreset.presetId,
+            label: currentAvatarExpressionPreset.label,
+            valence: currentAvatarExpressionPreset.valence,
+            arousal: currentAvatarExpressionPreset.arousal,
+          },
+          source_stage: currentAvatarStageLabel,
+          source_risk_level: currentAvatarRiskLevel,
+          duration_ms: ttsDurationMs,
+          command: 'speak',
+          mouth_state: avatarMouthState,
+        },
+        ttsMessageIdRef.current,
+      );
+    };
+
+    const handleEnded = () => {
+      setTtsPlaybackState('completed');
+      setTtsPlaybackMessage('本轮语音播放完成。');
+      stopAvatarMouthAnimation();
+      void logRuntimeEvent(
+        'tts.playback.ended',
+        {
+          avatar_id: effectiveAvatarId,
+          voice_id: ttsVoiceId,
+          duration_ms: ttsDurationMs,
+          audio_format: ttsAudioFormat,
+        },
+        ttsMessageIdRef.current,
+      );
+      void logRuntimeEvent(
+        'avatar.command',
+        {
+          session_id: activeSessionId,
+          trace_id: activeTraceId,
+          message_id: ttsMessageIdRef.current,
+          avatar_id: effectiveAvatarId,
+          audio_url: ttsAudioUrlRef.current,
+          tts_voice_id: ttsVoiceId,
+          expression: {
+            preset_id: currentAvatarExpressionPreset.presetId,
+            label: currentAvatarExpressionPreset.label,
+            valence: currentAvatarExpressionPreset.valence,
+            arousal: currentAvatarExpressionPreset.arousal,
+          },
+          source_stage: currentAvatarStageLabel,
+          source_risk_level: currentAvatarRiskLevel,
+          duration_ms: ttsDurationMs,
+          command: 'idle',
+          mouth_state: 'closed',
+        },
+        ttsMessageIdRef.current,
+      );
+    };
+
+    const handlePause = () => {
+      if (ttsPlaybackStateRef.current === 'playing') {
+        stopAvatarMouthAnimation();
+      }
+    };
+
+    const handleError = () => {
+      const activeSource = audioElement.currentSrc || audioElement.src || '';
+      if (!ttsAudioUrlRef.current) {
+        return;
+      }
+      if (ttsPlaybackStateRef.current === 'completed' || ttsPlaybackStateRef.current === 'idle') {
+        return;
+      }
+      if (activeSource && !sameAudioSource(activeSource, ttsAudioUrlRef.current)) {
+        return;
+      }
+      setTtsPlaybackState('ready');
+      setTtsPlaybackMessage('语音资源已生成，但浏览器未能加载音频资源，可点击重播语音重试。');
+      stopAvatarMouthAnimation();
+    };
+
+    audioElement.addEventListener('play', handlePlay);
+    audioElement.addEventListener('ended', handleEnded);
+    audioElement.addEventListener('pause', handlePause);
+    audioElement.addEventListener('error', handleError);
+    return () => {
+      audioElement.removeEventListener('play', handlePlay);
+      audioElement.removeEventListener('ended', handleEnded);
+      audioElement.removeEventListener('pause', handlePause);
+      audioElement.removeEventListener('error', handleError);
+    };
+  }, [activeSessionId, activeTraceId, avatarMouthState, currentAvatarExpressionPreset.arousal, currentAvatarExpressionPreset.label, currentAvatarExpressionPreset.presetId, currentAvatarExpressionPreset.valence, currentAvatarRiskLevel, currentAvatarStage, currentAvatarStageLabel, effectiveAvatarId, logRuntimeEvent, stopAvatarMouthAnimation, startAvatarMouthAnimation, ttsAudioFormat, ttsDurationMs, ttsVoiceId]);
+
   const createSession = useCallback(async () => {
     setSessionRequestState('creating');
     setSessionErrorMessage('');
     setSessionStatusMessage(t.sessionCreating);
 
     try {
-      const payload = await requestSession(runtimeConfig.apiBaseUrl, runtimeConfig.defaultAvatarId);
+      const payload = await requestSession(runtimeConfig.apiBaseUrl, selectedAvatarId);
       applySessionSnapshot({ session: payload, messages: [] }, t.sessionReady);
       setSessionRequestState('ready');
     } catch (error) {
@@ -2433,7 +3048,7 @@ export default function App({ appConfig }) {
       setDialogueReplyState('idle');
       setPendingMessageId(null);
     }
-  }, [runtimeConfig.apiBaseUrl, runtimeConfig.defaultAvatarId, applySessionSnapshot, t.sessionCreating, t.sessionReady, t.sessionRestoreFailed]);
+  }, [applySessionSnapshot, runtimeConfig.apiBaseUrl, selectedAvatarId, t.sessionCreating, t.sessionReady, t.sessionRestoreFailed]);
 
   const clearSession = useCallback(() => {
     invalidateLocalSession();
@@ -2544,6 +3159,16 @@ export default function App({ appConfig }) {
         : 'Recording not started.';
   const latestAssistantMessage = [...sessionMessages].reverse().find((message) => message.role === 'assistant') || null;
   const latestUserMessage = [...sessionMessages].reverse().find((message) => message.role === 'user') || null;
+  const avatarSpeechState = ttsPlaybackState === 'playing'
+    ? 'speaking'
+    : ttsPlaybackState === 'completed'
+      ? 'completed'
+      : 'idle';
+  const avatarSpeechDetail = ttsPlaybackState === 'playing'
+    ? effectiveAvatarProfile.speakingDetail
+    : ttsPlaybackState === 'completed'
+      ? '本轮语音播放完成，数字人已回到稳定待机。'
+      : effectiveAvatarProfile.idleDetail;
   const displayedEmotionLabel = affectSnapshot.fusion.emotionState || t.emoState;
   const displayedEmotionDetail = affectSnapshot.fusion.detail || t.emoDesc;
   const displayedEmotionQuote = affectSnapshot.sourceContext.note || latestAssistantMessage?.content_text || t.emoQuote;
@@ -2847,8 +3472,9 @@ export default function App({ appConfig }) {
                   <div className="text-[#5C4D42] font-medium">{sessionMessages.length}</div>
                 </div>
                 <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
-                  <div className="text-xs text-[#A6998E] mb-1">Connection</div>
-                  <div className="text-[#5C4D42] font-medium">{connectionStatus}</div>
+                  <div className="text-xs text-[#A6998E] mb-1">Avatar in use</div>
+                  <div className="text-[#5C4D42] font-medium">{effectiveAvatarProfile.label}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">{effectiveAvatarProfile.meta}</div>
                 </div>
                 <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
                   <div className="text-xs text-[#A6998E] mb-1">Last heartbeat</div>
@@ -2863,12 +3489,39 @@ export default function App({ appConfig }) {
                   <div className="text-[#5C4D42] font-medium">{dialogueReplyState}</div>
                 </div>
                 <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">TTS playback</div>
+                  <div className="text-[#5C4D42] font-medium">{ttsPlaybackState}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B] whitespace-pre-wrap">{ttsPlaybackMessage || 'Waiting for assistant speech.'}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
                   <div className="text-xs text-[#A6998E] mb-1">Pending message</div>
                   <div className="break-all text-[#5C4D42] font-medium">{pendingMessageId || '—'}</div>
                 </div>
                 <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
                   <div className="text-xs text-[#A6998E] mb-1">{t.storageKeyLabel}</div>
                   <div className="break-all text-[#5C4D42] font-medium">{runtimeConfig.activeSessionStorageKey}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4 md:col-span-2">
+                  <div className="text-xs text-[#A6998E] mb-1">Avatar selection</div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.values(avatarProfiles).map((profile) => {
+                      const isActive = selectedAvatarId === profile.avatarId;
+                      return (
+                        <button
+                          key={profile.avatarId}
+                          type="button"
+                          onClick={() => setSelectedAvatarId(profile.avatarId)}
+                          className={`px-3 py-2 rounded-xl text-sm border transition-colors ${isActive ? 'bg-[#FFF0E5] text-[#D97757] border-[#F3C7B5]' : 'bg-white text-[#8C7A6B] border-[#F0E5D8] hover:bg-[#FFF8F2]'}`}
+                        >
+                          {profile.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 text-xs text-[#8C7A6B]">
+                    <div>当前将用于下次创建会话：{getAvatarProfile(selectedAvatarId, runtimeConfig.defaultAvatarId).label} / {getAvatarProfile(selectedAvatarId, runtimeConfig.defaultAvatarId).voicePreview}</div>
+                    {sessionSummary?.session_id ? <div className="mt-1">当前 live session 仍使用：{effectiveAvatarProfile.label}</div> : null}
+                  </div>
                 </div>
               </div>
 
@@ -2911,6 +3564,26 @@ export default function App({ appConfig }) {
                   <div className="mt-2 text-xs text-[#8C7A6B]">status: {knowledgeState.retrievalStatus}</div>
                   <div className="mt-1 text-xs text-[#8C7A6B]">filters: {knowledgeState.filtersApplied.length ? knowledgeState.filtersApplied.join(', ') : '—'}</div>
                   <div className="mt-1 text-xs text-[#8C7A6B]">grounded refs: {knowledgeState.groundedRefs.length ? knowledgeState.groundedRefs.join(', ') : '—'}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4 md:col-span-2">
+                  <div className="text-xs text-[#A6998E] mb-1">Avatar runtime</div>
+                  <div className="text-[#5C4D42] font-medium">{avatarSpeechState}</div>
+                  <div className="mt-2 text-xs text-[#8C7A6B]">expression preset: {currentAvatarExpressionPreset.label}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">mouth: {avatarMouthState}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">voice: {ttsVoiceId}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">audio url: {ttsAudioUrl || '—'}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">duration: {formatDurationMs(ttsDurationMs)}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">generated at: {ttsGeneratedAt || '—'}</div>
+                  <div className="mt-2 text-sm text-[#5C4D42] whitespace-pre-wrap">{avatarSpeechDetail}</div>
+                  <div className="mt-2 text-xs text-[#8C7A6B] whitespace-pre-wrap">{currentAvatarExpressionPreset.detail}</div>
+                  <button
+                    type="button"
+                    onClick={() => { void replayAssistantAudio(); }}
+                    disabled={!ttsAudioUrl || ttsPlaybackState === 'synthesizing'}
+                    className="mt-3 px-4 py-2 rounded-xl text-sm font-medium bg-[#FFF0E5] text-[#D97757] border border-[#F0E5D8] hover:bg-[#FFE5D0] disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    Replay latest audio
+                  </button>
                 </div>
               </div>
             </div>
@@ -3078,6 +3751,8 @@ export default function App({ appConfig }) {
           </div>
         </div>
 
+        <audio ref={assistantAudioRef} hidden preload="auto" />
+
         {/* 3. 中间核心场景区 */}
         <div className="relative w-full h-[400px] md:h-[480px] bg-gradient-to-b from-[#FFFDF9] to-[#FCEFDA] rounded-[2.5rem] border-4 border-white shadow-lg overflow-hidden flex items-end justify-center">
           
@@ -3110,24 +3785,44 @@ export default function App({ appConfig }) {
             </svg>
           </div>
 
-          {/* 右侧虚拟人物（温和中性/男性形象示意） */}
-          <div className="absolute right-4 md:right-20 bottom-0 flex flex-col items-center animate-breathe-delayed">
+          {/* 右侧虚拟人物（assistant avatar surface） */}
+          <div className="absolute right-4 md:right-20 bottom-0 flex flex-col items-center animate-breathe-delayed" data-testid="assistant-avatar-surface">
             {/* 语言气泡 */}
-            <div className={`absolute -top-24 md:-top-28 right-10 md:right-24 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 max-w-[200px] md:max-w-[260px] transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
+            <div className={`absolute -top-24 md:-top-28 right-10 md:right-24 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 max-w-[220px] md:max-w-[280px] transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
               <p className="text-sm md:text-base text-[#5C4D42] leading-relaxed">
                 {latestAssistantMessage?.content_text || t.bubble2}
               </p>
+              <div className="mt-2 text-[11px] text-[#8C7A6B]">
+                {effectiveAvatarProfile.label} · {currentAvatarExpressionPreset.label} · {avatarSpeechState}
+              </div>
+            </div>
+            <div className="mb-3 rounded-2xl bg-white/80 border border-[#F0E5D8] px-4 py-3 text-center shadow-sm min-w-[220px]">
+              <div className="text-sm font-semibold text-[#5C4D42]">{effectiveAvatarProfile.label}</div>
+              <div className="mt-1 text-xs text-[#8C7A6B]">{effectiveAvatarProfile.stageNote}</div>
+              <div className="mt-2 flex flex-wrap justify-center gap-2 text-[11px]">
+                <span className="px-2 py-1 rounded-full bg-[#FFF5EB] text-[#D97757]">speech: {avatarSpeechState}</span>
+                <span className="px-2 py-1 rounded-full bg-[#E8F3EE] text-[#6B9080]">expression: {currentAvatarExpressionPreset.label}</span>
+                <span className="px-2 py-1 rounded-full bg-[#F5F0FF] text-[#7C6FB1]">mouth: {avatarMouthState}</span>
+              </div>
             </div>
             {/* 人物 SVG 插画 */}
             <svg width="200" height="240" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M30 240C30 170 55 130 100 130C145 130 170 170 170 240H30Z" fill="#E8F3EE"/>
-              <path d="M45 240C45 180 65 145 100 145C135 145 155 180 155 240H45Z" fill="#6B9080" fillOpacity="0.1"/>
+              <path d="M30 240C30 170 55 130 100 130C145 130 170 170 170 240H30Z" fill={avatarSpeechState === 'speaking' ? '#DFF4EE' : '#E8F3EE'}/>
+              <path d="M45 240C45 180 65 145 100 145C135 145 155 180 155 240H45Z" fill="#6B9080" fillOpacity={avatarSpeechState === 'speaking' ? '0.18' : '0.1'}/>
               <rect x="85" y="105" width="30" height="40" rx="10" fill="#FCE5D0"/>
               <rect x="65" y="35" width="70" height="85" rx="35" fill="#FCE5D0"/>
               <path d="M60 65C60 30 75 20 100 20C125 20 140 30 140 65C140 85 135 95 130 100C125 80 115 65 100 65C85 65 75 80 70 100C65 95 60 85 60 65Z" fill="#5C4D42"/>
               <path d="M80 80Q85 82 90 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
               <path d="M110 80Q115 82 120 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
-              <path d="M92 100Q100 102 108 100" stroke="#B38A78" strokeWidth="2" strokeLinecap="round"/>
+              {avatarMouthState === 'wide' ? (
+                <ellipse cx="100" cy="101" rx="10" ry="6" fill="#B38A78" />
+              ) : avatarMouthState === 'round' ? (
+                <ellipse cx="100" cy="101" rx="6" ry="7" fill="#B38A78" />
+              ) : avatarMouthState === 'small' ? (
+                <ellipse cx="100" cy="101" rx="7" ry="4" fill="#B38A78" />
+              ) : (
+                <path d="M92 100Q100 102 108 100" stroke="#B38A78" strokeWidth="2" strokeLinecap="round"/>
+              )}
             </svg>
           </div>
         </div>

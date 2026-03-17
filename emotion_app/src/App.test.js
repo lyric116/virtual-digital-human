@@ -5,6 +5,7 @@ const originalMediaDevices = navigator.mediaDevices;
 const originalMediaRecorder = window.MediaRecorder;
 const originalMediaPlay = window.HTMLMediaElement.prototype.play;
 const originalMediaPause = window.HTMLMediaElement.prototype.pause;
+const originalMediaLoad = window.HTMLMediaElement.prototype.load;
 
 const appConfig = {
   apiBaseUrl: 'http://127.0.0.1:8000',
@@ -352,6 +353,122 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
+function installMockAssistantAudio(options = {}) {
+  const play = options.playImplementation || jest.fn().mockResolvedValue(undefined);
+  const pause = options.pauseImplementation || jest.fn();
+  const load = options.loadImplementation || jest.fn();
+
+  window.HTMLMediaElement.prototype.play = play;
+  window.HTMLMediaElement.prototype.pause = pause;
+  window.HTMLMediaElement.prototype.load = load;
+
+  return { play, pause, load };
+}
+
+function getAssistantAudioElement() {
+  const element = document.querySelector('audio');
+  expect(element).not.toBeNull();
+  return element;
+}
+
+function getCardValue(label) {
+  const labelElement = screen.getByText(label);
+  const valueElement = labelElement.nextElementSibling;
+  expect(valueElement).not.toBeNull();
+  return valueElement.textContent;
+}
+
+function installPhaseFFetchMock(options = {}) {
+  const runtimeEvents = [];
+  const createBodies = [];
+  const ttsBodies = [];
+
+  fetch.mockImplementation((url, requestOptions = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/api/session/create')) {
+      const parsedBody = requestOptions.body ? JSON.parse(requestOptions.body) : {};
+      createBodies.push(parsedBody);
+      return Promise.resolve(jsonResponse({
+        ...sessionPayload,
+        avatar_id: parsedBody.avatar_id || options.sessionAvatarId || sessionPayload.avatar_id,
+      }, 201));
+    }
+    if (requestUrl.includes('/internal/affect/analyze')) {
+      return Promise.resolve(jsonResponse(buildAffectPayload(options.affectPayload || {})));
+    }
+    if (requestUrl.includes('/internal/tts/synthesize')) {
+      const parsedBody = requestOptions.body ? JSON.parse(requestOptions.body) : {};
+      ttsBodies.push(parsedBody);
+      return Promise.resolve(jsonResponse({
+        tts_id: options.ttsId || 'tts_mock_001',
+        session_id: parsedBody.session_id || sessionPayload.session_id,
+        trace_id: parsedBody.trace_id || sessionPayload.trace_id,
+        message_id: parsedBody.message_id || 'msg_assistant_phase_f',
+        voice_id: options.ttsVoiceId || (parsedBody.voice_id === 'coach_male_01' ? 'zh-CN-YunxiNeural' : 'zh-CN-XiaoxiaoNeural'),
+        subtitle: parsedBody.subtitle || parsedBody.text || '',
+        audio_format: options.audioFormat || 'audio/mpeg',
+        audio_url: options.audioUrl || 'http://127.0.0.1:8040/media/tts/tts_mock_001.mp3',
+        duration_ms: options.durationMs || 1600,
+        byte_size: 2048,
+        provider_used: 'mock_provider',
+        fallback_used: false,
+        fallback_reason: null,
+        generated_at: '2026-03-16T08:00:06Z',
+      }, 200));
+    }
+    if (requestUrl.includes('/runtime-event')) {
+      const parsedBody = requestOptions.body ? JSON.parse(requestOptions.body) : {};
+      runtimeEvents.push(parsedBody);
+      return Promise.resolve(jsonResponse({ accepted: true }, 202));
+    }
+    throw new Error(`Unexpected fetch URL: ${requestUrl}`);
+  });
+
+  return { runtimeEvents, createBodies, ttsBodies };
+}
+
+async function createPhaseFSession(config = appConfig) {
+  render(<App appConfig={config} />);
+  const socket = await clickCreateSession();
+  await openSocket(socket);
+  return socket;
+}
+
+function emitDialogueReply(socket, overrides = {}) {
+  const payload = {
+    session_id: sessionPayload.session_id,
+    trace_id: sessionPayload.trace_id,
+    message_id: 'msg_assistant_phase_f',
+    reply: '慢一点说，我们先把现在最难受的部分说出来。',
+    emotion: 'anxious',
+    risk_level: 'medium',
+    stage: 'assess',
+    next_action: 'ask_followup',
+    submitted_at: '2026-03-16T08:00:05Z',
+    ...overrides,
+  };
+
+  act(() => {
+    socket.receive(buildEnvelope('dialogue.reply', payload, { source_service: 'orchestrator' }));
+  });
+
+  return payload;
+}
+
+function emitAffectSnapshot(socket, overrides = {}) {
+  act(() => {
+    socket.receive(buildEnvelope('affect.snapshot', buildAffectPayload(overrides)));
+  });
+}
+
+function buildRuntimeEventTypeList(runtimeEvents) {
+  return runtimeEvents.map((event) => event.event_type);
+}
+
+function buildRuntimeEventsByType(runtimeEvents, eventType) {
+  return runtimeEvents.filter((event) => event.event_type === eventType);
+}
+
 function buildAffectPayload(overrides = {}) {
   const payload = {
     current_stage: 'assess',
@@ -439,6 +556,9 @@ beforeEach(() => {
   global.WebSocket = MockWebSocket;
   setMediaDevices(originalMediaDevices);
   setMediaRecorder(originalMediaRecorder);
+  window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue(undefined);
+  window.HTMLMediaElement.prototype.pause = jest.fn();
+  window.HTMLMediaElement.prototype.load = jest.fn();
 });
 
 afterEach(() => {
@@ -448,6 +568,7 @@ afterEach(() => {
   setMediaRecorder(originalMediaRecorder);
   window.HTMLMediaElement.prototype.play = originalMediaPlay;
   window.HTMLMediaElement.prototype.pause = originalMediaPause;
+  window.HTMLMediaElement.prototype.load = originalMediaLoad;
 });
 
 test('renders runtime config compatibility baseline', () => {
@@ -623,7 +744,7 @@ test('terminal websocket close clears local session identity immediately and doe
   });
 
   await waitFor(() => expect(window.localStorage.getItem(appConfig.activeSessionStorageKey)).toBeNull());
-  await waitFor(() => expect(screen.getByText('closed')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('realtime: closed')).toBeInTheDocument());
 
   expect(screen.getByText('未创建')).toBeInTheDocument();
   expect(screen.queryByText(sessionPayload.trace_id)).not.toBeInTheDocument();
@@ -634,7 +755,7 @@ test('terminal websocket close clears local session identity immediately and doe
   });
 
   expect(MockWebSocket.instances).toHaveLength(1);
-  expect(screen.queryByText('reconnecting')).not.toBeInTheDocument();
+  expect(screen.queryByText('realtime: reconnecting')).not.toBeInTheDocument();
 });
 
 test('reconnect during awaiting_ack performs one-shot /state recovery only', async () => {
@@ -690,7 +811,7 @@ test('reconnect during awaiting_ack performs one-shot /state recovery only', asy
   act(() => {
     socket.serverClose(1011, 'server_restart');
   });
-  await waitFor(() => expect(screen.getByText('reconnecting')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('realtime: reconnecting')).toBeInTheDocument());
 
   act(() => {
     jest.advanceTimersByTime(appConfig.reconnectDelayMs);
@@ -812,7 +933,7 @@ test('reconnect during awaiting_reply performs one-shot /state recovery only', a
   act(() => {
     socket.serverClose(1011, 'server_restart');
   });
-  await waitFor(() => expect(screen.getByText('reconnecting')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('realtime: reconnecting')).toBeInTheDocument());
 
   act(() => {
     jest.advanceTimersByTime(appConfig.reconnectDelayMs);
@@ -1398,4 +1519,185 @@ test('audio chunk and finalize failures stay in error state', async () => {
   await flushAsyncUpdates();
   await waitFor(() => expect(screen.getAllByText('finalize failed').length).toBeGreaterThan(0));
   expect(screen.getAllByText('error').length).toBeGreaterThan(0);
+});
+
+test('dialogue reply synthesizes audio, autoplays, and logs runtime events', async () => {
+  const { runtimeEvents, ttsBodies } = installPhaseFFetchMock();
+  const { play, load } = installMockAssistantAudio();
+  const socket = await createPhaseFSession();
+  const replyPayload = emitDialogueReply(socket);
+
+  await waitFor(() => expect(ttsBodies).toHaveLength(1));
+  expect(ttsBodies[0]).toMatchObject({
+    text: replyPayload.reply,
+    subtitle: replyPayload.reply,
+    voice_id: 'companion_female_01',
+    session_id: sessionPayload.session_id,
+    trace_id: sessionPayload.trace_id,
+    message_id: replyPayload.message_id,
+  });
+
+  await waitFor(() => expect(load).toHaveBeenCalled());
+  await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+  expect(getCardValue('TTS playback')).toBe('ready');
+  expect(getCardValue('Avatar runtime')).toBe('idle');
+  expect(screen.getByText('语音已生成，准备播放。')).toBeInTheDocument();
+  expect(screen.getByText('voice: zh-CN-XiaoxiaoNeural')).toBeInTheDocument();
+  expect(screen.getByText('audio url: http://127.0.0.1:8040/media/tts/tts_mock_001.mp3')).toBeInTheDocument();
+
+  const audioElement = getAssistantAudioElement();
+  act(() => {
+    audioElement.dispatchEvent(new Event('play'));
+  });
+
+  await waitFor(() => expect(getCardValue('TTS playback')).toBe('playing'));
+  expect(getCardValue('Avatar runtime')).toBe('speaking');
+  expect(screen.getByText('expression preset: focused_assess')).toBeInTheDocument();
+  expect(screen.getByText('speech: speaking')).toBeInTheDocument();
+  expect(screen.getAllByText(/mouth: (small|wide|round)/).length).toBeGreaterThan(0);
+
+  act(() => {
+    audioElement.dispatchEvent(new Event('ended'));
+  });
+
+  await waitFor(() => expect(getCardValue('TTS playback')).toBe('completed'));
+  expect(getCardValue('Avatar runtime')).toBe('completed');
+  expect(screen.getByText('speech: completed')).toBeInTheDocument();
+  expect(screen.getAllByText('mouth: closed').length).toBeGreaterThan(0);
+
+  const eventTypes = buildRuntimeEventTypeList(runtimeEvents);
+  expect(eventTypes).toContain('tts.synthesized');
+  expect(eventTypes).toContain('tts.playback.started');
+  expect(eventTypes).toContain('tts.playback.ended');
+  expect(eventTypes.filter((eventType) => eventType === 'avatar.command').length).toBeGreaterThanOrEqual(2);
+});
+
+test('dialogue reply normalizes internal tts audio url and still allows playback', async () => {
+  installPhaseFFetchMock({
+    audioUrl: 'http://tts-service/media/tts/tts_mock_001.mp3',
+  });
+  const { play } = installMockAssistantAudio();
+  const socket = await createPhaseFSession();
+
+  emitDialogueReply(socket);
+
+  await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+  expect(screen.getByText('audio url: http://127.0.0.1:8040/media/tts/tts_mock_001.mp3')).toBeInTheDocument();
+
+  const audioElement = getAssistantAudioElement();
+  expect(audioElement.src).toBe('http://127.0.0.1:8040/media/tts/tts_mock_001.mp3');
+
+  act(() => {
+    audioElement.dispatchEvent(new Event('play'));
+    audioElement.dispatchEvent(new Event('ended'));
+  });
+
+  await waitFor(() => expect(getCardValue('TTS playback')).toBe('completed'));
+  expect(getCardValue('Avatar runtime')).toBe('completed');
+});
+
+test('late media error after completion keeps completed playback state', async () => {
+  installPhaseFFetchMock();
+  installMockAssistantAudio();
+  const socket = await createPhaseFSession();
+
+  emitDialogueReply(socket);
+
+  const audioElement = getAssistantAudioElement();
+  act(() => {
+    audioElement.dispatchEvent(new Event('play'));
+    audioElement.dispatchEvent(new Event('ended'));
+    audioElement.dispatchEvent(new Event('error'));
+  });
+
+  await waitFor(() => expect(getCardValue('TTS playback')).toBe('completed'));
+  expect(getCardValue('Avatar runtime')).toBe('completed');
+  expect(screen.queryByText('语音资源已生成，但浏览器未能加载音频资源，可点击重播语音重试。')).not.toBeInTheDocument();
+});
+
+test('avatar selection changes create-session avatar but keeps active session avatar stable', async () => {
+  const { createBodies, ttsBodies } = installPhaseFFetchMock();
+  installMockAssistantAudio();
+  render(<App appConfig={appConfig} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '引导角色 B' }));
+  expect(screen.getByText('当前将用于下次创建会话：引导角色 B / zh-CN-YunxiNeural')).toBeInTheDocument();
+
+  const socket = await clickCreateSession();
+  await openSocket(socket);
+  await waitFor(() => expect(createBodies).toHaveLength(1));
+  expect(createBodies[0].avatar_id).toBe('coach_male_01');
+  expect(screen.getByText('当前将用于下次创建会话：引导角色 B / zh-CN-YunxiNeural')).toBeInTheDocument();
+
+  emitDialogueReply(socket);
+  await waitFor(() => expect(ttsBodies).toHaveLength(1));
+  expect(ttsBodies[0].voice_id).toBe('coach_male_01');
+  await waitFor(() => expect(screen.getByText((content) => content.startsWith('voice:'))).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('voice: zh-CN-YunxiNeural')).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole('button', { name: '陪伴角色 A' }));
+  await waitFor(() => expect(screen.getByText('当前将用于下次创建会话：陪伴角色 A / zh-CN-XiaoxiaoNeural')).toBeInTheDocument());
+  expect(screen.getByText('当前 live session 仍使用：引导角色 B')).toBeInTheDocument();
+
+  expect(createBodies).toHaveLength(1);
+  expect(ttsBodies).toHaveLength(1);
+});
+
+test('expression preset follows stage and risk from realtime reply and affect snapshot', async () => {
+  installPhaseFFetchMock();
+  installMockAssistantAudio();
+  const socket = await createPhaseFSession();
+
+  emitAffectSnapshot(socket, {
+    current_stage: 'handoff',
+    fusion_result: {
+      emotion_state: 'distressed',
+      risk_level: 'high',
+      confidence: 0.91,
+      conflict: false,
+      conflict_reason: '',
+      detail: 'high risk fusion detail',
+    },
+  });
+
+  emitDialogueReply(socket, {
+    stage: 'handoff',
+    risk_level: 'high',
+    emotion: 'distressed',
+  });
+
+  await waitFor(() => expect(screen.getByText('expression preset: guarded_handoff')).toBeInTheDocument());
+  expect(screen.getByText('高风险或 handoff 阶段降低轻快感，保持严肃和稳定。')).toBeInTheDocument();
+});
+
+test('mouth drive animates during playback and closes after end', async () => {
+  jest.useFakeTimers();
+  installPhaseFFetchMock({
+    durationMs: 2400,
+  });
+  installMockAssistantAudio();
+  const socket = await createPhaseFSession();
+
+  emitDialogueReply(socket, {
+    reply: '谢谢你愿意说出来。我们先慢一点，把今晚最难受的部分说清楚。',
+  });
+
+  const audioElement = getAssistantAudioElement();
+  act(() => {
+    audioElement.dispatchEvent(new Event('play'));
+  });
+
+  await waitFor(() => expect(screen.getAllByText(/mouth: (small|wide|round)/).length).toBeGreaterThan(0));
+
+  act(() => {
+    jest.advanceTimersByTime(360);
+  });
+
+  expect(screen.getAllByText(/mouth: (small|wide|round)/).length).toBeGreaterThan(0);
+
+  act(() => {
+    audioElement.dispatchEvent(new Event('ended'));
+  });
+
+  await waitFor(() => expect(screen.getAllByText('mouth: closed').length).toBeGreaterThan(0));
 });

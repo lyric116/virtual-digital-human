@@ -17,6 +17,7 @@ const defaultAppConfig = {
   enableAudioPreview: true,
   audioPreviewChunkThreshold: 2,
   videoFrameUploadIntervalMs: 1800,
+  autoplayAssistantAudio: true,
 };
 
 function readStringConfigValue(config, keys, fallback) {
@@ -114,6 +115,11 @@ function resolveAppConfig(rootWindow) {
       config,
       ['videoFrameUploadIntervalMs', 'video_frame_upload_interval_ms'],
       defaultAppConfig.videoFrameUploadIntervalMs,
+    ),
+    autoplayAssistantAudio: readBooleanConfigValue(
+      config,
+      ['autoplayAssistantAudio', 'autoplay_assistant_audio'],
+      defaultAppConfig.autoplayAssistantAudio,
     ),
   };
 }

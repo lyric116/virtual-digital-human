@@ -185,6 +185,41 @@ export async function requestVideoFrameUpload(apiBaseUrl, sessionId, payload) {
   return responsePayload;
 }
 
+export async function requestTTSSynthesis(ttsBaseUrl, payload) {
+  const response = await fetch(`${ttsBaseUrl}/internal/tts/synthesize`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `TTS synthesize failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
+
+export async function requestRuntimeEvent(apiBaseUrl, sessionId, payload) {
+  const response = await fetch(
+    `${apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/runtime-event`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `Runtime event failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
+
 export async function requestAffectAnalysis(affectBaseUrl, payload) {
   const response = await fetch(`${affectBaseUrl}/internal/affect/analyze`, {
     method: 'POST',
