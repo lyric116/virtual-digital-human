@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Video, Mic, Heart, Clock, Globe, User,
   Sun, Wind, Leaf, Sparkles, MessageCircleHeart,
-  MoreHorizontal, Send, X
+  Send, X
 } from 'lucide-react';
 import {
   buildHeartbeatMessage,
@@ -10,9 +10,14 @@ import {
   clearStoredSessionId,
   isTerminalRealtimeClose,
   readStoredSessionId,
+  requestAudioChunkUpload,
+  requestAudioFinalize,
+  requestAudioPreview,
+  requestAffectAnalysis,
   requestSession,
   requestSessionState,
   requestTextMessage,
+  requestVideoFrameUpload,
   writeStoredSessionId,
 } from './sessionApi';
 
@@ -75,8 +80,8 @@ const i18n = {
     hasAcc: '已有心苑通证？',
     goLogin: '直接入住',
     micTestText: '“今天阳光很好，感觉心里也暖暖的。”',
-    phaseBTitle: 'Phase B 会话基线',
-    phaseBDesc: '当前 React 前端已接入 session create、state restore 和 text submit，并继续复用旧前端的 gateway 契约。此阶段仍未接入 WebSocket realtime。',
+    phaseTitle: 'Phase C 实时会话基线',
+    phaseDesc: '当前 React 前端采用 WS-first 文本流程：session create、页面 restore 与窄范围 reconnect recovery 继续复用 gateway 契约，正常文本完成以 WebSocket realtime 为准。',
     createSession: '创建会话',
     restoreState: '恢复会话',
     restoring: '恢复中...',
@@ -94,10 +99,10 @@ const i18n = {
     sessionIdle: '等待创建或恢复会话',
     sessionCreating: '正在创建会话...',
     sessionRestoring: '正在恢复会话状态...',
-    sessionReady: '会话已就绪，可继续发送文本。',
-    sessionSubmitting: '正在提交文本并等待回复...',
+    sessionReady: '会话已就绪，可通过 WebSocket 实时完成文本轮次。',
+    sessionSubmitting: '正在提交文本并等待 message.accepted / dialogue.reply...',
     sessionRestoreFailed: '恢复失败，请重新创建会话。',
-    sessionSubmitSuccess: '文本已提交，已同步最新会话状态。',
+    sessionSubmitSuccess: '已收到助手回复，当前文本轮次完成。',
     sessionSubmitNeedSession: '请先创建或恢复会话。',
     sessionSubmitEmpty: '请输入内容后再发送。',
     assistantReplies: '对话记录',
@@ -166,8 +171,8 @@ const i18n = {
     hasAcc: 'Already have an access pass? ',
     goLogin: 'Direct Login',
     micTestText: '"The sun is beautiful today, my heart feels warm."',
-    phaseBTitle: 'Phase B session baseline',
-    phaseBDesc: 'The React frontend now connects session create, state restore, and text submit while keeping the existing gateway contract from apps/web. WebSocket realtime is still out of scope for this step.',
+    phaseTitle: 'Phase C realtime session baseline',
+    phaseDesc: 'The React frontend now uses a WS-first text flow. Session create, page restore, and narrow reconnect recovery still reuse the existing gateway contract, while normal text completion relies on WebSocket realtime.',
     createSession: 'Create session',
     restoreState: 'Restore session',
     restoring: 'Restoring...',
@@ -185,10 +190,10 @@ const i18n = {
     sessionIdle: 'Create or restore a session to continue.',
     sessionCreating: 'Creating session...',
     sessionRestoring: 'Restoring session state...',
-    sessionReady: 'Session is ready for text input.',
-    sessionSubmitting: 'Submitting text and waiting for reply...',
+    sessionReady: 'Session is ready for WS-first text input.',
+    sessionSubmitting: 'Submitting text and waiting for message.accepted and dialogue.reply...',
     sessionRestoreFailed: 'Restore failed. Create a new session to continue.',
-    sessionSubmitSuccess: 'Text submitted and latest session state synced.',
+    sessionSubmitSuccess: 'Assistant reply received and text turn completed.',
     sessionSubmitNeedSession: 'Create or restore a session first.',
     sessionSubmitEmpty: 'Enter some text before sending.',
     assistantReplies: 'Conversation log',
@@ -257,8 +262,8 @@ const i18n = {
     hasAcc: 'Schon einen Zugangspass? ',
     goLogin: 'Direktes Login',
     micTestText: '"Die Sonne scheint heute schön, mein Herz fühlt sich warm an."',
-    phaseBTitle: 'Phase-B Sitzungsbasis',
-    phaseBDesc: 'Das React-Frontend nutzt jetzt Session-Erstellung, Status-Wiederherstellung und Textversand und behält dabei den bestehenden Gateway-Vertrag aus apps/web bei. WebSocket-Realtime bleibt in diesem Schritt noch außen vor.',
+    phaseTitle: 'Phase-C-Realtime-Sitzungsbasis',
+    phaseDesc: 'Das React-Frontend nutzt jetzt einen WS-first-Textfluss. Sitzungserstellung, Seitenwiederherstellung und eine enge Reconnect-Recovery verwenden weiter den bestehenden Gateway-Vertrag, während normale Textabschlüsse über WebSocket-Realtime laufen.',
     createSession: 'Sitzung erstellen',
     restoreState: 'Sitzung laden',
     restoring: 'Wird geladen...',
@@ -276,10 +281,10 @@ const i18n = {
     sessionIdle: 'Erstelle oder lade zuerst eine Sitzung.',
     sessionCreating: 'Sitzung wird erstellt...',
     sessionRestoring: 'Sitzungsstatus wird geladen...',
-    sessionReady: 'Sitzung ist bereit für Texteingaben.',
-    sessionSubmitting: 'Text wird gesendet, Antwort wird abgewartet...',
+    sessionReady: 'Sitzung ist für WS-first-Texteingaben bereit.',
+    sessionSubmitting: 'Text wird gesendet, auf message.accepted und dialogue.reply wird gewartet...',
     sessionRestoreFailed: 'Wiederherstellung fehlgeschlagen. Bitte neue Sitzung erstellen.',
-    sessionSubmitSuccess: 'Text gesendet und aktueller Sitzungsstatus synchronisiert.',
+    sessionSubmitSuccess: 'Assistentenantwort empfangen und Textrunde abgeschlossen.',
     sessionSubmitNeedSession: 'Bitte zuerst eine Sitzung erstellen oder laden.',
     sessionSubmitEmpty: 'Bitte zuerst Text eingeben.',
     assistantReplies: 'Gesprächsverlauf',
@@ -348,8 +353,8 @@ const i18n = {
     hasAcc: 'Déjà un pass ? ',
     goLogin: 'Connexion directe',
     micTestText: '"Le soleil est magnifique aujourd\'hui, mon cœur se sent chaleureux."',
-    phaseBTitle: 'Base de session phase B',
-    phaseBDesc: 'Le frontend React prend désormais en charge la création de session, la restauration d’état et l’envoi de texte tout en conservant le contrat gateway existant de apps/web. Le temps réel WebSocket reste hors périmètre pour cette étape.',
+    phaseTitle: 'Base de session temps réel phase C',
+    phaseDesc: 'Le frontend React utilise désormais un flux texte WS-first. La création de session, la restauration de page et une reprise de reconnexion très limitée réutilisent toujours le contrat gateway existant, tandis que le chemin texte normal se termine via WebSocket realtime.',
     createSession: 'Créer une session',
     restoreState: 'Restaurer la session',
     restoring: 'Restauration...',
@@ -367,10 +372,10 @@ const i18n = {
     sessionIdle: 'Créez ou restaurez une session pour continuer.',
     sessionCreating: 'Création de la session...',
     sessionRestoring: 'Restauration de l’état de session...',
-    sessionReady: 'La session est prête pour la saisie texte.',
-    sessionSubmitting: 'Envoi du texte et attente de la réponse...',
+    sessionReady: 'La session est prête pour une saisie texte WS-first.',
+    sessionSubmitting: 'Envoi du texte et attente de message.accepted puis dialogue.reply...',
     sessionRestoreFailed: 'La restauration a échoué. Créez une nouvelle session pour continuer.',
-    sessionSubmitSuccess: 'Texte envoyé et dernier état synchronisé.',
+    sessionSubmitSuccess: 'Réponse de l’assistant reçue et tour texte terminé.',
     sessionSubmitNeedSession: 'Créez ou restaurez d’abord une session.',
     sessionSubmitEmpty: 'Saisissez un texte avant l’envoi.',
     assistantReplies: 'Historique de conversation',
@@ -504,6 +509,243 @@ function buildReplyMessageFromEnvelope(envelope) {
   });
 }
 
+function validateTranscriptPartialPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  if (payload.transcript_kind !== 'partial') {
+    return null;
+  }
+  if (typeof payload.text !== 'string' || !payload.text.trim()) {
+    return null;
+  }
+  if (!Number.isFinite(payload.preview_seq) || payload.preview_seq < 1) {
+    return null;
+  }
+  if (typeof payload.recording_id !== 'string' || !payload.recording_id.trim()) {
+    return null;
+  }
+
+  return {
+    text: payload.text,
+    previewSeq: Number(payload.preview_seq),
+    recordingId: payload.recording_id,
+    generatedAt: typeof payload.generated_at === 'string' ? payload.generated_at : null,
+    language: typeof payload.language === 'string' ? payload.language : null,
+    confidence: typeof payload.confidence === 'number' ? payload.confidence : null,
+  };
+}
+
+function validateTranscriptFinalPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  if (payload.transcript_kind !== 'final') {
+    return null;
+  }
+  if (typeof payload.text !== 'string' || !payload.text.trim()) {
+    return null;
+  }
+
+  return {
+    text: payload.text,
+    messageId: typeof payload.message_id === 'string' ? payload.message_id : null,
+    sourceKind: typeof payload.source_kind === 'string' ? payload.source_kind : 'audio',
+    recordingId: typeof payload.recording_id === 'string' ? payload.recording_id : null,
+    generatedAt: typeof payload.generated_at === 'string' ? payload.generated_at : null,
+    language: typeof payload.language === 'string' ? payload.language : null,
+    confidence: typeof payload.confidence === 'number' ? payload.confidence : null,
+  };
+}
+
+function normalizeAffectPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const sourceContext = payload.source_context;
+  const textResult = payload.text_result;
+  const audioResult = payload.audio_result;
+  const videoResult = payload.video_result;
+  const fusionResult = payload.fusion_result;
+  if (
+    !sourceContext
+    || typeof sourceContext.origin !== 'string'
+    || typeof sourceContext.dataset !== 'string'
+    || typeof sourceContext.record_id !== 'string'
+    || !textResult
+    || typeof textResult.label !== 'string'
+    || !audioResult
+    || typeof audioResult.label !== 'string'
+    || !videoResult
+    || typeof videoResult.label !== 'string'
+    || !fusionResult
+    || typeof fusionResult.emotion_state !== 'string'
+    || typeof fusionResult.risk_level !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    panelState: 'ready',
+    panelMessage: 'Affect snapshot updated.',
+    currentStage: typeof payload.current_stage === 'string' ? payload.current_stage : 'idle',
+    generatedAt: typeof payload.generated_at === 'string' ? payload.generated_at : null,
+    sourceContext: {
+      origin: sourceContext.origin,
+      dataset: sourceContext.dataset,
+      recordId: sourceContext.record_id,
+      note: typeof sourceContext.note === 'string' ? sourceContext.note : '',
+    },
+    text: {
+      status: typeof textResult.status === 'string' ? textResult.status : 'pending',
+      label: textResult.label,
+      confidence: typeof textResult.confidence === 'number' ? textResult.confidence : null,
+      detail: typeof textResult.detail === 'string' ? textResult.detail : '',
+    },
+    audio: {
+      status: typeof audioResult.status === 'string' ? audioResult.status : 'pending',
+      label: audioResult.label,
+      confidence: typeof audioResult.confidence === 'number' ? audioResult.confidence : null,
+      detail: typeof audioResult.detail === 'string' ? audioResult.detail : '',
+    },
+    video: {
+      status: typeof videoResult.status === 'string' ? videoResult.status : 'pending',
+      label: videoResult.label,
+      confidence: typeof videoResult.confidence === 'number' ? videoResult.confidence : null,
+      detail: typeof videoResult.detail === 'string' ? videoResult.detail : '',
+    },
+    fusion: {
+      emotionState: fusionResult.emotion_state,
+      riskLevel: fusionResult.risk_level,
+      confidence: typeof fusionResult.confidence === 'number' ? fusionResult.confidence : null,
+      conflict: fusionResult.conflict === true,
+      conflictReason: typeof fusionResult.conflict_reason === 'string' ? fusionResult.conflict_reason : '',
+      detail: typeof fusionResult.detail === 'string' ? fusionResult.detail : '',
+    },
+  };
+}
+
+function normalizeKnowledgeRetrievedPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  return {
+    sourceIds: Array.isArray(payload.source_ids)
+      ? payload.source_ids.filter((item) => typeof item === 'string' && item.trim())
+      : [],
+    groundedRefs: Array.isArray(payload.grounded_refs)
+      ? payload.grounded_refs.filter((item) => typeof item === 'string' && item.trim())
+      : [],
+    filtersApplied: Array.isArray(payload.filters_applied)
+      ? payload.filters_applied.filter((item) => typeof item === 'string' && item.trim())
+      : [],
+    candidateCount: Number.isFinite(payload.candidate_count) ? Number(payload.candidate_count) : null,
+    retrievalAttempted: payload.retrieval_attempted === true,
+    retrievalStatus: typeof payload.retrieval_status === 'string' && payload.retrieval_status.trim()
+      ? payload.retrieval_status
+      : 'idle',
+    riskLevel: typeof payload.risk_level === 'string' ? payload.risk_level : 'pending',
+    stage: typeof payload.stage === 'string' ? payload.stage : 'idle',
+    errorMessage: typeof payload.error_message === 'string' ? payload.error_message : '',
+  };
+}
+
+function createInitialPartialTranscriptState() {
+  return {
+    status: 'idle',
+    text: '',
+    previewSeq: 0,
+    recordingId: null,
+    updatedAt: null,
+    language: null,
+    confidence: null,
+  };
+}
+
+function createInitialFinalTranscriptState() {
+  return {
+    text: '',
+    messageId: null,
+    sourceKind: 'pending',
+    recordingId: null,
+    updatedAt: null,
+    language: null,
+    confidence: null,
+  };
+}
+
+function createInitialAffectSnapshot() {
+  return {
+    panelState: 'idle',
+    panelMessage: 'Waiting for affect snapshot.',
+    currentStage: 'idle',
+    generatedAt: null,
+    sourceContext: {
+      origin: 'pending',
+      dataset: 'pending',
+      recordId: 'pending',
+      note: '',
+    },
+    text: {
+      status: 'pending',
+      label: 'pending',
+      confidence: null,
+      detail: '',
+    },
+    audio: {
+      status: 'pending',
+      label: 'pending',
+      confidence: null,
+      detail: '',
+    },
+    video: {
+      status: 'pending',
+      label: 'pending',
+      confidence: null,
+      detail: '',
+    },
+    fusion: {
+      emotionState: 'pending',
+      riskLevel: 'pending',
+      confidence: null,
+      conflict: false,
+      conflictReason: '',
+      detail: '',
+    },
+  };
+}
+
+function createInitialKnowledgeState() {
+  return {
+    sourceIds: [],
+    groundedRefs: [],
+    filtersApplied: [],
+    candidateCount: null,
+    retrievalAttempted: false,
+    retrievalStatus: 'idle',
+    riskLevel: 'pending',
+    stage: 'idle',
+    errorMessage: '',
+  };
+}
+
+function formatRealtimeConfidence(value) {
+  return typeof value === 'number' ? `${Math.round(value * 100)}%` : '—';
+}
+
+function formatDurationMs(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0.0s';
+  }
+  return `${(value / 1000).toFixed(1)}s`;
+}
+
+function createRecordingId() {
+  return `rec_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
 export default function App({ appConfig }) {
   // 语言状态管理
   const [lang, setLang] = useState('zh');
@@ -515,19 +757,34 @@ export default function App({ appConfig }) {
   
   // 输入框与录音状态管理
   const [inputText, setInputText] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
+  const [micPermissionState, setMicPermissionState] = useState('idle');
+  const [micPermissionMessage, setMicPermissionMessage] = useState('');
+  const [recordingState, setRecordingState] = useState('idle');
+  const [audioUploadState, setAudioUploadState] = useState('idle');
+  const [audioUploadMessage, setAudioUploadMessage] = useState('');
+  const [recordingDurationMs, setRecordingDurationMs] = useState(0);
+  const [recordingChunkCount, setRecordingChunkCount] = useState(0);
+  const [lastUploadedAt, setLastUploadedAt] = useState(null);
+  const [lastUploadedMediaId, setLastUploadedMediaId] = useState(null);
 
   // 摄像头状态管理
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
-  const [cameraStream, setCameraStream] = useState(null);
-  const [cameraStatus, setCameraStatus] = useState('idle'); // idle, requesting, success, error
+  const [cameraPermissionState, setCameraPermissionState] = useState('idle');
+  const [cameraPermissionMessage, setCameraPermissionMessage] = useState('');
+  const [cameraState, setCameraState] = useState('idle');
+  const [cameraPreviewMessage, setCameraPreviewMessage] = useState('');
+  const [videoUploadState, setVideoUploadState] = useState('idle');
+  const [videoUploadMessage, setVideoUploadMessage] = useState('');
+  const [uploadedVideoFrameCount, setUploadedVideoFrameCount] = useState(0);
+  const [lastUploadedVideoFrameId, setLastUploadedVideoFrameId] = useState(null);
+  const [lastVideoUploadedAt, setLastVideoUploadedAt] = useState(null);
+  const [nextVideoFrameSeq, setNextVideoFrameSeq] = useState(1);
   const modalVideoRef = useRef(null);
   const mainVideoRef = useRef(null);
   const autoRestoreAttemptedRef = useRef(false);
 
-  // 麦克风测试状态管理
+  // 麦克风状态管理
   const [isMicModalOpen, setIsMicModalOpen] = useState(false);
-  const [micTestStatus, setMicTestStatus] = useState('idle'); // idle, listening, recognizing, success
 
   // 用户登录/注册状态管理
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -546,6 +803,11 @@ export default function App({ appConfig }) {
   const [dialogueReplyState, setDialogueReplyState] = useState('idle');
   const [pendingMessageId, setPendingMessageId] = useState(null);
   const [connectionStatusMessage, setConnectionStatusMessage] = useState('');
+  const [partialTranscriptState, setPartialTranscriptState] = useState(createInitialPartialTranscriptState);
+  const [finalTranscriptState, setFinalTranscriptState] = useState(createInitialFinalTranscriptState);
+  const [affectSnapshot, setAffectSnapshot] = useState(createInitialAffectSnapshot);
+  const [affectHistory, setAffectHistory] = useState([]);
+  const [knowledgeState, setKnowledgeState] = useState(createInitialKnowledgeState);
 
   const socketRef = useRef(null);
   const heartbeatTimerRef = useRef(null);
@@ -558,6 +820,37 @@ export default function App({ appConfig }) {
   const connectionStatusRef = useRef(connectionStatus);
   const textSubmitStateRef = useRef(textSubmitState);
   const pendingMessageIdRef = useRef(pendingMessageId);
+  const recordingStateRef = useRef(recordingState);
+  const audioUploadStateRef = useRef(audioUploadState);
+  const recordingDurationMsRef = useRef(recordingDurationMs);
+  const recordingChunkCountRef = useRef(recordingChunkCount);
+  const micStreamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordedAudioPartsRef = useRef([]);
+  const pendingAudioUploadsRef = useRef(0);
+  const previewInFlightRef = useRef(false);
+  const finalizingAudioRef = useRef(false);
+  const recordingTimerRef = useRef(null);
+  const currentRecordingIdRef = useRef(null);
+  const completedRecordingIdRef = useRef(null);
+  const nextAudioChunkSeqRef = useRef(1);
+  const nextPreviewSeqRef = useRef(1);
+  const lastPreviewChunkCountRef = useRef(0);
+  const recordingStartedAtMsRef = useRef(null);
+  const stopRequestedRef = useRef(false);
+  const cameraStateRef = useRef(cameraState);
+  const videoUploadStateRef = useRef(videoUploadState);
+  const uploadedVideoFrameCountRef = useRef(uploadedVideoFrameCount);
+  const nextVideoFrameSeqRef = useRef(nextVideoFrameSeq);
+  const cameraStreamRef = useRef(null);
+  const cameraFrameTimerRef = useRef(null);
+  const cameraCanvasRef = useRef(null);
+  const cameraModalAutoStartRef = useRef(false);
+  const pendingVideoUploadsRef = useRef(0);
+  const affectRequestTokenRef = useRef(0);
+  const affectRefreshTimerRef = useRef(null);
+  const affectSnapshotTimestampRef = useRef(0);
+  const pendingSessionAffectReasonRef = useRef(null);
 
   const runtimeConfig = useMemo(
     () => ({
@@ -578,12 +871,280 @@ export default function App({ appConfig }) {
         Number.isFinite(Number(appConfig?.reconnectDelayMs)) && Number(appConfig?.reconnectDelayMs) > 0
           ? Number(appConfig.reconnectDelayMs)
           : 1000,
+      enableAudioPreview: appConfig?.enableAudioPreview !== false,
+      enableAudioFinalize: appConfig?.enableAudioFinalize !== false,
+      audioPreviewChunkThreshold:
+        Number.isFinite(Number(appConfig?.audioPreviewChunkThreshold)) && Number(appConfig?.audioPreviewChunkThreshold) > 0
+          ? Number(appConfig.audioPreviewChunkThreshold)
+          : 2,
+      videoFrameUploadIntervalMs:
+        Number.isFinite(Number(appConfig?.videoFrameUploadIntervalMs)) && Number(appConfig?.videoFrameUploadIntervalMs) > 0
+          ? Number(appConfig.videoFrameUploadIntervalMs)
+          : 1800,
       sourceLabel: appConfig?.sourceLabel || 'built-in defaults',
     }),
     [appConfig],
   );
 
-  const syncSessionFromState = useCallback((payload, statusMessage) => {
+  const activeSessionId = sessionState?.session?.session_id || null;
+  const activeTraceId = sessionState?.session?.trace_id || null;
+
+  const clearRecordingTimer = useCallback(() => {
+    if (recordingTimerRef.current) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }, []);
+
+  const clearCameraFrameTimer = useCallback(() => {
+    if (cameraFrameTimerRef.current) {
+      window.clearInterval(cameraFrameTimerRef.current);
+      cameraFrameTimerRef.current = null;
+    }
+  }, []);
+
+  const clearAffectRefreshTimer = useCallback(() => {
+    if (affectRefreshTimerRef.current) {
+      window.clearTimeout(affectRefreshTimerRef.current);
+      affectRefreshTimerRef.current = null;
+    }
+  }, []);
+
+  const teardownCamera = useCallback((stopTracks = true) => {
+    clearCameraFrameTimer();
+
+    [modalVideoRef.current, mainVideoRef.current].forEach((videoElement) => {
+      if (!videoElement) {
+        return;
+      }
+      try {
+        if (typeof videoElement.pause === 'function') {
+          videoElement.pause();
+        }
+      } catch (error) {
+        // Ignore preview shutdown races.
+      }
+      if ('srcObject' in videoElement) {
+        videoElement.srcObject = null;
+      }
+    });
+
+    const stream = cameraStreamRef.current;
+    if (stopTracks && stream && typeof stream.getTracks === 'function') {
+      stream.getTracks().forEach((track) => {
+        if (track && typeof track.stop === 'function') {
+          track.stop();
+        }
+      });
+      cameraStreamRef.current = null;
+    }
+  }, [clearCameraFrameTimer]);
+
+  const teardownMicrophone = useCallback(() => {
+    clearRecordingTimer();
+    stopRequestedRef.current = true;
+    pendingAudioUploadsRef.current = 0;
+    recordedAudioPartsRef.current = [];
+    previewInFlightRef.current = false;
+    finalizingAudioRef.current = false;
+    lastPreviewChunkCountRef.current = 0;
+    nextPreviewSeqRef.current = 1;
+    nextAudioChunkSeqRef.current = 1;
+    currentRecordingIdRef.current = null;
+    completedRecordingIdRef.current = null;
+    recordingStartedAtMsRef.current = null;
+    recordingDurationMsRef.current = 0;
+    recordingChunkCountRef.current = 0;
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (error) {
+        // Ignore stop races during teardown.
+      }
+    }
+    mediaRecorderRef.current = null;
+
+    const stream = micStreamRef.current;
+    micStreamRef.current = null;
+    if (stream && typeof stream.getTracks === 'function') {
+      stream.getTracks().forEach((track) => {
+        if (track && typeof track.stop === 'function') {
+          track.stop();
+        }
+      });
+    }
+
+    setMicPermissionState('idle');
+    setMicPermissionMessage('');
+    setRecordingState('idle');
+    setAudioUploadState('idle');
+    setAudioUploadMessage('');
+    setRecordingDurationMs(0);
+    setRecordingChunkCount(0);
+    setLastUploadedAt(null);
+    setLastUploadedMediaId(null);
+  }, [clearRecordingTimer]);
+
+  const pushAffectHistory = useCallback((snapshot) => {
+    if (!snapshot || snapshot.fusion?.emotionState === 'pending') {
+      return;
+    }
+    setAffectHistory((previous) => {
+      const nextItem = {
+        id: `${snapshot.generatedAt || 'pending'}-${snapshot.sourceContext?.recordId || 'unknown'}`,
+        generatedAt: snapshot.generatedAt || new Date().toISOString(),
+        emotion: snapshot.fusion?.emotionState || 'pending',
+        detail: snapshot.fusion?.detail || snapshot.text?.detail || snapshot.audio?.detail || snapshot.video?.detail || '',
+        riskLevel: snapshot.fusion?.riskLevel || 'pending',
+      };
+      const filtered = previous.filter((item) => item.id !== nextItem.id);
+      return [nextItem, ...filtered].slice(0, 8);
+    });
+  }, []);
+
+  const applyAffectSnapshot = useCallback((snapshot, options = {}) => {
+    if (!snapshot) {
+      return;
+    }
+    const nextTimestamp = typeof options.timestamp === 'number'
+      ? options.timestamp
+      : Date.now();
+    if (nextTimestamp < affectSnapshotTimestampRef.current) {
+      return;
+    }
+    affectSnapshotTimestampRef.current = nextTimestamp;
+    setAffectSnapshot(snapshot);
+    pushAffectHistory(snapshot);
+  }, [pushAffectHistory]);
+
+  const finalizeVideoUploadState = useCallback((nextCameraState = cameraStateRef.current) => {
+    const currentUploadState = videoUploadStateRef.current;
+    const currentUploadedCount = uploadedVideoFrameCountRef.current;
+    const currentSessionId = sessionStateRef.current?.session?.session_id || null;
+    if (currentUploadState === 'error') {
+      return;
+    }
+
+    if (!currentSessionId) {
+      setVideoUploadState(nextCameraState === 'previewing' ? 'local_only' : 'idle');
+      setVideoUploadMessage(
+        nextCameraState === 'previewing'
+          ? 'No active session. Camera preview stays local-only.'
+          : 'No video frames uploaded yet.',
+      );
+      return;
+    }
+
+    if (nextCameraState === 'previewing' || pendingVideoUploadsRef.current > 0) {
+      setVideoUploadState('uploading');
+      setVideoUploadMessage(
+        pendingVideoUploadsRef.current > 0
+          ? `Uploading video frames. ${currentUploadedCount} completed, ${pendingVideoUploadsRef.current} still in flight.`
+          : `Camera preview active. Uploaded ${currentUploadedCount} video frames.`,
+      );
+      return;
+    }
+
+    setVideoUploadState(currentUploadedCount > 0 ? 'completed' : 'idle');
+    setVideoUploadMessage(
+      currentUploadedCount > 0
+        ? `Video frame upload complete. Uploaded ${currentUploadedCount} frames.`
+        : 'No video frames uploaded yet.',
+    );
+  }, []);
+
+  const buildAffectRequestPayload = useCallback((reason) => {
+    const currentSourceContext = affectSnapshot?.sourceContext || null;
+    return {
+      session_id: activeSessionId,
+      trace_id: activeTraceId,
+      current_stage: sessionStateRef.current?.session?.stage || 'engage',
+      text_input: finalTranscriptState.text || inputText.trim(),
+      last_source_kind: finalTranscriptState.sourceKind || 'text',
+      metadata: {
+        source: currentSourceContext?.origin && currentSourceContext.origin !== 'live_web_session'
+          ? currentSourceContext.origin
+          : 'web-shell',
+        refresh_reason: reason || 'manual_refresh',
+        dataset: currentSourceContext?.dataset || 'live_web',
+        record_id: currentSourceContext?.recordId && currentSourceContext.recordId !== 'pending'
+          ? currentSourceContext.recordId
+          : `session/${activeSessionId || 'pending'}`,
+        sample_note: currentSourceContext?.note || 'Waiting for session sample information.',
+      },
+      capture_state: {
+        camera_state: cameraState,
+        video_upload_state: videoUploadState,
+        uploaded_video_frame_count: uploadedVideoFrameCount,
+        recording_state: recordingState,
+        audio_upload_state: audioUploadState,
+        uploaded_chunk_count: recordingChunkCount,
+      },
+    };
+  }, [activeSessionId, activeTraceId, affectSnapshot, audioUploadState, cameraState, finalTranscriptState.sourceKind, finalTranscriptState.text, inputText, recordingChunkCount, recordingState, uploadedVideoFrameCount, videoUploadState]);
+
+  const refreshAffectPanel = useCallback(async (reason) => {
+    if (!activeSessionId) {
+      return null;
+    }
+
+    const requestToken = affectRequestTokenRef.current + 1;
+    const requestStartedAt = Date.now();
+    affectRequestTokenRef.current = requestToken;
+    setAffectSnapshot((previous) => ({
+      ...previous,
+      panelState: 'loading',
+      panelMessage: 'Refreshing affect panel.',
+    }));
+
+    try {
+      const payload = await requestAffectAnalysis(runtimeConfig.affectBaseUrl, buildAffectRequestPayload(reason));
+      if (requestToken !== affectRequestTokenRef.current) {
+        return null;
+      }
+      const normalized = normalizeAffectPayload(payload);
+      if (!normalized) {
+        if (requestStartedAt < affectSnapshotTimestampRef.current) {
+          return null;
+        }
+        setAffectSnapshot((previous) => ({
+          ...previous,
+          panelState: 'error',
+          panelMessage: 'Affect payload was invalid. Keeping the previous snapshot.',
+        }));
+        return null;
+      }
+      applyAffectSnapshot(normalized, { timestamp: requestStartedAt });
+      return normalized;
+    } catch (error) {
+      if (requestToken !== affectRequestTokenRef.current || requestStartedAt < affectSnapshotTimestampRef.current) {
+        return null;
+      }
+      setAffectSnapshot((previous) => ({
+        ...previous,
+        panelState: 'error',
+        panelMessage: error instanceof Error ? error.message : String(error),
+      }));
+      return null;
+    }
+  }, [activeSessionId, applyAffectSnapshot, buildAffectRequestPayload, runtimeConfig.affectBaseUrl]);
+
+  const scheduleAffectRefresh = useCallback((reason, delayMs = 180) => {
+    if (!activeSessionId) {
+      pendingSessionAffectReasonRef.current = reason || pendingSessionAffectReasonRef.current;
+      return;
+    }
+    clearAffectRefreshTimer();
+    const nextReason = reason || pendingSessionAffectReasonRef.current || 'scheduled_refresh';
+    pendingSessionAffectReasonRef.current = null;
+    affectRefreshTimerRef.current = window.setTimeout(() => {
+      affectRefreshTimerRef.current = null;
+      void refreshAffectPanel(nextReason);
+    }, delayMs);
+  }, [activeSessionId, clearAffectRefreshTimer, refreshAffectPanel]);
+
+  const applySessionSnapshot = useCallback((payload, statusMessage) => {
     const normalizedPayload = normalizeSessionStatePayload(payload);
     const nextSessionId = normalizedPayload?.session?.session_id || null;
     const nextMessages = normalizedPayload.messages;
@@ -591,9 +1152,12 @@ export default function App({ appConfig }) {
 
     autoRestoreAttemptedRef.current = true;
     shouldRecoverOnNextConnectRef.current = false;
+    sessionStateRef.current = normalizedPayload;
     setSessionState(normalizedPayload);
     setSessionErrorMessage('');
     setSessionStatusMessage(statusMessage || t.sessionReady);
+    pendingMessageIdRef.current = null;
+    textSubmitStateRef.current = 'idle';
     setStoredSessionId(nextSessionId);
     setClientSeq(nextUserMessageCount + 1);
     setTextSubmitState('idle');
@@ -601,26 +1165,48 @@ export default function App({ appConfig }) {
     setPendingMessageId(null);
     setLastHeartbeatAt(null);
     setConnectionStatusMessage('');
+    setPartialTranscriptState(createInitialPartialTranscriptState());
+    setFinalTranscriptState(createInitialFinalTranscriptState());
+    affectRequestTokenRef.current += 1;
+    affectSnapshotTimestampRef.current = 0;
+    setAffectSnapshot(createInitialAffectSnapshot());
+    setAffectHistory([]);
+    setKnowledgeState(createInitialKnowledgeState());
 
     if (nextSessionId) {
       writeStoredSessionId(runtimeConfig.activeSessionStorageKey, nextSessionId);
     }
-  }, [runtimeConfig.activeSessionStorageKey, t.sessionReady]);
+    if (nextSessionId) {
+      scheduleAffectRefresh('session_snapshot_applied', 40);
+    }
+  }, [runtimeConfig.activeSessionStorageKey, scheduleAffectRefresh, t.sessionReady]);
 
-  const recoverSessionFromState = useCallback((payload) => {
+  const recoverInFlightTurnFromState = useCallback((payload) => {
     const normalizedPayload = normalizeSessionStatePayload(payload);
     const nextSessionId = normalizedPayload?.session?.session_id || null;
     const nextMessages = normalizedPayload.messages;
     const nextUserMessageCount = nextMessages.filter((message) => message?.role === 'user').length;
+    const currentTurnState = textSubmitStateRef.current;
     const expectedPendingMessageId = pendingMessageIdRef.current;
     const acceptedIndex = expectedPendingMessageId
       ? nextMessages.findIndex((message) => message?.message_id === expectedPendingMessageId)
       : -1;
     const hasAssistantAfterPending = acceptedIndex >= 0
       && nextMessages.slice(acceptedIndex + 1).some((message) => message?.role === 'assistant');
+    const latestUserIndex = (() => {
+      for (let index = nextMessages.length - 1; index >= 0; index -= 1) {
+        if (nextMessages[index]?.role === 'user') {
+          return index;
+        }
+      }
+      return -1;
+    })();
+    const hasAssistantAfterLatestUser = latestUserIndex >= 0
+      && nextMessages.slice(latestUserIndex + 1).some((message) => message?.role === 'assistant');
 
     autoRestoreAttemptedRef.current = true;
     shouldRecoverOnNextConnectRef.current = false;
+    sessionStateRef.current = normalizedPayload;
     setSessionState(normalizedPayload);
     setStoredSessionId(nextSessionId);
     setClientSeq(nextUserMessageCount + 1);
@@ -630,7 +1216,9 @@ export default function App({ appConfig }) {
       writeStoredSessionId(runtimeConfig.activeSessionStorageKey, nextSessionId);
     }
 
-    if (acceptedIndex === -1 && expectedPendingMessageId) {
+    if (currentTurnState === 'awaiting_ack' && acceptedIndex === -1 && expectedPendingMessageId) {
+      pendingMessageIdRef.current = expectedPendingMessageId;
+      textSubmitStateRef.current = 'awaiting_ack';
       setPendingMessageId(expectedPendingMessageId);
       setTextSubmitState('awaiting_ack');
       setDialogueReplyState('idle');
@@ -638,7 +1226,9 @@ export default function App({ appConfig }) {
       return;
     }
 
-    if (acceptedIndex >= 0 && !hasAssistantAfterPending) {
+    if (currentTurnState === 'awaiting_ack' && acceptedIndex >= 0 && !hasAssistantAfterPending) {
+      pendingMessageIdRef.current = null;
+      textSubmitStateRef.current = 'awaiting_reply';
       setPendingMessageId(null);
       setTextSubmitState('awaiting_reply');
       setDialogueReplyState('idle');
@@ -646,7 +1236,12 @@ export default function App({ appConfig }) {
       return;
     }
 
-    if (hasAssistantAfterPending) {
+    if (
+      (currentTurnState === 'awaiting_ack' && hasAssistantAfterPending)
+      || (currentTurnState === 'awaiting_reply' && hasAssistantAfterLatestUser)
+    ) {
+      pendingMessageIdRef.current = null;
+      textSubmitStateRef.current = 'idle';
       setPendingMessageId(null);
       setTextSubmitState('idle');
       setDialogueReplyState('received');
@@ -654,11 +1249,102 @@ export default function App({ appConfig }) {
       return;
     }
 
+    if (currentTurnState === 'awaiting_reply' && latestUserIndex >= 0) {
+      pendingMessageIdRef.current = null;
+      textSubmitStateRef.current = 'awaiting_reply';
+      setPendingMessageId(null);
+      setTextSubmitState('awaiting_reply');
+      setDialogueReplyState('idle');
+      setSessionStatusMessage(t.sessionSubmitting);
+      return;
+    }
+
+    pendingMessageIdRef.current = null;
+    textSubmitStateRef.current = 'idle';
     setPendingMessageId(null);
     setTextSubmitState('idle');
     setDialogueReplyState('idle');
     setSessionStatusMessage(t.sessionReady);
   }, [runtimeConfig.activeSessionStorageKey, t.sessionReady, t.sessionSubmitSuccess, t.sessionSubmitting]);
+
+  const clearHeartbeatTimer = useCallback(() => {
+    if (heartbeatTimerRef.current) {
+      window.clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+  }, []);
+
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }, []);
+
+  const teardownRealtime = useCallback((manualClose = true) => {
+    manualCloseRef.current = manualClose;
+    clearReconnectTimer();
+    clearHeartbeatTimer();
+    const socket = socketRef.current;
+    socketRef.current = null;
+    if (socket && (socket.readyState === 0 || socket.readyState === 1)) {
+      socket.close();
+    }
+  }, [clearHeartbeatTimer, clearReconnectTimer]);
+
+  const invalidateLocalSession = useCallback(({
+    nextSessionRequestState = 'idle',
+    nextSessionStatusMessage = t.sessionIdle,
+    nextSessionErrorMessage = '',
+    nextConnectionStatus = 'idle',
+    nextConnectionStatusMessage = '',
+  } = {}) => {
+    teardownRealtime(true);
+    teardownMicrophone();
+    teardownCamera(true);
+    clearAffectRefreshTimer();
+    clearStoredSessionId(runtimeConfig.activeSessionStorageKey);
+    setInputText('');
+    autoRestoreAttemptedRef.current = true;
+    shouldRecoverOnNextConnectRef.current = false;
+    connectionTokenRef.current += 1;
+    affectRequestTokenRef.current += 1;
+    affectSnapshotTimestampRef.current = 0;
+    sessionStateRef.current = null;
+    pendingMessageIdRef.current = null;
+    textSubmitStateRef.current = 'idle';
+    connectionStatusRef.current = nextConnectionStatus;
+    pendingVideoUploadsRef.current = 0;
+    pendingSessionAffectReasonRef.current = null;
+    setStoredSessionId(null);
+    setSessionState(null);
+    setSessionRequestState(nextSessionRequestState);
+    setSessionErrorMessage(nextSessionErrorMessage);
+    setSessionStatusMessage(nextSessionStatusMessage);
+    setClientSeq(1);
+    setTextSubmitState('idle');
+    setDialogueReplyState('idle');
+    setPendingMessageId(null);
+    setLastHeartbeatAt(null);
+    setConnectionStatus(nextConnectionStatus);
+    setConnectionStatusMessage(nextConnectionStatusMessage);
+    setPartialTranscriptState(createInitialPartialTranscriptState());
+    setFinalTranscriptState(createInitialFinalTranscriptState());
+    setAffectSnapshot(createInitialAffectSnapshot());
+    setAffectHistory([]);
+    setKnowledgeState(createInitialKnowledgeState());
+    setCameraPermissionState('idle');
+    setCameraPermissionMessage('');
+    setCameraState('idle');
+    setCameraPreviewMessage('');
+    setVideoUploadState('idle');
+    setVideoUploadMessage('');
+    setUploadedVideoFrameCount(0);
+    setLastUploadedVideoFrameId(null);
+    setLastVideoUploadedAt(null);
+    setNextVideoFrameSeq(1);
+    setIsCameraModalOpen(false);
+  }, [clearAffectRefreshTimer, runtimeConfig.activeSessionStorageKey, t.sessionIdle, teardownCamera, teardownMicrophone, teardownRealtime]);
 
   const restoreSession = useCallback(async (targetSessionId) => {
     if (!targetSessionId) {
@@ -673,23 +1359,16 @@ export default function App({ appConfig }) {
 
     try {
       const payload = await requestSessionState(runtimeConfig.apiBaseUrl, targetSessionId);
-      syncSessionFromState(payload, t.sessionReady);
+      applySessionSnapshot(payload, t.sessionReady);
       setSessionRequestState('ready');
     } catch (error) {
-      clearStoredSessionId(runtimeConfig.activeSessionStorageKey);
-      setStoredSessionId(null);
-      setSessionState(null);
-      setSessionRequestState('error');
-      setSessionErrorMessage(error.message || t.sessionRestoreFailed);
-      setSessionStatusMessage(t.sessionRestoreFailed);
-      setConnectionStatusMessage('');
-      setConnectionStatus('idle');
-      setLastHeartbeatAt(null);
-      setTextSubmitState('idle');
-      setDialogueReplyState('idle');
-      setPendingMessageId(null);
+      invalidateLocalSession({
+        nextSessionRequestState: 'error',
+        nextSessionStatusMessage: t.sessionRestoreFailed,
+        nextSessionErrorMessage: error.message || t.sessionRestoreFailed,
+      });
     }
-  }, [runtimeConfig.activeSessionStorageKey, runtimeConfig.apiBaseUrl, syncSessionFromState, t.noStoredSession, t.sessionReady, t.sessionRestoreFailed, t.sessionRestoring]);
+  }, [runtimeConfig.apiBaseUrl, applySessionSnapshot, invalidateLocalSession, t.noStoredSession, t.sessionReady, t.sessionRestoreFailed, t.sessionRestoring]);
 
   useEffect(() => {
     const cachedSessionId = readStoredSessionId(runtimeConfig.activeSessionStorageKey);
@@ -718,33 +1397,47 @@ export default function App({ appConfig }) {
   }, [textSubmitState]);
 
   useEffect(() => {
+    recordingStateRef.current = recordingState;
+  }, [recordingState]);
+
+  useEffect(() => {
+    audioUploadStateRef.current = audioUploadState;
+  }, [audioUploadState]);
+
+  useEffect(() => {
+    recordingDurationMsRef.current = recordingDurationMs;
+  }, [recordingDurationMs]);
+
+  useEffect(() => {
+    recordingChunkCountRef.current = recordingChunkCount;
+  }, [recordingChunkCount]);
+
+  useEffect(() => {
+    cameraStateRef.current = cameraState;
+  }, [cameraState]);
+
+  useEffect(() => {
+    videoUploadStateRef.current = videoUploadState;
+  }, [videoUploadState]);
+
+  useEffect(() => {
+    uploadedVideoFrameCountRef.current = uploadedVideoFrameCount;
+  }, [uploadedVideoFrameCount]);
+
+  useEffect(() => {
+    nextVideoFrameSeqRef.current = nextVideoFrameSeq;
+  }, [nextVideoFrameSeq]);
+
+  useEffect(() => {
+    if (!activeSessionId || !pendingSessionAffectReasonRef.current || affectRefreshTimerRef.current) {
+      return;
+    }
+    scheduleAffectRefresh(pendingSessionAffectReasonRef.current, 40);
+  }, [activeSessionId, scheduleAffectRefresh]);
+
+  useEffect(() => {
     pendingMessageIdRef.current = pendingMessageId;
   }, [pendingMessageId]);
-
-  const clearHeartbeatTimer = useCallback(() => {
-    if (heartbeatTimerRef.current) {
-      window.clearInterval(heartbeatTimerRef.current);
-      heartbeatTimerRef.current = null;
-    }
-  }, []);
-
-  const clearReconnectTimer = useCallback(() => {
-    if (reconnectTimerRef.current) {
-      window.clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-  }, []);
-
-  const teardownRealtime = useCallback((manualClose = true) => {
-    manualCloseRef.current = manualClose;
-    clearReconnectTimer();
-    clearHeartbeatTimer();
-    const socket = socketRef.current;
-    socketRef.current = null;
-    if (socket && (socket.readyState === 0 || socket.readyState === 1)) {
-      socket.close();
-    }
-  }, [clearHeartbeatTimer, clearReconnectTimer]);
 
   const sendHeartbeat = useCallback((connectionToken = connectionTokenRef.current) => {
     const socket = socketRef.current;
@@ -787,7 +1480,7 @@ export default function App({ appConfig }) {
         shouldRecoverOnNextConnectRef.current = false;
         void requestSessionState(runtimeConfig.apiBaseUrl, activeSessionId)
           .then((payload) => {
-            recoverSessionFromState(payload);
+            recoverInFlightTurnFromState(payload);
             setSessionRequestState('ready');
           })
           .catch((error) => {
@@ -796,6 +1489,8 @@ export default function App({ appConfig }) {
             setTextSubmitState('error');
             setDialogueReplyState('error');
           });
+      } else {
+        shouldRecoverOnNextConnectRef.current = false;
       }
       return;
     }
@@ -805,6 +1500,77 @@ export default function App({ appConfig }) {
       setConnectionStatus('connected');
       setLastHeartbeatAt(heartbeatTime);
       setConnectionStatusMessage('heartbeat acknowledged');
+      return;
+    }
+
+    if (envelope.event_type === 'transcript.partial') {
+      const partialTranscript = validateTranscriptPartialPayload(envelope.payload || null);
+      if (!partialTranscript) {
+        return;
+      }
+      if (
+        completedRecordingIdRef.current
+        && partialTranscript.recordingId === completedRecordingIdRef.current
+        && audioUploadStateRef.current === 'completed'
+      ) {
+        return;
+      }
+      if (
+        currentRecordingIdRef.current
+        && partialTranscript.recordingId !== currentRecordingIdRef.current
+      ) {
+        return;
+      }
+
+      setPartialTranscriptState((previousState) => {
+        if (
+          previousState.recordingId
+          && partialTranscript.recordingId !== previousState.recordingId
+          && currentRecordingIdRef.current !== partialTranscript.recordingId
+        ) {
+          return previousState;
+        }
+        if (partialTranscript.previewSeq < previousState.previewSeq) {
+          return previousState;
+        }
+        return {
+          status: 'streaming',
+          text: partialTranscript.text,
+          previewSeq: partialTranscript.previewSeq,
+          recordingId: partialTranscript.recordingId,
+          updatedAt: partialTranscript.generatedAt || envelope?.emitted_at || null,
+          language: partialTranscript.language,
+          confidence: partialTranscript.confidence,
+        };
+      });
+      setConnectionStatusMessage(`partial transcript ${partialTranscript.previewSeq}`);
+      return;
+    }
+
+    if (envelope.event_type === 'transcript.final') {
+      const finalTranscript = validateTranscriptFinalPayload(envelope.payload || null);
+      if (!finalTranscript) {
+        return;
+      }
+      if (
+        currentRecordingIdRef.current
+        && finalTranscript.recordingId
+        && finalTranscript.recordingId !== currentRecordingIdRef.current
+      ) {
+        return;
+      }
+
+      setPartialTranscriptState(createInitialPartialTranscriptState());
+      setFinalTranscriptState({
+        text: finalTranscript.text,
+        messageId: finalTranscript.messageId,
+        sourceKind: finalTranscript.sourceKind,
+        recordingId: finalTranscript.recordingId,
+        updatedAt: finalTranscript.generatedAt || envelope?.emitted_at || null,
+        language: finalTranscript.language,
+        confidence: finalTranscript.confidence,
+      });
+      setConnectionStatusMessage('final transcript received');
       return;
     }
 
@@ -830,12 +1596,54 @@ export default function App({ appConfig }) {
           messages: upsertMessageById(baseState.messages, acceptedMessage),
         };
       });
+      pendingMessageIdRef.current = null;
       setPendingMessageId(null);
       setInputText('');
       setSessionErrorMessage('');
-      setTextSubmitState('awaiting_reply');
-      setDialogueReplyState('idle');
-      setSessionStatusMessage(t.sessionSubmitting);
+      if (acceptedMessage.source_kind === 'audio') {
+        completedRecordingIdRef.current = currentRecordingIdRef.current;
+        currentRecordingIdRef.current = null;
+        lastPreviewChunkCountRef.current = 0;
+        nextPreviewSeqRef.current = 1;
+        setPartialTranscriptState(createInitialPartialTranscriptState());
+        setAudioUploadState('completed');
+        setAudioUploadMessage(`Audio message accepted: ${acceptedMessage.message_id || 'message.accepted'}`);
+        textSubmitStateRef.current = 'awaiting_reply';
+        setTextSubmitState('awaiting_reply');
+        setDialogueReplyState('idle');
+        setSessionStatusMessage(t.sessionSubmitting);
+      } else {
+        textSubmitStateRef.current = 'awaiting_reply';
+        setTextSubmitState('awaiting_reply');
+        setDialogueReplyState('idle');
+        setSessionStatusMessage(t.sessionSubmitting);
+      }
+      return;
+    }
+
+    if (envelope.event_type === 'affect.snapshot') {
+      const nextAffectSnapshot = normalizeAffectPayload(envelope.payload || null);
+      if (!nextAffectSnapshot) {
+        return;
+      }
+
+      applyAffectSnapshot(nextAffectSnapshot, { timestamp: Date.now() + 1 });
+      setConnectionStatusMessage('affect snapshot received');
+      return;
+    }
+
+    if (envelope.event_type === 'knowledge.retrieved') {
+      const nextKnowledgeState = normalizeKnowledgeRetrievedPayload(envelope.payload || null);
+      if (!nextKnowledgeState) {
+        return;
+      }
+
+      setKnowledgeState(nextKnowledgeState);
+      setConnectionStatusMessage(
+        nextKnowledgeState.sourceIds.length
+          ? `knowledge retrieved: ${nextKnowledgeState.sourceIds.join(', ')}`
+          : 'knowledge retrieved',
+      );
       return;
     }
 
@@ -862,11 +1670,19 @@ export default function App({ appConfig }) {
           messages: upsertMessageById(baseState.messages, replyMessage),
         };
       });
+      pendingMessageIdRef.current = null;
+      textSubmitStateRef.current = 'idle';
       setPendingMessageId(null);
       setTextSubmitState('idle');
       setDialogueReplyState('received');
       setSessionErrorMessage('');
       setSessionStatusMessage(t.sessionSubmitSuccess);
+      setKnowledgeState((previousState) => ({
+        ...previousState,
+        groundedRefs: Array.isArray(envelope?.payload?.knowledge_refs)
+          ? envelope.payload.knowledge_refs.filter((item) => typeof item === 'string' && item.trim())
+          : previousState.groundedRefs,
+      }));
       return;
     }
 
@@ -886,7 +1702,7 @@ export default function App({ appConfig }) {
         setDialogueReplyState('error');
       }
     }
-  }, [recoverSessionFromState, runtimeConfig.apiBaseUrl, t.sessionRestoreFailed, t.sessionSubmitSuccess, t.sessionSubmitting]);
+  }, [applyAffectSnapshot, recoverInFlightTurnFromState, runtimeConfig.apiBaseUrl, t.sessionRestoreFailed, t.sessionSubmitSuccess, t.sessionSubmitting]);
 
   const connectRealtime = useCallback(() => {
     const activeSession = sessionStateRef.current?.session;
@@ -963,17 +1779,19 @@ export default function App({ appConfig }) {
       }
       if (isTerminalRealtimeClose(event)) {
         const closeReason = event?.reason || 'session_not_found';
-        setConnectionStatus('closed');
-        setConnectionStatusMessage(closeReason);
-        if (textSubmitStateRef.current !== 'idle') {
-          setTextSubmitState('error');
-          setDialogueReplyState('error');
-          setSessionErrorMessage(closeReason);
-          setSessionStatusMessage(closeReason);
-        }
+        invalidateLocalSession({
+          nextSessionRequestState: 'error',
+          nextSessionStatusMessage: closeReason,
+          nextSessionErrorMessage: closeReason,
+          nextConnectionStatus: 'closed',
+          nextConnectionStatusMessage: closeReason,
+        });
         return;
       }
 
+      const needsInFlightRecovery = textSubmitStateRef.current === 'awaiting_ack'
+        || textSubmitStateRef.current === 'awaiting_reply';
+      shouldRecoverOnNextConnectRef.current = needsInFlightRecovery;
       setConnectionStatus('reconnecting');
       setConnectionStatusMessage(`reconnect scheduled (${runtimeConfig.reconnectDelayMs}ms)`);
       clearReconnectTimer();
@@ -984,22 +1802,32 @@ export default function App({ appConfig }) {
         connectRealtimeRef.current?.();
       }, runtimeConfig.reconnectDelayMs);
     });
-  }, [applyRealtimeEnvelope, clearHeartbeatTimer, clearReconnectTimer, runtimeConfig.heartbeatIntervalMs, runtimeConfig.reconnectDelayMs, runtimeConfig.wsUrl, sendHeartbeat, teardownRealtime]);
+  }, [applyRealtimeEnvelope, clearHeartbeatTimer, clearReconnectTimer, invalidateLocalSession, runtimeConfig.heartbeatIntervalMs, runtimeConfig.reconnectDelayMs, runtimeConfig.wsUrl, sendHeartbeat, teardownRealtime]);
 
   useEffect(() => {
     connectRealtimeRef.current = connectRealtime;
   }, [connectRealtime]);
 
-  const activeSessionId = sessionState?.session?.session_id || null;
-  const activeTraceId = sessionState?.session?.trace_id || null;
+  useEffect(() => () => {
+    teardownMicrophone();
+    teardownCamera(true);
+    clearAffectRefreshTimer();
+  }, [clearAffectRefreshTimer, teardownCamera, teardownMicrophone]);
 
   useEffect(() => {
     if (!activeSessionId || !activeTraceId) {
       teardownRealtime(true);
+      teardownMicrophone();
+      teardownCamera(true);
+      clearAffectRefreshTimer();
       setLastHeartbeatAt(null);
       if (typeof window?.WebSocket === 'function') {
-        setConnectionStatus('idle');
-        setConnectionStatusMessage('');
+        if (connectionStatusRef.current === 'closed') {
+          setConnectionStatus('closed');
+        } else {
+          setConnectionStatus('idle');
+          setConnectionStatusMessage('');
+        }
       } else {
         setConnectionStatus('unsupported');
         setConnectionStatusMessage('WebSocket unsupported in current runtime');
@@ -1011,7 +1839,7 @@ export default function App({ appConfig }) {
     return () => {
       teardownRealtime(true);
     };
-  }, [activeSessionId, activeTraceId, connectRealtime, teardownRealtime]);
+  }, [activeSessionId, activeTraceId, clearAffectRefreshTimer, connectRealtime, teardownCamera, teardownMicrophone, teardownRealtime]);
 
   useEffect(() => {
     let index = 0;
@@ -1029,79 +1857,569 @@ export default function App({ appConfig }) {
     return () => clearInterval(msgInterval);
   }, []);
 
-  // 开启摄像头功能
-  const startCamera = useCallback(async () => {
-    setCameraStatus('requesting');
+  const requestCameraAccess = useCallback(async () => {
+    if (cameraStateRef.current === 'previewing') {
+      return true;
+    }
+
+    if (!navigator?.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      setCameraPermissionState('unsupported');
+      setCameraPermissionMessage('Current browser does not support camera capture.');
+      setCameraState('error');
+      setCameraPreviewMessage('Camera is unavailable in this runtime.');
+      if (activeSessionId) {
+        scheduleAffectRefresh('camera_permission_changed', 120);
+      }
+      return false;
+    }
+
+    setCameraPermissionState('requesting');
+    setCameraPermissionMessage('Requesting camera access.');
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-      setCameraStream(stream);
-      setCameraStatus('success');
-    } catch (err) {
-      setCameraStatus('error');
+      if (!cameraStreamRef.current) {
+        cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false,
+        });
+      }
+      setCameraPermissionState('granted');
+      setCameraPermissionMessage('Camera access granted.');
+      if (activeSessionId) {
+        scheduleAffectRefresh('camera_permission_changed', 120);
+      }
+      return true;
+    } catch (error) {
+      const errorName = error && typeof error === 'object' ? error.name : '';
+      setCameraState('error');
+      setCameraPreviewMessage('Camera is unavailable.');
+      if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
+        setCameraPermissionState('denied');
+        setCameraPermissionMessage('Camera permission was denied.');
+      } else {
+        setCameraPermissionState('error');
+        setCameraPermissionMessage(error instanceof Error ? error.message : String(error));
+      }
+      if (activeSessionId) {
+        scheduleAffectRefresh('camera_permission_changed', 120);
+      }
+      return false;
+    }
+  }, [activeSessionId, scheduleAffectRefresh]);
+
+  const buildVideoFramePayload = useCallback(async () => {
+    const videoElement = modalVideoRef.current || mainVideoRef.current;
+    const fallbackWidth = videoElement?.videoWidth || 640;
+    const fallbackHeight = videoElement?.videoHeight || 360;
+    const BlobCtor = window?.Blob || Blob;
+
+    if (videoElement && typeof document?.createElement === 'function') {
+      const canvas = cameraCanvasRef.current || document.createElement('canvas');
+      cameraCanvasRef.current = canvas;
+      canvas.width = fallbackWidth;
+      canvas.height = fallbackHeight;
+      const context = typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
+      if (context && typeof context.drawImage === 'function') {
+        try {
+          context.drawImage(videoElement, 0, 0, fallbackWidth, fallbackHeight);
+        } catch (error) {
+          // Ignore draw failures and fallback below.
+        }
+      }
+      if (typeof canvas.toBlob === 'function') {
+        const blob = await new Promise((resolve) => {
+          canvas.toBlob(resolve, 'image/jpeg', 0.82);
+        });
+        if (blob) {
+          return {
+            blob,
+            mimeType: blob.type || 'image/jpeg',
+            width: fallbackWidth,
+            height: fallbackHeight,
+          };
+        }
+      }
+    }
+
+    if (typeof BlobCtor !== 'function') {
+      return null;
+    }
+
+    return {
+      blob: new BlobCtor([
+        JSON.stringify({
+          frame_seq: nextVideoFrameSeqRef.current,
+          captured_at_ms: Date.now(),
+          camera_state: cameraStateRef.current,
+        }),
+      ], { type: 'image/jpeg' }),
+      mimeType: 'image/jpeg',
+      width: fallbackWidth,
+      height: fallbackHeight,
+    };
+  }, []);
+
+  const uploadVideoFrame = useCallback(async (payload) => {
+    if (!activeSessionId) {
+      setVideoUploadState('local_only');
+      setVideoUploadMessage('No active session. Camera preview stays local-only.');
+      return null;
+    }
+
+    pendingVideoUploadsRef.current += 1;
+    setVideoUploadState('uploading');
+    setVideoUploadMessage(`Uploading video frame ${payload.frameSeq}.`);
+
+    try {
+      const responsePayload = await requestVideoFrameUpload(runtimeConfig.apiBaseUrl, activeSessionId, payload);
+      setUploadedVideoFrameCount((previous) => previous + 1);
+      setLastUploadedVideoFrameId(responsePayload?.media_id || null);
+      setLastVideoUploadedAt(responsePayload?.created_at || new Date().toISOString());
+      if (payload.frameSeq <= 2) {
+        scheduleAffectRefresh('video_frame_uploaded', 120);
+      }
+      return responsePayload;
+    } catch (error) {
+      setVideoUploadState('error');
+      setVideoUploadMessage(error instanceof Error ? error.message : String(error));
+      return null;
+    } finally {
+      pendingVideoUploadsRef.current = Math.max(0, pendingVideoUploadsRef.current - 1);
+      finalizeVideoUploadState();
+    }
+  }, [activeSessionId, finalizeVideoUploadState, runtimeConfig.apiBaseUrl, scheduleAffectRefresh]);
+
+  const captureAndUploadVideoFrame = useCallback(async () => {
+    if (cameraStateRef.current !== 'previewing') {
+      return null;
+    }
+
+    const payload = await buildVideoFramePayload();
+    if (!payload) {
+      setVideoUploadState('error');
+      setVideoUploadMessage('Current browser does not support video frame serialization.');
+      return null;
+    }
+
+    const frameSeq = nextVideoFrameSeqRef.current;
+    nextVideoFrameSeqRef.current += 1;
+    setNextVideoFrameSeq(nextVideoFrameSeqRef.current);
+    return uploadVideoFrame({
+      blob: payload.blob,
+      frameSeq,
+      capturedAtMs: Date.now(),
+      width: payload.width,
+      height: payload.height,
+      mimeType: payload.mimeType,
+    });
+  }, [buildVideoFramePayload, uploadVideoFrame]);
+
+  const startCameraPreview = useCallback(async () => {
+    if (cameraStateRef.current === 'previewing') {
+      return true;
+    }
+
+    const granted = await requestCameraAccess();
+    if (!granted || !cameraStreamRef.current) {
+      setCameraState('error');
+      setCameraPreviewMessage('Camera is not ready for preview.');
+      return false;
+    }
+
+    [modalVideoRef.current, mainVideoRef.current].forEach((videoElement) => {
+      if (videoElement && 'srcObject' in videoElement) {
+        videoElement.srcObject = cameraStreamRef.current;
+      }
+    });
+
+    const videoElement = modalVideoRef.current || mainVideoRef.current;
+    if (videoElement && typeof videoElement.play === 'function') {
+      try {
+        await videoElement.play();
+      } catch (error) {
+        setCameraState('error');
+        setCameraPreviewMessage(error instanceof Error ? error.message : String(error));
+        return false;
+      }
+    }
+
+    clearCameraFrameTimer();
+    setCameraState('previewing');
+    setCameraPreviewMessage('Camera preview is active. Uploading video frames at a low frequency.');
+    setVideoUploadState(activeSessionId ? 'uploading' : 'local_only');
+    setVideoUploadMessage(
+      activeSessionId
+        ? 'Camera preview is active. Waiting for the first uploaded frame.'
+        : 'Camera preview is active locally without a session.',
+    );
+    setUploadedVideoFrameCount(0);
+    setLastUploadedVideoFrameId(null);
+    setLastVideoUploadedAt(null);
+    setNextVideoFrameSeq(1);
+    nextVideoFrameSeqRef.current = 1;
+    scheduleAffectRefresh('camera_preview_started', 80);
+    void captureAndUploadVideoFrame();
+    cameraFrameTimerRef.current = window.setInterval(() => {
+      void captureAndUploadVideoFrame();
+    }, runtimeConfig.videoFrameUploadIntervalMs);
+    return true;
+  }, [activeSessionId, captureAndUploadVideoFrame, clearCameraFrameTimer, requestCameraAccess, runtimeConfig.videoFrameUploadIntervalMs, scheduleAffectRefresh]);
+
+  const stopCameraPreview = useCallback(() => {
+    clearCameraFrameTimer();
+    teardownCamera(true);
+    setCameraState('stopped');
+    setCameraPreviewMessage('Camera preview stopped.');
+    finalizeVideoUploadState('stopped');
+    scheduleAffectRefresh('camera_preview_stopped', 80);
+    return true;
+  }, [clearCameraFrameTimer, finalizeVideoUploadState, scheduleAffectRefresh, teardownCamera]);
+
+  useEffect(() => {
+    if (!isCameraModalOpen) {
+      cameraModalAutoStartRef.current = false;
+      return;
+    }
+    if (cameraModalAutoStartRef.current) {
+      return;
+    }
+    cameraModalAutoStartRef.current = true;
+    void requestCameraAccess().then((granted) => {
+      if (granted) {
+        void startCameraPreview();
+      }
+    });
+  }, [isCameraModalOpen, requestCameraAccess, startCameraPreview]);
+
+  const waitForPendingAudioUploads = useCallback(async () => {
+    while (pendingAudioUploadsRef.current > 0) {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 20);
+      });
     }
   }, []);
 
-  // 关闭摄像头功能
-  const stopCamera = useCallback(() => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      setCameraStream(null);
-      setCameraStatus('idle');
-      setIsCameraModalOpen(false);
+  const requestMicrophoneAccess = useCallback(async () => {
+    if (recordingState === 'recording') {
+      return true;
     }
-  }, [cameraStream]);
 
-  // 监听模态框打开，自动请求权限
+    if (
+      !navigator?.mediaDevices
+      || typeof navigator.mediaDevices.getUserMedia !== 'function'
+    ) {
+      setMicPermissionState('unsupported');
+      setMicPermissionMessage('Current browser does not support microphone capture.');
+      setRecordingState('error');
+      return false;
+    }
+
+    setMicPermissionState('requesting');
+    setMicPermissionMessage('Requesting microphone access.');
+
+    try {
+      if (micStreamRef.current) {
+        setMicPermissionState('granted');
+        setMicPermissionMessage('Microphone access granted.');
+        return true;
+      }
+
+      micStreamRef.current = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
+      setMicPermissionState('granted');
+      setMicPermissionMessage('Microphone access granted.');
+      return true;
+    } catch (error) {
+      const errorName = error && typeof error === 'object' ? error.name : '';
+      setRecordingState('error');
+      if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
+        setMicPermissionState('denied');
+        setMicPermissionMessage('Microphone permission was denied.');
+      } else {
+        setMicPermissionState('error');
+        setMicPermissionMessage(error instanceof Error ? error.message : String(error));
+      }
+      return false;
+    }
+  }, [recordingState]);
+
+  const maybeSendAudioPreview = useCallback(async () => {
+    if (!runtimeConfig.enableAudioPreview) {
+      return;
+    }
+    if (!activeSessionId || recordingStateRef.current !== 'recording') {
+      return;
+    }
+    if (finalizingAudioRef.current || previewInFlightRef.current) {
+      return;
+    }
+    if (recordedAudioPartsRef.current.length < runtimeConfig.audioPreviewChunkThreshold) {
+      return;
+    }
+    if (recordedAudioPartsRef.current.length === lastPreviewChunkCountRef.current) {
+      return;
+    }
+    const BlobCtor = window?.Blob || Blob;
+    if (typeof BlobCtor !== 'function') {
+      return;
+    }
+
+    const previewBlob = new BlobCtor(recordedAudioPartsRef.current, {
+      type: recordedAudioPartsRef.current[recordedAudioPartsRef.current.length - 1]?.type || 'application/octet-stream',
+    });
+    const previewSeq = nextPreviewSeqRef.current;
+    nextPreviewSeqRef.current += 1;
+    previewInFlightRef.current = true;
+
+    try {
+      await requestAudioPreview(runtimeConfig.apiBaseUrl, activeSessionId, {
+        blob: previewBlob,
+        durationMs: Math.max(0, Math.round(recordingDurationMsRef.current)),
+        previewSeq,
+        recordingId: currentRecordingIdRef.current,
+      });
+      lastPreviewChunkCountRef.current = recordedAudioPartsRef.current.length;
+    } catch (error) {
+      setPartialTranscriptState((previousState) => ({
+        ...previousState,
+        status: 'error',
+        text: error instanceof Error ? error.message : String(error),
+        updatedAt: new Date().toISOString(),
+      }));
+    } finally {
+      previewInFlightRef.current = false;
+      if (
+        recordingStateRef.current === 'recording'
+        && recordedAudioPartsRef.current.length > lastPreviewChunkCountRef.current
+      ) {
+        void maybeSendAudioPreview();
+      }
+    }
+  }, [activeSessionId, runtimeConfig.apiBaseUrl, runtimeConfig.audioPreviewChunkThreshold, runtimeConfig.enableAudioPreview]);
+
+  const uploadAudioChunk = useCallback(async (blob, options) => {
+    if (!activeSessionId) {
+      setAudioUploadState('error');
+      setAudioUploadMessage('Create a session before starting audio recording.');
+      return null;
+    }
+
+    pendingAudioUploadsRef.current += 1;
+    setAudioUploadState('uploading');
+    setAudioUploadMessage(`Uploading audio chunk ${options.chunkSeq}.`);
+
+    try {
+      const payload = await requestAudioChunkUpload(runtimeConfig.apiBaseUrl, activeSessionId, {
+        blob,
+        chunkSeq: options.chunkSeq,
+        chunkStartedAtMs: options.chunkStartedAtMs,
+        durationMs: options.durationMs,
+        isFinal: options.isFinal,
+      });
+      setLastUploadedMediaId(payload?.media_id || null);
+      setLastUploadedAt(payload?.created_at || new Date().toISOString());
+      return payload;
+    } catch (error) {
+      setAudioUploadState('error');
+      setAudioUploadMessage(error instanceof Error ? error.message : String(error));
+      return null;
+    } finally {
+      pendingAudioUploadsRef.current = Math.max(0, pendingAudioUploadsRef.current - 1);
+      if (
+        pendingAudioUploadsRef.current === 0
+        && !finalizingAudioRef.current
+        && recordingStateRef.current !== 'recording'
+        && audioUploadStateRef.current !== 'error'
+      ) {
+        setAudioUploadState('completed');
+        setAudioUploadMessage(`Uploaded ${recordingChunkCountRef.current} audio chunks.`);
+      }
+    }
+  }, [activeSessionId, runtimeConfig.apiBaseUrl]);
+
+  const finalizeRecordedAudio = useCallback(async () => {
+    if (!runtimeConfig.enableAudioFinalize || finalizingAudioRef.current) {
+      return;
+    }
+    if (!activeSessionId || !recordedAudioPartsRef.current.length) {
+      return;
+    }
+
+    const BlobCtor = window?.Blob || Blob;
+    if (typeof BlobCtor !== 'function') {
+      setAudioUploadState('error');
+      setAudioUploadMessage('Current browser does not support Blob.');
+      return;
+    }
+
+    const finalBlob = new BlobCtor(recordedAudioPartsRef.current, {
+      type: recordedAudioPartsRef.current[recordedAudioPartsRef.current.length - 1]?.type || 'application/octet-stream',
+    });
+
+    finalizingAudioRef.current = true;
+    setDialogueReplyState('idle');
+    setAudioUploadState('processing_final');
+    setAudioUploadMessage('Submitting final audio and waiting for ASR result.');
+
+    try {
+      await waitForPendingAudioUploads();
+      await requestAudioFinalize(runtimeConfig.apiBaseUrl, activeSessionId, {
+        blob: finalBlob,
+        durationMs: Math.max(0, Math.round(recordingDurationMsRef.current)),
+      });
+      setAudioUploadState('awaiting_realtime');
+      setAudioUploadMessage('Final audio submitted, waiting for realtime message.accepted.');
+    } catch (error) {
+      setAudioUploadState('error');
+      setAudioUploadMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      finalizingAudioRef.current = false;
+    }
+  }, [activeSessionId, runtimeConfig.apiBaseUrl, runtimeConfig.enableAudioFinalize, waitForPendingAudioUploads]);
+
+  const startRecording = useCallback(async () => {
+    if (recordingState === 'recording') {
+      return;
+    }
+    if (!activeSessionId) {
+      setRecordingState('error');
+      setAudioUploadState('error');
+      setAudioUploadMessage('Create a session before recording.');
+      return;
+    }
+    if (connectionStatusRef.current !== 'connected') {
+      setRecordingState('error');
+      setAudioUploadState('error');
+      setAudioUploadMessage('Realtime connection must be ready before recording.');
+      return;
+    }
+
+    const granted = await requestMicrophoneAccess();
+    if (!granted || !micStreamRef.current) {
+      return;
+    }
+
+    const MediaRecorderCtor = window?.MediaRecorder;
+    if (typeof MediaRecorderCtor !== 'function') {
+      setMicPermissionState('unsupported');
+      setMicPermissionMessage('Current browser does not support MediaRecorder.');
+      setRecordingState('error');
+      return;
+    }
+
+    clearRecordingTimer();
+    stopRequestedRef.current = false;
+    pendingAudioUploadsRef.current = 0;
+    recordedAudioPartsRef.current = [];
+    finalizingAudioRef.current = false;
+    previewInFlightRef.current = false;
+    lastPreviewChunkCountRef.current = 0;
+    nextPreviewSeqRef.current = 1;
+    nextAudioChunkSeqRef.current = 1;
+    currentRecordingIdRef.current = createRecordingId();
+    recordingStartedAtMsRef.current = Date.now();
+
+    setRecordingState('recording');
+    setRecordingDurationMs(0);
+    setRecordingChunkCount(0);
+    setAudioUploadState('uploading');
+    setAudioUploadMessage('Recording started, waiting for audio chunk uploads.');
+    setLastUploadedAt(null);
+    setLastUploadedMediaId(null);
+    setPartialTranscriptState(createInitialPartialTranscriptState());
+    setFinalTranscriptState(createInitialFinalTranscriptState());
+
+    const recorder = new MediaRecorderCtor(micStreamRef.current);
+    mediaRecorderRef.current = recorder;
+    recorder.addEventListener('dataavailable', (event) => {
+      if (!event?.data || (typeof event.data.size === 'number' && event.data.size <= 0)) {
+        return;
+      }
+
+      recordedAudioPartsRef.current.push(event.data);
+      setRecordingChunkCount((previous) => previous + 1);
+      const chunkSeq = nextAudioChunkSeqRef.current;
+      nextAudioChunkSeqRef.current += 1;
+      const isFinal = stopRequestedRef.current && recorder.state !== 'recording';
+      void uploadAudioChunk(event.data, {
+        chunkSeq,
+        chunkStartedAtMs: (chunkSeq - 1) * 250,
+        durationMs: 250,
+        isFinal,
+      });
+      void maybeSendAudioPreview();
+    });
+    recorder.addEventListener('stop', () => {
+      clearRecordingTimer();
+      mediaRecorderRef.current = null;
+      setRecordingState('stopped');
+      if (runtimeConfig.enableAudioFinalize) {
+        void finalizeRecordedAudio();
+      }
+    });
+    recorder.addEventListener('error', (event) => {
+      clearRecordingTimer();
+      mediaRecorderRef.current = null;
+      setRecordingState('error');
+      setMicPermissionMessage(event?.error?.message || 'Recording failed.');
+      setAudioUploadState('error');
+      setAudioUploadMessage(event?.error?.message || 'Recording failed.');
+    });
+
+    recorder.start(250);
+    recordingTimerRef.current = window.setInterval(() => {
+      if (!recordingStartedAtMsRef.current) {
+        return;
+      }
+      setRecordingDurationMs(Math.max(0, Date.now() - recordingStartedAtMsRef.current));
+    }, 100);
+  }, [activeSessionId, clearRecordingTimer, finalizeRecordedAudio, maybeSendAudioPreview, recordingState, requestMicrophoneAccess, runtimeConfig.enableAudioFinalize, uploadAudioChunk]);
+
+  const stopRecording = useCallback(() => {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') {
+      return;
+    }
+    try {
+      stopRequestedRef.current = true;
+      mediaRecorderRef.current.stop();
+    } catch (error) {
+      clearRecordingTimer();
+      mediaRecorderRef.current = null;
+      setRecordingState('error');
+      setMicPermissionMessage(error instanceof Error ? error.message : String(error));
+      setAudioUploadState('error');
+      setAudioUploadMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [clearRecordingTimer]);
+
+  const handleMicAction = useCallback(async () => {
+    setIsMicModalOpen(true);
+    if (recordingState === 'recording') {
+      stopRecording();
+      return;
+    }
+    await startRecording();
+  }, [recordingState, startRecording, stopRecording]);
+
   useEffect(() => {
-    if (isCameraModalOpen && !cameraStream) {
-      startCamera();
+    if (modalVideoRef.current && cameraStreamRef.current) {
+      modalVideoRef.current.srcObject = cameraStreamRef.current;
     }
-  }, [cameraStream, isCameraModalOpen, startCamera]);
-
-  // 麦克风模拟测试逻辑
-  const startMicTest = () => {
-    setMicTestStatus('listening');
-    
-    // 模拟录音2.5秒
-    setTimeout(() => {
-      setMicTestStatus('recognizing');
-      
-      // 模拟识别1.5秒
-      setTimeout(() => {
-        setMicTestStatus('success');
-      }, 1500);
-    }, 2500);
-  };
-
-  // 监听麦克风模态框打开
-  useEffect(() => {
-    if (isMicModalOpen) {
-      startMicTest();
+    if (mainVideoRef.current && cameraStreamRef.current) {
+      mainVideoRef.current.srcObject = cameraStreamRef.current;
     }
-  }, [isMicModalOpen]);
+  }, [cameraPermissionState, cameraState, isCameraModalOpen]);
 
-  // 将视频流绑定到弹窗内的 video 标签
-  useEffect(() => {
-    if (isCameraModalOpen && modalVideoRef.current && cameraStream) {
-      modalVideoRef.current.srcObject = cameraStream;
-    }
-  }, [isCameraModalOpen, cameraStream, cameraStatus]);
-
-  // 将视频流绑定到主卡片内的 video 标签
-  useEffect(() => {
-    if (!isCameraModalOpen && mainVideoRef.current && cameraStream) {
-      mainVideoRef.current.srcObject = cameraStream;
-    }
-  }, [isCameraModalOpen, cameraStream]);
-
-  const createSessionBaseline = useCallback(async () => {
+  const createSession = useCallback(async () => {
     setSessionRequestState('creating');
     setSessionErrorMessage('');
     setSessionStatusMessage(t.sessionCreating);
 
     try {
       const payload = await requestSession(runtimeConfig.apiBaseUrl, runtimeConfig.defaultAvatarId);
-      syncSessionFromState({ session: payload, messages: [] }, t.sessionReady);
+      applySessionSnapshot({ session: payload, messages: [] }, t.sessionReady);
       setSessionRequestState('ready');
     } catch (error) {
       setSessionState(null);
@@ -1115,25 +2433,13 @@ export default function App({ appConfig }) {
       setDialogueReplyState('idle');
       setPendingMessageId(null);
     }
-  }, [runtimeConfig.apiBaseUrl, runtimeConfig.defaultAvatarId, syncSessionFromState, t.sessionCreating, t.sessionReady, t.sessionRestoreFailed]);
+  }, [runtimeConfig.apiBaseUrl, runtimeConfig.defaultAvatarId, applySessionSnapshot, t.sessionCreating, t.sessionReady, t.sessionRestoreFailed]);
 
-  const clearSessionBaseline = useCallback(() => {
-    clearStoredSessionId(runtimeConfig.activeSessionStorageKey);
-    autoRestoreAttemptedRef.current = true;
-    setStoredSessionId(null);
-    setSessionState(null);
-    setSessionRequestState('idle');
-    setSessionErrorMessage('');
-    setSessionStatusMessage(t.sessionIdle);
-    setClientSeq(1);
-    setTextSubmitState('idle');
-    setDialogueReplyState('idle');
-    setPendingMessageId(null);
-    setLastHeartbeatAt(null);
-    setConnectionStatusMessage('');
-  }, [runtimeConfig.activeSessionStorageKey, t.sessionIdle]);
+  const clearSession = useCallback(() => {
+    invalidateLocalSession();
+  }, [invalidateLocalSession]);
 
-  const submitTextBaseline = useCallback(async () => {
+  const submitText = useCallback(async () => {
     const contentText = inputText.trim();
 
     if (!contentText) {
@@ -1180,13 +2486,16 @@ export default function App({ appConfig }) {
         contentText,
         clientSeq,
       );
-      shouldRecoverOnNextConnectRef.current = true;
+      shouldRecoverOnNextConnectRef.current = false;
       setSessionRequestState('ready');
       if (textSubmitStateRef.current === 'sending') {
+        pendingMessageIdRef.current = payload?.message_id || null;
         setPendingMessageId(payload?.message_id || null);
         if (hasMessageId(sessionStateRef.current?.messages, payload?.message_id)) {
+          textSubmitStateRef.current = 'awaiting_reply';
           setTextSubmitState('awaiting_reply');
         } else {
+          textSubmitStateRef.current = 'awaiting_ack';
           setTextSubmitState('awaiting_ack');
         }
       }
@@ -1200,15 +2509,66 @@ export default function App({ appConfig }) {
     }
   }, [clientSeq, inputText, runtimeConfig.apiBaseUrl, sendHeartbeat, storedSessionId, t.sessionRestoreFailed, t.sessionSubmitEmpty, t.sessionSubmitNeedSession, t.sessionSubmitting]);
 
-  const timelineData = [
-    { time: '14:02', emotion: t.log1Emo, desc: t.log1Desc, color: 'bg-green-100 text-green-700' },
-    { time: '14:06', emotion: t.log2Emo, desc: t.log2Desc, color: 'bg-orange-100 text-orange-700' },
-    { time: '14:10', emotion: t.log3Emo, desc: t.log3Desc, color: 'bg-amber-100 text-amber-700' },
-    { time: '14:15', emotion: t.log4Emo, desc: t.log4Desc, color: 'bg-teal-100 text-teal-700' },
-  ];
-
   const sessionSummary = sessionState?.session || null;
   const sessionMessages = Array.isArray(sessionState?.messages) ? sessionState.messages : [];
+  const micDetailMessage = micPermissionState === 'requesting'
+    ? 'Requesting microphone access.'
+    : micPermissionState === 'granted'
+      ? recordingState === 'recording'
+        ? 'Microphone access granted, recording in progress.'
+        : 'Microphone access granted, ready to record.'
+      : micPermissionState === 'denied'
+        ? (micPermissionMessage || 'Microphone permission was denied.')
+        : micPermissionState === 'unsupported'
+          ? 'Current browser does not support microphone capture.'
+          : micPermissionState === 'error'
+            ? (micPermissionMessage || 'Microphone initialization failed.')
+            : (micPermissionMessage || 'Microphone is idle.');
+  const cameraDetailMessage = cameraPermissionState === 'requesting'
+    ? 'Requesting camera access.'
+    : cameraPermissionState === 'granted'
+      ? (cameraPreviewMessage || 'Camera access granted.')
+      : cameraPermissionState === 'denied'
+        ? (cameraPermissionMessage || 'Camera permission was denied.')
+        : cameraPermissionState === 'unsupported'
+          ? 'Current browser does not support camera capture.'
+          : cameraPermissionState === 'error'
+            ? (cameraPermissionMessage || 'Camera initialization failed.')
+            : (cameraPermissionMessage || 'Camera is idle.');
+  const recordingDetailMessage = recordingState === 'recording'
+    ? `Recording ${recordingChunkCount} chunks over ${formatDurationMs(recordingDurationMs)}.`
+    : recordingState === 'stopped'
+      ? `Recording stopped after ${recordingChunkCount} chunks over ${formatDurationMs(recordingDurationMs)}.`
+      : recordingState === 'error'
+        ? (micPermissionMessage || 'Recording failed.')
+        : 'Recording not started.';
+  const latestAssistantMessage = [...sessionMessages].reverse().find((message) => message.role === 'assistant') || null;
+  const latestUserMessage = [...sessionMessages].reverse().find((message) => message.role === 'user') || null;
+  const displayedEmotionLabel = affectSnapshot.fusion.emotionState || t.emoState;
+  const displayedEmotionDetail = affectSnapshot.fusion.detail || t.emoDesc;
+  const displayedEmotionQuote = affectSnapshot.sourceContext.note || latestAssistantMessage?.content_text || t.emoQuote;
+  const liveTranscriptText = partialTranscriptState.status === 'streaming' && partialTranscriptState.text
+    ? partialTranscriptState.text
+    : finalTranscriptState.text || latestUserMessage?.content_text || '';
+  const knowledgeSummary = knowledgeState.sourceIds.length
+    ? knowledgeState.sourceIds.join(', ')
+    : knowledgeState.retrievalStatus;
+  const affectLaneItems = [
+    { key: 'fusion', label: 'fusion', value: affectSnapshot.fusion },
+    { key: 'text', label: 'text', value: affectSnapshot.text },
+    { key: 'audio', label: 'audio', value: affectSnapshot.audio },
+    { key: 'video', label: 'video', value: affectSnapshot.video },
+  ];
+  const liveTimelineData = affectHistory.map((item) => ({
+    time: item.generatedAt,
+    emotion: item.emotion,
+    desc: item.detail,
+    color: item.riskLevel === 'high'
+      ? 'bg-red-100 text-red-700'
+      : item.riskLevel === 'medium'
+        ? 'bg-orange-100 text-orange-700'
+        : 'bg-green-100 text-green-700',
+  }));
 
   const visibleStatuses = useMemo(() => {
     const statusMap = {
@@ -1427,9 +2787,9 @@ export default function App({ appConfig }) {
         <section className="bg-white/85 backdrop-blur-sm p-5 rounded-3xl border border-[#F0E5D8] shadow-sm flex flex-col gap-4">
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#A6998E]">{t.phaseBTitle}</p>
-              <h2 className="text-lg font-semibold text-[#5C4D42] mt-1">session create / state restore / text submit</h2>
-              <p className="text-sm text-[#8C7A6B] mt-2 leading-relaxed">{t.phaseBDesc}</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#A6998E]">{t.phaseTitle}</p>
+              <h2 className="text-lg font-semibold text-[#5C4D42] mt-1">WS-first session create / restore / text submit</h2>
+              <p className="text-sm text-[#8C7A6B] mt-2 leading-relaxed">{t.phaseDesc}</p>
             </div>
             <div className="self-start text-xs text-[#6B9080] bg-[#E8F3EE] border border-green-100 rounded-full px-3 py-1.5">
               {t.restoreSource}: {t.sourceEmotionApp}
@@ -1441,7 +2801,7 @@ export default function App({ appConfig }) {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={createSessionBaseline}
+                  onClick={createSession}
                   disabled={sessionRequestState === 'creating' || textSubmitState !== 'idle'}
                   className="px-4 py-2 rounded-xl text-sm font-medium bg-[#D97757] text-white shadow-md hover:bg-[#c26649] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
@@ -1457,7 +2817,7 @@ export default function App({ appConfig }) {
                 </button>
                 <button
                   type="button"
-                  onClick={clearSessionBaseline}
+                  onClick={clearSession}
                   disabled={!storedSessionId && !sessionSummary}
                   className="px-4 py-2 rounded-xl text-sm font-medium bg-white text-[#8C7A6B] border border-[#F0E5D8] hover:bg-[#F8F2EA] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
@@ -1524,6 +2884,35 @@ export default function App({ appConfig }) {
                   <div className="mt-2 text-red-500">{sessionErrorMessage}</div>
                 )}
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">Realtime transcript</div>
+                  <div className="text-[#5C4D42] font-medium">{partialTranscriptState.status}</div>
+                  <div className="mt-2 text-sm text-[#5C4D42] whitespace-pre-wrap">{liveTranscriptText || 'waiting for transcript'}</div>
+                  <div className="mt-2 text-xs text-[#8C7A6B]">final confidence: {formatRealtimeConfidence(finalTranscriptState.confidence)}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4">
+                  <div className="text-xs text-[#A6998E] mb-1">Audio runtime</div>
+                  <div className="text-[#5C4D42] font-medium">{audioUploadState}</div>
+                  <div className="mt-2 text-xs text-[#8C7A6B]">mic: {micPermissionState}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">recording: {recordingState}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">duration: {formatDurationMs(recordingDurationMs)}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">chunks: {recordingChunkCount}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">preview enabled: {String(runtimeConfig.enableAudioPreview)}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">finalize enabled: {String(runtimeConfig.enableAudioFinalize)}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">last upload: {lastUploadedAt || '—'}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">last media id: {lastUploadedMediaId || '—'}</div>
+                  <div className="mt-2 text-sm text-[#5C4D42] whitespace-pre-wrap">{audioUploadMessage || micDetailMessage}</div>
+                </div>
+                <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4 md:col-span-2">
+                  <div className="text-xs text-[#A6998E] mb-1">Knowledge retrieval</div>
+                  <div className="text-[#5C4D42] font-medium">{knowledgeSummary}</div>
+                  <div className="mt-2 text-xs text-[#8C7A6B]">status: {knowledgeState.retrievalStatus}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">filters: {knowledgeState.filtersApplied.length ? knowledgeState.filtersApplied.join(', ') : '—'}</div>
+                  <div className="mt-1 text-xs text-[#8C7A6B]">grounded refs: {knowledgeState.groundedRefs.length ? knowledgeState.groundedRefs.join(', ') : '—'}</div>
+                </div>
+              </div>
             </div>
 
             <div className="rounded-3xl border border-[#F0E5D8] bg-[#FDFBF7] p-4 flex flex-col gap-3 min-h-[280px]">
@@ -1555,19 +2944,19 @@ export default function App({ appConfig }) {
           
           {/* 左侧：外设调试按钮 */}
           <div className="md:col-span-1 flex flex-col gap-4">
-            {cameraStream ? (
+            {cameraState === 'previewing' || cameraState === 'stopped' ? (
               <div className="group relative overflow-hidden flex items-center justify-between gap-2 bg-white/80 backdrop-blur-sm p-4 rounded-3xl border border-green-200/60 shadow-sm transition-all duration-300 min-h-[88px]">
                 <div className="flex items-center gap-3">
                   <div className="relative w-12 h-12 rounded-2xl overflow-hidden shadow-sm shrink-0 border border-green-200 bg-black/5">
                     <video ref={mainVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className="font-semibold text-[#5C4D42] text-sm">{t.camOn}</span>
-                    <span className="text-xs text-[#6B9080] mt-0.5">{t.camCap}</span>
+                    <span className="font-semibold text-[#5C4D42] text-sm">{cameraState === 'previewing' ? t.camOn : 'Camera stopped'}</span>
+                    <span className="text-xs text-[#6B9080] mt-0.5">{videoUploadMessage || cameraDetailMessage}</span>
                   </div>
                 </div>
-                <button 
-                  onClick={stopCamera}
+                <button
+                  onClick={() => { stopCameraPreview(); setIsCameraModalOpen(false); }}
                   className="flex items-center justify-center w-8 h-8 rounded-full text-[#D97757] hover:bg-red-50 hover:text-red-500 transition-colors shrink-0"
                   title={t.cancel}
                 >
@@ -1589,16 +2978,16 @@ export default function App({ appConfig }) {
               </button>
             )}
             
-            <button 
-              onClick={(e) => { e.stopPropagation(); setIsMicModalOpen(true); }}
+            <button
+              onClick={(e) => { e.stopPropagation(); void handleMicAction(); }}
               className="group relative overflow-hidden flex items-center gap-4 bg-white/80 backdrop-blur-sm p-5 rounded-3xl border border-[#F0E5D8] shadow-sm hover:shadow-md hover:bg-[#FFFBF5] transition-all duration-300 hover:-translate-y-1"
             >
-              <div className="bg-[#FFF0E5] p-3 rounded-2xl text-[#D97757] group-hover:scale-110 transition-transform duration-300">
-                <Mic size={26} strokeWidth={2} />
+              <div className={`p-3 rounded-2xl transition-transform duration-300 ${recordingState === 'recording' ? 'bg-red-50 text-red-500' : 'bg-[#FFF0E5] text-[#D97757] group-hover:scale-110'}`}>
+                <Mic size={26} strokeWidth={recordingState === 'recording' ? 2.5 : 2} className={recordingState === 'recording' ? 'animate-pulse' : ''} />
               </div>
               <div className="flex flex-col text-left">
-                <span className="font-semibold text-[#5C4D42]">{t.micTest}</span>
-                <span className="text-xs text-[#8C7A6B] mt-0.5">{t.micOpt}</span>
+                <span className="font-semibold text-[#5C4D42]">{recordingState === 'recording' ? 'Stop recording' : t.micTest}</span>
+                <span className="text-xs text-[#8C7A6B] mt-0.5">{recordingState === 'recording' ? recordingDetailMessage : micDetailMessage}</span>
               </div>
             </button>
           </div>
@@ -1612,15 +3001,48 @@ export default function App({ appConfig }) {
                 <h3 className="text-sm font-medium text-[#8C7A6B] flex items-center gap-2 mb-3">
                   <Sparkles size={16} /> {t.emoTitle}
                 </h3>
-                <div className="flex items-end gap-4">
-                  <span className="text-4xl font-bold text-[#D97757] tracking-wider">{t.emoState}</span>
+                <div className="flex items-end gap-4 flex-wrap">
+                  <span className="text-4xl font-bold text-[#D97757] tracking-wider">{displayedEmotionLabel}</span>
                   <span className="text-sm text-[#8C7A6B] mb-1 bg-white/60 px-3 py-1 rounded-full">
-                    {t.emoDesc}
+                    {displayedEmotionDetail}
                   </span>
                 </div>
                 <p className="mt-4 text-[#5C4D42] text-sm leading-relaxed italic">
-                  {t.emoQuote}
+                  {displayedEmotionQuote}
                 </p>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-[#8C7A6B]">
+                  <div className="rounded-2xl bg-white/70 px-3 py-2 border border-[#F0E5D8]">
+                    <div className="text-[#A6998E]">panel</div>
+                    <div className="text-[#5C4D42] font-medium">{affectSnapshot.panelState}</div>
+                    <div className="mt-1 text-[#8C7A6B] whitespace-pre-wrap">{affectSnapshot.panelMessage}</div>
+                  </div>
+                  <div className="rounded-2xl bg-white/70 px-3 py-2 border border-[#F0E5D8]">
+                    <div className="text-[#A6998E]">risk / confidence</div>
+                    <div className="text-[#5C4D42] font-medium">{affectSnapshot.fusion.riskLevel} / {formatRealtimeConfidence(affectSnapshot.fusion.confidence)}</div>
+                  </div>
+                  <div className="rounded-2xl bg-white/70 px-3 py-2 border border-[#F0E5D8] col-span-2">
+                    <div className="text-[#A6998E]">source context</div>
+                    <div className="text-[#5C4D42] font-medium break-all">{affectSnapshot.sourceContext.origin} / {affectSnapshot.sourceContext.dataset} / {affectSnapshot.sourceContext.recordId}</div>
+                    <div className="mt-1 text-[#8C7A6B] whitespace-pre-wrap">{affectSnapshot.sourceContext.note || 'No source note.'}</div>
+                  </div>
+                  {affectSnapshot.fusion.conflict && (
+                    <div className="rounded-2xl bg-red-50 px-3 py-2 border border-red-100 col-span-2">
+                      <div className="text-[#A6998E]">conflict</div>
+                      <div className="text-[#5C4D42] font-medium">{affectSnapshot.fusion.conflictReason || 'Lane conflict detected.'}</div>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-[#8C7A6B]">
+                  {affectLaneItems.map((lane) => (
+                    <div key={lane.key} className="rounded-2xl bg-white/70 px-3 py-2 border border-[#F0E5D8]">
+                      <div className="text-[#A6998E]">{lane.label}</div>
+                      <div className="text-[#5C4D42] font-medium">{lane.value.label || lane.value.emotionState}</div>
+                      <div className="mt-1">status: {lane.value.status || 'ready'}</div>
+                      <div>confidence: {formatRealtimeConfidence(lane.value.confidence)}</div>
+                      <div className="mt-1 whitespace-pre-wrap">{lane.value.detail || lane.value.conflictReason || 'No detail.'}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -1630,23 +3052,27 @@ export default function App({ appConfig }) {
                 <Clock size={16} /> {t.logTitle}
               </h3>
               <div className="overflow-y-auto custom-scrollbar pr-2 flex-1 space-y-4">
-                {timelineData.map((item, idx) => (
-                  <div key={idx} className="flex items-start gap-3">
-                    <div className="text-xs font-medium text-[#A6998E] w-10 pt-0.5">{item.time}</div>
+                {liveTimelineData.length ? liveTimelineData.map((item, idx) => (
+                  <div key={`${item.time}-${idx}`} className="flex items-start gap-3">
+                    <div className="text-xs font-medium text-[#A6998E] w-20 pt-0.5 break-all">{item.time}</div>
                     <div className="relative flex flex-col items-center">
                       <div className="w-2 h-2 rounded-full bg-[#D97757]/40 ring-4 ring-[#FFFBF5] z-10"></div>
-                      {idx !== timelineData.length - 1 && (
+                      {idx !== liveTimelineData.length - 1 && (
                         <div className="w-0.5 h-full bg-[#F0E5D8] absolute top-2"></div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 pb-1">
+                    <div className="flex items-center gap-2 pb-1 flex-wrap">
                       <span className={`text-xs px-2 py-0.5 rounded-md ${item.color}`}>
                         {item.emotion}
                       </span>
                       <span className="text-sm text-[#5C4D42]">{item.desc}</span>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="h-full min-h-[120px] rounded-2xl border border-dashed border-[#E5D8C8] bg-white/60 flex items-center justify-center text-sm text-[#A6998E] text-center px-6">
+                    Waiting for real affect history.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1666,7 +3092,7 @@ export default function App({ appConfig }) {
             {/* 语言气泡 */}
             <div className={`absolute -top-24 md:-top-28 left-10 md:left-24 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-bl-none shadow-sm border border-orange-50 max-w-[200px] md:max-w-[260px] transition-opacity duration-700 ${activeMessage === 0 ? 'opacity-100' : 'opacity-0'}`}>
               <p className="text-sm md:text-base text-[#5C4D42] leading-relaxed">
-                {t.bubble1}
+                {liveTranscriptText || t.bubble1}
               </p>
             </div>
             {/* 人物 SVG 插画 */}
@@ -1689,7 +3115,7 @@ export default function App({ appConfig }) {
             {/* 语言气泡 */}
             <div className={`absolute -top-24 md:-top-28 right-10 md:right-24 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 max-w-[200px] md:max-w-[260px] transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
               <p className="text-sm md:text-base text-[#5C4D42] leading-relaxed">
-                {t.bubble2}
+                {latestAssistantMessage?.content_text || t.bubble2}
               </p>
             </div>
             {/* 人物 SVG 插画 */}
@@ -1741,19 +3167,20 @@ export default function App({ appConfig }) {
             {/* 底部操作栏 */}
             <div className="flex justify-end items-center gap-2 mt-2 pt-2 border-t border-[#F0E5D8]/40">
               <span className="text-xs text-[#D97757] mr-auto flex items-center gap-1">
-                {isRecording && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>}
-                {isRecording ? t.recording : ''}
+                {recordingState === 'recording' && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>}
+                {recordingState === 'recording' ? `${t.recording} ${formatDurationMs(recordingDurationMs)}` : audioUploadMessage || micDetailMessage}
               </span>
-              
-              <button 
-                onClick={() => setIsRecording(!isRecording)}
-                className={`p-2.5 rounded-full transition-all duration-300 ${isRecording ? 'bg-red-50 text-red-500 shadow-inner' : 'text-[#8C7A6B] hover:bg-[#FFF0E5] hover:text-[#D97757] hover:scale-105'}`}
+
+              <button
+                onClick={() => { void handleMicAction(); }}
+                className={`p-2.5 rounded-full transition-all duration-300 ${recordingState === 'recording' ? 'bg-red-50 text-red-500 shadow-inner' : 'text-[#8C7A6B] hover:bg-[#FFF0E5] hover:text-[#D97757] hover:scale-105'}`}
+                title={recordingState === 'recording' ? 'Stop recording' : 'Start recording'}
               >
-                <Mic size={18} strokeWidth={isRecording ? 2.5 : 2} className={isRecording ? 'animate-pulse' : ''} />
+                <Mic size={18} strokeWidth={recordingState === 'recording' ? 2.5 : 2} className={recordingState === 'recording' ? 'animate-pulse' : ''} />
               </button>
               
               <button
-                onClick={submitTextBaseline}
+                onClick={submitText}
                 className={`p-2.5 rounded-full transition-all duration-300 flex items-center justify-center ${canSubmitText ? 'bg-[#D97757] text-white shadow-md hover:bg-[#c26649] hover:-translate-y-0.5' : 'bg-[#F0E5D8] text-[#A6998E] cursor-not-allowed opacity-60'}`}
                 disabled={!canSubmitText}
                 title={textSubmitState === 'sending' ? t.sending : t.submitText}
@@ -1784,46 +3211,49 @@ export default function App({ appConfig }) {
             </div>
 
             <div className="w-full aspect-video bg-white rounded-2xl border-2 border-[#F0E5D8] overflow-hidden relative flex items-center justify-center shadow-inner">
-              {cameraStatus === 'idle' || cameraStatus === 'requesting' ? (
+              {cameraPermissionState === 'idle' || cameraPermissionState === 'requesting' ? (
                 <div className="flex flex-col items-center gap-3 text-[#A6998E] animate-pulse">
                   <Video size={36} strokeWidth={1.5} />
                   <span className="text-sm">{t.camReq}</span>
                 </div>
-              ) : cameraStatus === 'success' ? (
-                <video 
-                  ref={modalVideoRef} 
-                  autoPlay 
-                  playsInline 
-                  muted 
-                  className="w-full h-full object-cover scale-x-[-1]" 
+              ) : cameraPermissionState === 'granted' ? (
+                <video
+                  ref={modalVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover scale-x-[-1]"
                 />
               ) : (
                 <div className="flex flex-col items-center gap-2 text-red-400 p-4 text-center">
                   <X size={32} />
-                  <span className="text-sm">{t.camErr}</span>
+                  <span className="text-sm">{cameraDetailMessage}</span>
                 </div>
               )}
             </div>
             
-            <div className="flex justify-between items-center mt-2 h-8">
-              <div className="text-sm font-medium">
-                {cameraStatus === 'success' && (
-                  <span className="text-green-600 flex items-center gap-1.5 bg-green-50 px-3 py-1.5 rounded-full border border-green-100">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                    {t.camSuccess}
-                  </span>
-                )}
+            <div className="flex justify-between items-center mt-2 min-h-8 gap-3">
+              <div className="text-sm font-medium flex-1">
+                <div className="text-[#5C4D42]">permission: {cameraPermissionState}</div>
+                <div className="text-[#5C4D42]">preview: {cameraState}</div>
+                <div className="text-[#5C4D42]">upload: {videoUploadState}</div>
+                <div className="text-xs text-[#8C7A6B] whitespace-pre-wrap">{cameraPermissionMessage || cameraPreviewMessage || videoUploadMessage}</div>
+                <div className="text-xs text-[#8C7A6B] whitespace-pre-wrap">frames: {uploadedVideoFrameCount} / last media: {lastUploadedVideoFrameId || '—'} / last upload: {lastVideoUploadedAt || '—'}</div>
               </div>
-              <button 
-                onClick={() => setIsCameraModalOpen(false)}
-                className={`px-5 py-2 rounded-xl text-sm font-medium transition-all ${
-                  cameraStatus === 'success' 
-                    ? 'bg-[#D97757] text-white shadow-md hover:bg-[#c26649]' 
-                    : 'bg-[#F0E5D8] text-[#5C4D42] hover:bg-[#E5D8C8]'
-                }`}
-              >
-                {cameraStatus === 'success' ? t.done : t.cancel}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { if (cameraState === 'previewing') { stopCameraPreview(); } else { void startCameraPreview(); } }}
+                  className={`px-5 py-2 rounded-xl text-sm font-medium transition-all ${cameraState === 'previewing' ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-[#FFF0E5] text-[#D97757] hover:bg-[#FFE5D0]'}`}
+                >
+                  {cameraState === 'previewing' ? 'Stop preview' : 'Start preview'}
+                </button>
+                <button
+                  onClick={() => setIsCameraModalOpen(false)}
+                  className="px-5 py-2 rounded-xl text-sm font-medium transition-all bg-[#D97757] text-white shadow-md hover:bg-[#c26649]"
+                >
+                  {cameraPermissionState === 'granted' ? t.done : t.cancel}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1838,7 +3268,7 @@ export default function App({ appConfig }) {
                 <Mic size={20} className="text-[#D97757]" />
                 {t.micModalTitle}
               </h3>
-              <button 
+              <button
                 onClick={() => setIsMicModalOpen(false)}
                 className="text-[#8C7A6B] hover:text-[#D97757] transition-colors p-1 rounded-full hover:bg-[#FFF5EB]"
               >
@@ -1846,42 +3276,31 @@ export default function App({ appConfig }) {
               </button>
             </div>
 
-            <div className="w-full h-32 bg-white rounded-2xl border-2 border-[#F0E5D8] overflow-hidden relative flex flex-col items-center justify-center shadow-inner p-4">
-              {micTestStatus === 'listening' && (
-                <div className="flex flex-col items-center gap-3">
-                  <div className="relative flex items-center justify-center w-12 h-12 bg-red-50 rounded-full text-red-400">
-                    <Mic size={24} />
-                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-red-400"></span>
-                    </span>
-                  </div>
-                  <span className="text-sm text-[#D97757] animate-pulse">{t.micSpeak}</span>
-                </div>
-              )}
-              
-              {micTestStatus === 'recognizing' && (
-                <div className="flex flex-col items-center gap-3 text-[#A6998E]">
-                  <MoreHorizontal size={32} className="animate-pulse" />
-                  <span className="text-sm">{t.micRec}</span>
-                </div>
-              )}
-
-              {micTestStatus === 'success' && (
-                <div className="flex w-full h-full flex-col justify-center">
-                  <span className="text-xs text-[#6B9080] mb-2 bg-[#E8F3EE] self-start px-2 py-0.5 rounded-md border border-white">
-                    {t.micRes}
-                  </span>
-                  <p className="text-[#5C4D42] text-base leading-relaxed break-words">
-                    {t.micTestText}
-                  </p>
-                </div>
-              )}
+            <div className="w-full min-h-40 bg-white rounded-2xl border-2 border-[#F0E5D8] overflow-hidden relative flex flex-col justify-center shadow-inner p-4 gap-3">
+              <div>
+                <div className="text-xs text-[#A6998E] mb-1">Permission</div>
+                <div className="text-sm text-[#5C4D42] font-medium">{micPermissionState}</div>
+                <div className="mt-1 text-xs text-[#8C7A6B] whitespace-pre-wrap">{micDetailMessage}</div>
+              </div>
+              <div>
+                <div className="text-xs text-[#A6998E] mb-1">Recording</div>
+                <div className="text-sm text-[#5C4D42] font-medium">{recordingState}</div>
+                <div className="mt-1 text-xs text-[#8C7A6B] whitespace-pre-wrap">{recordingDetailMessage}</div>
+              </div>
+              <div>
+                <div className="text-xs text-[#A6998E] mb-1">Upload</div>
+                <div className="text-sm text-[#5C4D42] font-medium">{audioUploadState}</div>
+                <div className="mt-1 text-xs text-[#8C7A6B] whitespace-pre-wrap">{audioUploadMessage || 'No audio uploads yet.'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-[#A6998E] mb-1">Transcript</div>
+                <div className="text-sm text-[#5C4D42] whitespace-pre-wrap">{liveTranscriptText || 'Waiting for transcript.'}</div>
+              </div>
             </div>
-            
+
             <div className="flex justify-between items-center mt-2">
               <div className="text-sm font-medium h-8 flex items-center">
-                {micTestStatus === 'success' && (
+                {audioUploadState === 'completed' && (
                   <span className="text-green-600 flex items-center gap-1.5 bg-green-50 px-3 py-1.5 rounded-full border border-green-100">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                     {t.micSuccess}
@@ -1889,26 +3308,17 @@ export default function App({ appConfig }) {
                 )}
               </div>
               <div className="flex gap-2">
-                <button 
-                  onClick={startMicTest}
-                  disabled={micTestStatus !== 'success'}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                    micTestStatus === 'success' 
-                      ? 'bg-[#FFF0E5] text-[#D97757] hover:bg-[#FFE5D0]' 
-                      : 'bg-transparent text-transparent pointer-events-none'
-                  }`}
+                <button
+                  onClick={() => { void handleMicAction(); }}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${recordingState === 'recording' ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-[#FFF0E5] text-[#D97757] hover:bg-[#FFE5D0]'}`}
                 >
-                  {t.micRetry}
+                  {recordingState === 'recording' ? 'Stop recording' : 'Start recording'}
                 </button>
-                <button 
+                <button
                   onClick={() => setIsMicModalOpen(false)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                    micTestStatus === 'success' 
-                      ? 'bg-[#D97757] text-white shadow-md hover:bg-[#c26649]' 
-                      : 'bg-[#F0E5D8] text-[#5C4D42] hover:bg-[#E5D8C8]'
-                  }`}
+                  className="px-4 py-2 rounded-xl text-sm font-medium transition-all bg-[#D97757] text-white shadow-md hover:bg-[#c26649]"
                 >
-                  {micTestStatus === 'success' ? t.micClose : t.cancel}
+                  {recordingState === 'recording' ? t.cancel : t.micClose}
                 </button>
               </div>
             </div>

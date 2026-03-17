@@ -2,6 +2,9 @@ function buildErrorMessage(payload, fallbackMessage) {
   if (payload && typeof payload.message === 'string' && payload.message.trim()) {
     return payload.message.trim();
   }
+  if (payload && typeof payload.detail === 'string' && payload.detail.trim()) {
+    return payload.detail.trim();
+  }
   return fallbackMessage;
 }
 
@@ -72,23 +75,130 @@ export async function requestTextMessage(apiBaseUrl, sessionId, contentText, cli
   return payload;
 }
 
-export async function pollSessionStateForReply(apiBaseUrl, sessionId, previousMessageCount, maxAttempts = 12) {
-  let lastPayload = null;
+export async function requestAudioChunkUpload(apiBaseUrl, sessionId, payload) {
+  const query = new URLSearchParams();
+  query.set('chunk_seq', String(payload.chunkSeq));
+  if (typeof payload.chunkStartedAtMs === 'number') {
+    query.set('chunk_started_at_ms', String(payload.chunkStartedAtMs));
+  }
+  if (typeof payload.durationMs === 'number') {
+    query.set('duration_ms', String(payload.durationMs));
+  }
+  query.set('is_final', payload.isFinal ? 'true' : 'false');
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    lastPayload = await requestSessionState(apiBaseUrl, sessionId);
-    const messages = Array.isArray(lastPayload?.messages) ? lastPayload.messages : [];
-    const hasAssistantReply = messages.length >= previousMessageCount + 2
-      || (messages.length > previousMessageCount && messages[messages.length - 1]?.role === 'assistant');
+  const response = await fetch(
+    `${apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/audio/chunk?${query.toString()}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': payload.blob?.type || 'application/octet-stream',
+      },
+      body: payload.blob,
+    },
+  );
 
-    if (hasAssistantReply || attempt === maxAttempts - 1) {
-      return lastPayload;
-    }
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `Audio chunk upload failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
+export async function requestAudioPreview(apiBaseUrl, sessionId, payload) {
+  const query = new URLSearchParams();
+  query.set('preview_seq', String(payload.previewSeq));
+  query.set('recording_id', payload.recordingId);
+  if (typeof payload.durationMs === 'number') {
+    query.set('duration_ms', String(payload.durationMs));
   }
 
-  return lastPayload;
+  const response = await fetch(
+    `${apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/audio/preview?${query.toString()}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': payload.blob?.type || 'application/octet-stream',
+      },
+      body: payload.blob,
+    },
+  );
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `Audio preview failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
+
+export async function requestAudioFinalize(apiBaseUrl, sessionId, payload) {
+  const query = new URLSearchParams();
+  if (typeof payload.durationMs === 'number') {
+    query.set('duration_ms', String(payload.durationMs));
+  }
+
+  const response = await fetch(
+    `${apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/audio/finalize?${query.toString()}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': payload.blob?.type || 'application/octet-stream',
+      },
+      body: payload.blob,
+    },
+  );
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `Audio finalize failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
+
+export async function requestVideoFrameUpload(apiBaseUrl, sessionId, payload) {
+  const query = new URLSearchParams();
+  query.set('frame_seq', String(payload.frameSeq));
+  if (typeof payload.capturedAtMs === 'number') {
+    query.set('captured_at_ms', String(payload.capturedAtMs));
+  }
+  if (typeof payload.width === 'number') {
+    query.set('width', String(payload.width));
+  }
+  if (typeof payload.height === 'number') {
+    query.set('height', String(payload.height));
+  }
+
+  const response = await fetch(
+    `${apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/video/frame?${query.toString()}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': payload.blob?.type || 'application/octet-stream',
+      },
+      body: payload.blob,
+    },
+  );
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `Video frame upload failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
+
+export async function requestAffectAnalysis(affectBaseUrl, payload) {
+  const response = await fetch(`${affectBaseUrl}/internal/affect/analyze`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `Affect analyze failed with status ${response.status}`));
+  }
+  return responsePayload;
 }
 
 export function buildRealtimeSocketUrl(wsUrl, sessionId, traceId) {

@@ -13,6 +13,10 @@ const defaultAppConfig = {
   exportCacheStorageKey: 'virtual-human-last-export',
   heartbeatIntervalMs: 5000,
   reconnectDelayMs: 1000,
+  enableAudioFinalize: true,
+  enableAudioPreview: true,
+  audioPreviewChunkThreshold: 2,
+  videoFrameUploadIntervalMs: 1800,
 };
 
 function readStringConfigValue(config, keys, fallback) {
@@ -31,6 +35,16 @@ function readNumberConfigValue(config, keys, fallback) {
     const numericValue = Number(rawValue);
     if (Number.isFinite(numericValue) && numericValue > 0) {
       return numericValue;
+    }
+  }
+  return fallback;
+}
+
+function readBooleanConfigValue(config, keys, fallback) {
+  for (const key of keys) {
+    const value = config[key];
+    if (typeof value === 'boolean') {
+      return value;
     }
   }
   return fallback;
@@ -80,6 +94,26 @@ function resolveAppConfig(rootWindow) {
       config,
       ['reconnectDelayMs', 'reconnect_delay_ms'],
       defaultAppConfig.reconnectDelayMs,
+    ),
+    enableAudioFinalize: readBooleanConfigValue(
+      config,
+      ['enableAudioFinalize', 'enable_audio_finalize'],
+      defaultAppConfig.enableAudioFinalize,
+    ),
+    enableAudioPreview: readBooleanConfigValue(
+      config,
+      ['enableAudioPreview', 'enable_audio_preview'],
+      defaultAppConfig.enableAudioPreview,
+    ),
+    audioPreviewChunkThreshold: readNumberConfigValue(
+      config,
+      ['audioPreviewChunkThreshold', 'audio_preview_chunk_threshold'],
+      defaultAppConfig.audioPreviewChunkThreshold,
+    ),
+    videoFrameUploadIntervalMs: readNumberConfigValue(
+      config,
+      ['videoFrameUploadIntervalMs', 'video_frame_upload_interval_ms'],
+      defaultAppConfig.videoFrameUploadIntervalMs,
     ),
   };
 }
