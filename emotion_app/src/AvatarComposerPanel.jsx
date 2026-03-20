@@ -1,6 +1,7 @@
 import React from 'react';
 import { MessageCircleHeart, Mic, Send, User } from 'lucide-react';
-import { formatDurationMs } from './appHelpers';
+import { formatDurationMs, resolveAvatarExpressionPreset } from './appHelpers';
+import Live2DAvatar from './Live2DAvatar';
 
 export default function AvatarComposerPanel({
   activeMessage,
@@ -21,6 +22,37 @@ export default function AvatarComposerPanel({
   t,
   textSubmitState,
 }) {
+  const avatarExpressionPreset = resolveAvatarExpressionPreset({
+    stage: latestAssistantMessage?.metadata?.stage,
+    riskLevel: latestAssistantMessage?.metadata?.risk_level,
+    emotion: latestAssistantMessage?.metadata?.emotion,
+  });
+
+  const shouldRenderAssistantLive2D = effectiveAvatarProfile?.avatarId === 'companion_female_01'
+    && effectiveAvatarProfile?.renderKind === 'live2d'
+    && effectiveAvatarProfile?.live2dModelPath;
+
+  const assistantAvatarFallback = (
+    <svg width="200" height="240" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 240C30 170 55 130 100 130C145 130 170 170 170 240H30Z" fill={avatarSpeechState === 'speaking' ? '#DFF4EE' : '#E8F3EE'}/>
+      <path d="M45 240C45 180 65 145 100 145C135 145 155 180 155 240H45Z" fill="#6B9080" fillOpacity={avatarSpeechState === 'speaking' ? '0.18' : '0.1'}/>
+      <rect x="85" y="105" width="30" height="40" rx="10" fill="#FCE5D0"/>
+      <rect x="65" y="35" width="70" height="85" rx="35" fill="#FCE5D0"/>
+      <path d="M60 65C60 30 75 20 100 20C125 20 140 30 140 65C140 85 135 95 130 100C125 80 115 65 100 65C85 65 75 80 70 100C65 95 60 85 60 65Z" fill="#5C4D42"/>
+      <path d="M80 80Q85 82 90 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M110 80Q115 82 120 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
+      {avatarMouthState === 'wide' ? (
+        <ellipse cx="100" cy="101" rx="10" ry="6" fill="#B38A78" />
+      ) : avatarMouthState === 'round' ? (
+        <ellipse cx="100" cy="101" rx="6" ry="7" fill="#B38A78" />
+      ) : avatarMouthState === 'small' ? (
+        <ellipse cx="100" cy="101" rx="7" ry="4" fill="#B38A78" />
+      ) : (
+        <path d="M92 100Q100 102 108 100" stroke="#B38A78" strokeWidth="2" strokeLinecap="round"/>
+      )}
+    </svg>
+  );
+
   return (
     <>
       <audio ref={assistantAudioRef} hidden preload="auto" />
@@ -64,24 +96,20 @@ export default function AvatarComposerPanel({
             <div className="text-sm font-semibold text-[#5C4D42]">{effectiveAvatarProfile.label}</div>
             <div className="mt-1 text-xs text-[#8C7A6B]">{effectiveAvatarProfile.stageNote}</div>
           </div>
-          <svg width="200" height="240" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M30 240C30 170 55 130 100 130C145 130 170 170 170 240H30Z" fill={avatarSpeechState === 'speaking' ? '#DFF4EE' : '#E8F3EE'}/>
-            <path d="M45 240C45 180 65 145 100 145C135 145 155 180 155 240H45Z" fill="#6B9080" fillOpacity={avatarSpeechState === 'speaking' ? '0.18' : '0.1'}/>
-            <rect x="85" y="105" width="30" height="40" rx="10" fill="#FCE5D0"/>
-            <rect x="65" y="35" width="70" height="85" rx="35" fill="#FCE5D0"/>
-            <path d="M60 65C60 30 75 20 100 20C125 20 140 30 140 65C140 85 135 95 130 100C125 80 115 65 100 65C85 65 75 80 70 100C65 95 60 85 60 65Z" fill="#5C4D42"/>
-            <path d="M80 80Q85 82 90 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M110 80Q115 82 120 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
-            {avatarMouthState === 'wide' ? (
-              <ellipse cx="100" cy="101" rx="10" ry="6" fill="#B38A78" />
-            ) : avatarMouthState === 'round' ? (
-              <ellipse cx="100" cy="101" rx="6" ry="7" fill="#B38A78" />
-            ) : avatarMouthState === 'small' ? (
-              <ellipse cx="100" cy="101" rx="7" ry="4" fill="#B38A78" />
-            ) : (
-              <path d="M92 100Q100 102 108 100" stroke="#B38A78" strokeWidth="2" strokeLinecap="round"/>
-            )}
-          </svg>
+          {shouldRenderAssistantLive2D ? (
+            <Live2DAvatar
+              className="w-[200px] h-[240px]"
+              corePath={effectiveAvatarProfile.live2dCorePath}
+              expressionPreset={avatarExpressionPreset}
+              fallback={assistantAvatarFallback}
+              idleMotion={effectiveAvatarProfile.live2dIdleMotion}
+              modelPath={effectiveAvatarProfile.live2dModelPath}
+              mouthState={avatarMouthState}
+              speechState={avatarSpeechState}
+            />
+          ) : (
+            assistantAvatarFallback
+          )}
         </div>
       </div>
 

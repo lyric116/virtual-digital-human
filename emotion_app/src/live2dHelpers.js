@@ -5,6 +5,9 @@ export function canRenderLive2D() {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return false;
   }
+  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) {
+    return false;
+  }
   try {
     const canvas = document.createElement('canvas');
     return Boolean(

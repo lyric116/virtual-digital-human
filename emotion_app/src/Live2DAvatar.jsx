@@ -16,12 +16,59 @@ function clearElementChildren(element) {
   }
 }
 
+function clampLive2DParameter(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildLive2DExpressionMap(expressionPreset, speechState) {
+  const valence = Number(expressionPreset?.valence || 0);
+  const arousal = Number(expressionPreset?.arousal || 0);
+  const speakingBoost = speechState === 'speaking' ? 0.08 : 0;
+
+  return {
+    ParamAngleX: clampLive2DParameter(valence * 6, -10, 10),
+    ParamAngleY: clampLive2DParameter((-arousal * 8) + (speechState === 'completed' ? 1.5 : 0), -10, 10),
+    ParamAngleZ: clampLive2DParameter(valence * 2.5, -10, 10),
+    ParamBodyAngleX: clampLive2DParameter(valence * 3.5, -8, 8),
+    ParamBodyAngleY: clampLive2DParameter(-arousal * 2.5, -4, 4),
+    ParamMouthForm: clampLive2DParameter((valence * 0.7) + 0.1, -1, 1),
+    ParamBrowLY: clampLive2DParameter((0.1 - valence * 0.18) + arousal * 0.08, -1, 1),
+    ParamBrowRY: clampLive2DParameter((0.1 - valence * 0.18) + arousal * 0.08, -1, 1),
+    ParamEyeLSmile: clampLive2DParameter(Math.max(0, valence * 0.55 + speakingBoost), 0, 1),
+    ParamEyeRSmile: clampLive2DParameter(Math.max(0, valence * 0.55 + speakingBoost), 0, 1),
+    ParamEyeLOpen: clampLive2DParameter(0.92 - arousal * 0.12 + speakingBoost * 0.2, 0.55, 1.2),
+    ParamEyeROpen: clampLive2DParameter(0.92 - arousal * 0.12 + speakingBoost * 0.2, 0.55, 1.2),
+  };
+}
+
+function resolveLive2DMouthOpenY(mouthState, speechState) {
+  if (speechState !== 'speaking') {
+    return 0;
+  }
+  if (mouthState === 'wide') {
+    return 1;
+  }
+  if (mouthState === 'round') {
+    return 0.72;
+  }
+  if (mouthState === 'small') {
+    return 0.42;
+  }
+  return 0.16;
+}
+
 export default function Live2DAvatar({
   className = '',
   corePath = '/live2d/live2dcubismcore.min.js',
   fallback = null,
   idleMotion = null,
   modelPath,
+  mouthState = 'closed',
+  speechState = 'idle',
+  expressionPreset = null,
 }) {
   const rootRef = useRef(null);
   const canvasHostRef = useRef(null);
@@ -30,11 +77,26 @@ export default function Live2DAvatar({
   const [renderState, setRenderState] = useState(() => (canRenderLive2D() ? 'loading' : 'fallback'));
 
   useEffect(() => {
+    const live2DModel = modelRef.current;
+    const coreModel = live2DModel?.internalModel?.coreModel;
+    if (!live2DModel || !coreModel) {
+      return;
+    }
+
+    const expressionValues = buildLive2DExpressionMap(expressionPreset, speechState);
+    Object.entries(expressionValues).forEach(([parameterId, value]) => {
+      coreModel.setParameterValueById(parameterId, value);
+    });
+    coreModel.setParameterValueById('ParamMouthOpenY', resolveLive2DMouthOpenY(mouthState, speechState));
+  }, [expressionPreset, mouthState, speechState]);
+
+  useEffect(() => {
     let cancelled = false;
     let stopObservingViewport = () => {};
+    const canvasHostElement = canvasHostRef.current;
 
     async function mountLive2D() {
-      if (!modelPath || !rootRef.current || !canvasHostRef.current || !canRenderLive2D()) {
+      if (!modelPath || !rootRef.current || !canvasHostElement || !canRenderLive2D()) {
         setRenderState('fallback');
         return;
       }
@@ -70,8 +132,8 @@ export default function Live2DAvatar({
         }
 
         appRef.current = app;
-        clearElementChildren(canvasHostRef.current);
-        canvasHostRef.current.appendChild(app.canvas);
+        clearElementChildren(canvasHostElement);
+        canvasHostElement.appendChild(app.canvas);
 
         const model = await Live2DModel.from(modelPath, {
           autoFocus: false,
@@ -121,7 +183,7 @@ export default function Live2DAvatar({
         appRef.current.destroy({ removeView: true }, { children: true, texture: true, textureSource: true });
         appRef.current = null;
       }
-      clearElementChildren(canvasHostRef.current);
+      clearElementChildren(canvasHostElement);
     };
   }, [corePath, idleMotion?.group, idleMotion?.index, modelPath]);
 
