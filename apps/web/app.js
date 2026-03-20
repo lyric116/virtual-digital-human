@@ -1610,6 +1610,9 @@
     if (typeof payload.durationMs === "number") {
       query.set("duration_ms", String(payload.durationMs));
     }
+    if (typeof payload.recordingId === "string" && payload.recordingId.trim()) {
+      query.set("recording_id", payload.recordingId);
+    }
 
     const response = await fetchImpl(
       `${appConfig.apiBaseUrl}/api/session/${encodeURIComponent(state.sessionId)}/audio/finalize?${query.toString()}`,
@@ -2521,15 +2524,18 @@
       setAvatarMouthState("closed");
     }
 
-    function buildRecordedAudioBlob() {
+    function buildRecordedAudioBlob(parts = runtime.recordedAudioParts) {
       const BlobCtor = getBlobCtor();
-      if (!BlobCtor || !runtime.recordedAudioParts.length) {
+      if (!BlobCtor || !parts.length) {
         return null;
       }
-      return new BlobCtor(runtime.recordedAudioParts, {
-        type: state.recordingMimeType === "pending"
-          ? "application/octet-stream"
-          : state.recordingMimeType,
+      const fallbackPart = parts[parts.length - 1];
+      const fallbackType = fallbackPart && typeof fallbackPart.type === "string" && fallbackPart.type.trim()
+        ? fallbackPart.type
+        : null;
+      return new BlobCtor(parts, {
+        type: fallbackType
+          || (state.recordingMimeType === "pending" ? "application/octet-stream" : state.recordingMimeType),
       });
     }
 
@@ -2842,6 +2848,9 @@
         if (!payload) {
           pushConnectionLog(state, "final transcript rejected: invalid payload");
           renderSessionState(rootDocument, elements, state, appConfig);
+          return;
+        }
+        if (runtime.currentRecordingId && payload.recording_id && payload.recording_id !== runtime.currentRecordingId) {
           return;
         }
         state.partialTranscriptState = "idle";
@@ -3888,11 +3897,13 @@
         return;
       }
 
-      const previewBlob = buildRecordedAudioBlob();
+      const previewParts = runtime.recordedAudioParts.slice(runtime.lastPreviewChunkCount);
+      const previewBlob = buildRecordedAudioBlob(previewParts);
       if (!previewBlob) {
         return;
       }
 
+      const nextPreviewChunkCount = runtime.recordedAudioParts.length;
       const previewSeq = runtime.nextPreviewSeq;
       runtime.nextPreviewSeq += 1;
       runtime.previewInFlight = true;
@@ -3907,7 +3918,7 @@
           previewSeq,
           recordingId: runtime.currentRecordingId,
         });
-        runtime.lastPreviewChunkCount = runtime.recordedAudioParts.length;
+        runtime.lastPreviewChunkCount = nextPreviewChunkCount;
       } catch (error) {
         state.partialTranscriptState = "error";
         state.partialTranscriptText = error instanceof Error ? error.message : String(error);
@@ -3973,6 +3984,7 @@
           blob: finalBlob,
           durationMs: Math.max(0, Math.round(state.recordingDurationMs)),
           mimeType: finalBlob.type || state.recordingMimeType || "application/octet-stream",
+          recordingId: runtime.currentRecordingId,
         });
 
         state.pendingMessageId = payload.message_id || null;

@@ -116,6 +116,27 @@ def build_settings(module):
     )
 
 
+def build_transcription_response(module, **overrides):
+    return module.ASRServiceTranscriptionResponse(
+        request_id="req_asr_001",
+        record_id=overrides.pop("record_id", None),
+        provider="dashscope",
+        model="qwen3-asr-flash",
+        transcript_text=overrides.pop("transcript_text", "Bonjour, je me sens un peu tendu aujourd'hui."),
+        transcript_language=overrides.pop("transcript_language", "fr"),
+        duration_ms=overrides.pop("duration_ms", 740),
+        confidence_mean=overrides.pop("confidence_mean", None),
+        confidence_available=overrides.pop("confidence_available", False),
+        transcript_segments=overrides.pop("transcript_segments", []),
+        audio=overrides.pop(
+            "audio",
+            {"filename": "recording.wav", "content_type": "audio/wav", "byte_size": 9},
+        ),
+        generated_at=overrides.pop("generated_at", datetime(2026, 3, 8, 16, 40, 4, tzinfo=timezone.utc)),
+        **overrides,
+    )
+
+
 def test_audio_message_record_calls_asr_and_creates_audio_user_message():
     module = load_gateway_module()
     repository = FakeAudioFinalizeRepository()
@@ -125,22 +146,29 @@ def test_audio_message_record_calls_asr_and_creates_audio_user_message():
         assert settings_obj.asr_service_base_url == "http://127.0.0.1:8020"
         assert body == b"wav-bytes"
         assert mime_type == "audio/wav"
-        return module.ASRServiceTranscriptionResponse(
-            request_id="req_asr_001",
-            record_id=None,
-            provider="dashscope",
-            model="qwen3-asr-flash",
-            transcript_text="Bonjour, je me sens un peu tendu aujourd'hui.",
-            transcript_language="fr",
-            duration_ms=740,
-            confidence_mean=None,
-            confidence_available=False,
-            transcript_segments=[],
-            audio={"filename": "recording.wav", "content_type": "audio/wav", "byte_size": 9},
-            generated_at=datetime(2026, 3, 8, 16, 40, 4, tzinfo=timezone.utc),
+        return build_transcription_response(module)
+
+    release_calls: list[dict] = []
+
+    def fake_release_asr_stream(settings_obj, *, session_id: str, recording_id: str):
+        release_calls.append(
+            {
+                "settings": settings_obj,
+                "session_id": session_id,
+                "recording_id": recording_id,
+            }
+        )
+        return module.ASRServiceStreamReleaseResponse(
+            request_id="req_release_001",
+            session_id=session_id,
+            recording_id=recording_id,
+            released=True,
+            reason="released",
+            released_at=datetime(2026, 3, 8, 16, 40, 4, tzinfo=timezone.utc),
         )
 
     module.request_asr_transcription = fake_request_asr_transcription
+    module.release_asr_stream = fake_release_asr_stream
 
     result = module.create_audio_message_record(
         repository,
@@ -149,6 +177,7 @@ def test_audio_message_record_calls_asr_and_creates_audio_user_message():
         content=b"wav-bytes",
         duration_ms=740,
         mime_type="audio/wav",
+        recording_id="rec_001",
     )
 
     assert isinstance(result, dict)
@@ -164,12 +193,71 @@ def test_audio_message_record_calls_asr_and_creates_audio_user_message():
     )
     assert repository.audio_message_calls[0]["metadata"]["audio_duration_ms"] == 740
     assert repository.audio_message_calls[0]["metadata"]["asr_provider"] == "dashscope"
+    assert repository.audio_message_calls[0]["metadata"]["recording_id"] == "rec_001"
+    assert release_calls == [
+        {
+            "settings": settings,
+            "session_id": "sess_fake_001",
+            "recording_id": "rec_001",
+        }
+    ]
     transcript_event = module.build_transcript_final_event(result)
     assert transcript_event["event_type"] == "transcript.final"
     assert transcript_event["message_id"] == "msg_audio_final_001"
     assert transcript_event["payload"]["asr_engine"] == "qwen3-asr-flash"
     assert transcript_event["payload"]["media_id"] == "media_audio_final_001"
     assert transcript_event["payload"]["duration_ms"] == 740
+    assert transcript_event["payload"]["recording_id"] == "rec_001"
+    assert transcript_event["payload"]["message_id"] == "msg_audio_final_001"
+
+
+def test_audio_message_record_skips_release_without_recording_id():
+    module = load_gateway_module()
+    repository = FakeAudioFinalizeRepository()
+    settings = build_settings(module)
+    module.request_asr_transcription = lambda *args, **kwargs: build_transcription_response(module)
+
+    release_calls: list[dict] = []
+    module.release_asr_stream = lambda *args, **kwargs: release_calls.append({"args": args, "kwargs": kwargs})
+
+    result = module.create_audio_message_record(
+        repository,
+        settings,
+        "sess_fake_001",
+        content=b"wav-bytes",
+        duration_ms=740,
+        mime_type="audio/wav",
+        recording_id=None,
+    )
+
+    assert isinstance(result, dict)
+    assert release_calls == []
+    assert result["message"]["metadata"]["recording_id"] is None
+
+
+def test_audio_message_record_ignores_release_failures():
+    module = load_gateway_module()
+    repository = FakeAudioFinalizeRepository()
+    settings = build_settings(module)
+    module.request_asr_transcription = lambda *args, **kwargs: build_transcription_response(module)
+
+    def fake_release_asr_stream(*args, **kwargs):
+        raise RuntimeError("release failed")
+
+    module.release_asr_stream = fake_release_asr_stream
+
+    result = module.create_audio_message_record(
+        repository,
+        settings,
+        "sess_fake_001",
+        content=b"wav-bytes",
+        duration_ms=740,
+        mime_type="audio/wav",
+        recording_id="rec_001",
+    )
+
+    assert isinstance(result, dict)
+    assert result["message"]["message_id"] == "msg_audio_final_001"
 
 
 def test_audio_message_record_normalizes_webm_content_type_parameters():
@@ -179,22 +267,23 @@ def test_audio_message_record_normalizes_webm_content_type_parameters():
 
     def fake_request_asr_transcription(settings_obj, *, body: bytes, mime_type: str):
         assert mime_type == "audio/webm"
-        return module.ASRServiceTranscriptionResponse(
-            request_id="req_asr_webm_001",
-            record_id=None,
-            provider="dashscope",
-            model="qwen3-asr-flash",
+        return build_transcription_response(
+            module,
             transcript_text="测试语音。",
             transcript_language="zh-CN",
             duration_ms=320,
-            confidence_mean=None,
-            confidence_available=False,
-            transcript_segments=[],
             audio={"filename": "recording.webm", "content_type": mime_type, "byte_size": 10},
-            generated_at=datetime(2026, 3, 8, 16, 40, 4, tzinfo=timezone.utc),
         )
 
     module.request_asr_transcription = fake_request_asr_transcription
+    module.release_asr_stream = lambda *args, **kwargs: module.ASRServiceStreamReleaseResponse(
+        request_id="req_release_002",
+        session_id=kwargs["session_id"],
+        recording_id=kwargs["recording_id"],
+        released=True,
+        reason="released",
+        released_at=datetime(2026, 3, 8, 16, 40, 4, tzinfo=timezone.utc),
+    )
 
     result = module.create_audio_message_record(
         repository,
@@ -203,6 +292,7 @@ def test_audio_message_record_normalizes_webm_content_type_parameters():
         content=b"webm-bytes",
         duration_ms=320,
         mime_type="audio/webm;codecs=opus",
+        recording_id="rec_002",
     )
 
     assert isinstance(result, dict)
@@ -210,6 +300,7 @@ def test_audio_message_record_normalizes_webm_content_type_parameters():
     assert repository.final_asset_calls[0]["mime_type"] == "audio/webm"
     assert repository.audio_message_calls[0]["metadata"]["audio_mime_type"] == "audio/webm"
     assert repository.audio_message_calls[0]["metadata"]["audio_duration_ms"] == 320
+    assert repository.audio_message_calls[0]["metadata"]["recording_id"] == "rec_002"
 
 
 def test_audio_message_record_rejects_empty_audio_body():
@@ -331,19 +422,12 @@ def test_audio_message_record_cleans_up_orphan_asset_when_asr_is_empty():
     settings = build_settings(module)
 
     def fake_request_asr_transcription(settings_obj, *, body: bytes, mime_type: str):
-        return module.ASRServiceTranscriptionResponse(
-            request_id="req_asr_empty_001",
-            record_id=None,
-            provider="dashscope",
-            model="qwen3-asr-flash",
+        return build_transcription_response(
+            module,
             transcript_text="   ",
             transcript_language="zh-CN",
             duration_ms=320,
-            confidence_mean=None,
-            confidence_available=False,
-            transcript_segments=[],
             audio={"filename": "recording.wav", "content_type": mime_type, "byte_size": len(body)},
-            generated_at=datetime(2026, 3, 8, 16, 40, 4, tzinfo=timezone.utc),
         )
 
     module.request_asr_transcription = fake_request_asr_transcription

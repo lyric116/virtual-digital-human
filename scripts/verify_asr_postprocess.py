@@ -105,6 +105,10 @@ def main() -> None:
         raise RuntimeError("pause-aware segmentation did not produce multiple segments")
     if not enhanced_result["transcript_text"].endswith("."):
         raise RuntimeError("enhanced transcript is missing terminal punctuation")
+    if "si tu," in enhanced_result["transcript_text"]:
+        raise RuntimeError("pause-aware segmentation split an obvious French clause incorrectly")
+    if "qu'ont," in enhanced_result["transcript_text"]:
+        raise RuntimeError("hotword cleanup plus punctuation produced an invalid French boundary")
 
     print(
         json.dumps(

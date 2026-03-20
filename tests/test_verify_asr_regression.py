@@ -48,3 +48,21 @@ def test_enforce_magicdata_thresholds_rejects_regression(tmp_path):
         assert "WER regression" in str(exc)
     else:
         raise AssertionError("expected threshold failure")
+
+
+def test_build_parser_defaults_to_stable_magicdata_subset():
+    module = load_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args([])
+
+    assert args.magicdata_core_per_group == module.DEFAULT_MAGICDATA_CORE_PER_GROUP
+
+
+def test_build_parser_accepts_optional_expanded_magicdata_subset():
+    module = load_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(["--magicdata-core-per-group", "24"])
+
+    assert args.magicdata_core_per_group == 24

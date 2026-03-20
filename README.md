@@ -39,8 +39,9 @@ Current repository state:
 - browser-recorded audio can now be finalized through the gateway, transcribed by
   `services/asr-service`, rendered as the final transcript in the frontend, and pushed
   into the same mock reply loop used by text input
-- browser-recorded audio can now also emit partial transcript previews during recording
-  through the same ASR service before the final accepted transcript arrives after stop
+- browser-recorded audio can now also emit session-aware incremental partial transcript
+  previews during recording; preview uploads send only delta audio while finalize keeps the
+  existing whole-file ASR path before the final accepted transcript arrives after stop
 - `services/asr-service` now applies silence handling, punctuation restoration, and
   hotword cleanup before returning the final transcript text
 - `services/tts-service` now synthesizes one assistant reply into one playable Chinese
@@ -107,6 +108,10 @@ Current repository state:
   real `draft_ready` records plus generated manual review checklists
 - local-only MAGICDATA Chinese ASR import and evaluation tooling is now available under
   `scripts/prepare_magicdata_eval.py` and `scripts/verify_magicdata_asr_eval.py`
+- the expanded local MAGICDATA Chinese ASR evaluation has now been confirmed on `216`
+  frozen samples with `WER=0.003623` and `SER=0.023148`, which is strong enough to
+  continue to the next planned stage while keeping the default `36`-sample run as the
+  stable regression baseline
 
 ## Repository Structure
 
@@ -149,22 +154,50 @@ Demo assets for mock flow development live in:
 
 Frontend shell preview:
 
-Recommended shortcuts:
+Default local startup uses the compose-backed stack instead of pasting individual
+`uvicorn` commands:
+
+- `make start-core`
+- `make status-core`
+- `make logs-core`
+- `make verify-core`
+- open `http://127.0.0.1:4173`
+- `make stop-core`
+
+Use the full stack only when you need the voice or avatar chain:
+
+- `make start-full`
+- `make status-full`
+- `make logs-full`
+- `make stop-full`
+
+Supported `emotion_app` developer flow:
+
+- backend for text, TTS, and affect: `make start-core`
+- backend for ASR or full voice flow: `make start-full`
+- frontend dev server: `cd emotion_app && npm start`
+- open `http://localhost:3000`
+
+Production-style local preview for `emotion_app`:
+
+- `cd emotion_app && npm run build`
+- `cd emotion_app && python3 -m http.server 3000 --directory build`
+
+Manual native startup remains available for debugging only:
 
 - `make web`
 - `make backend-core`
 - `make backend-full`
-- `make up-core`
-- `make up-full`
-
-Underlying native commands:
-
 - `python3 -m http.server 4173 --directory apps/web`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/api-gateway main:app --host 0.0.0.0 --port 8000`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/orchestrator main:app --host 0.0.0.0 --port 8010`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/dialogue-service main:app --host 0.0.0.0 --port 8030`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/affect-service main:app --host 0.0.0.0 --port 8060`
 - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/rag-service main:app --host 0.0.0.0 --port 8070`
+
+Do not mix raw `uvicorn` processes with `make start-core` or `make start-full` on the
+same ports. If you hit `address already in use`, stop the compose stack with
+`make stop-core` or `make stop-full` before switching workflows.
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_session_start.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_realtime_connection.py`
 - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_web_text_submit.py`
@@ -239,14 +272,14 @@ Underlying native commands:
 - Generate and verify the current 10-turn stability regression:
   - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_ten_turn_stability.py`
 - Build and verify the containerized core text loop:
-  - recommended shortcuts: `make up-core`, `make down-core`, `make logs-core`, `make verify-core`
+  - recommended shortcuts: `make start-core`, `make status-core`, `make logs-core`, `make verify-core`, `make stop-core`
   - raw commands:
     - `docker compose --env-file .env -f infra/compose/docker-compose.core.yml up -d --build`
     - `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_core_compose_stack.py --compose-file infra/compose/docker-compose.core.yml`
   - current step-51 core stack uses `python:3.11-slim` plus bind mounts for `../..` and local `.venv/lib/python3.11/site-packages`, so run `uv sync` first
   - treat this as a dev/demo compose harness, not yet a portable deployment artifact
 - Prepare the full compose asset set, including `asr-service` and `avatar-driver-service`:
-  - recommended shortcuts: `make compose-full-config`, `make up-full`, `make down-full`, `make logs-full`
+  - recommended shortcuts: `make compose-full-config`, `make start-full`, `make status-full`, `make logs-full`, `make stop-full`
   - raw command:
     - `docker compose --env-file .env -f infra/compose/docker-compose.full.yml config`
   - this validates config generation only; it does not by itself prove full portable deployment readiness

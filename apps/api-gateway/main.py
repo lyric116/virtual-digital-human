@@ -501,6 +501,51 @@ class ASRServiceTranscriptionResponse(BaseModel):
     generated_at: datetime
 
 
+class ASRServicePreviewResponse(BaseModel):
+    request_id: str
+    session_id: str
+    recording_id: str
+    preview_seq: int = Field(ge=1)
+    provider: str
+    model: str
+    transcript_text: str
+    transcript_language: str | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
+    confidence_mean: float | None = None
+    confidence_available: bool = False
+    audio: dict[str, Any] = Field(default_factory=dict)
+    generated_at: datetime
+    stream_created: bool = False
+    stream_updated_at: datetime
+
+
+class ASRServiceStreamReleaseResponse(BaseModel):
+    request_id: str
+    session_id: str
+    recording_id: str
+    released: bool
+    reason: str
+    released_at: datetime
+
+
+class ASRStreamPreviewRequestError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        status_code: int,
+        error_code: str,
+        message: str,
+        retryable: bool = False,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_code = error_code
+        self.message = message
+        self.retryable = retryable
+        self.details = details or {}
+
+
 class ClientRuntimeEventRequest(BaseModel):
     event_type: str
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -2747,6 +2792,90 @@ def request_asr_transcription(
         raise RuntimeError(f"invalid asr transcription: {exc}") from exc
 
 
+def request_asr_stream_preview(
+    settings: GatewaySettings,
+    *,
+    body: bytes,
+    mime_type: str,
+    session_id: str,
+    recording_id: str,
+    preview_seq: int,
+) -> ASRServicePreviewResponse:
+    normalized_mime_type = normalize_mime_type(mime_type)
+    extension = MIME_EXTENSION_MAP.get(normalized_mime_type, ".bin")
+    query = urllib_parse.urlencode(
+        {
+            "session_id": session_id,
+            "recording_id": recording_id,
+            "preview_seq": preview_seq,
+            "filename": f"recording{extension}",
+        }
+    )
+    request = urllib_request.Request(
+        url=f"{settings.asr_service_base_url.rstrip('/')}/api/asr/stream/preview?{query}",
+        data=body,
+        headers={"Content-Type": normalized_mime_type},
+        method="POST",
+    )
+
+    try:
+        with open_internal_request(request, timeout=settings.asr_timeout_seconds) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        try:
+            error_body = json.loads(detail) if detail else {}
+        except json.JSONDecodeError:
+            error_body = {}
+        raise ASRStreamPreviewRequestError(
+            status_code=exc.code,
+            error_code=str(error_body.get("error_code") or "audio_preview_failed"),
+            message=str(error_body.get("message") or f"asr stream preview http {exc.code}"),
+            retryable=bool(error_body.get("retryable")) or exc.code >= 500,
+            details=error_body.get("details") if isinstance(error_body.get("details"), dict) else None,
+        ) from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError(f"asr stream preview unavailable: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("asr stream preview returned invalid json") from exc
+
+    try:
+        return ASRServicePreviewResponse.model_validate(raw_payload)
+    except ValidationError as exc:
+        raise RuntimeError(f"invalid asr stream preview: {exc}") from exc
+
+
+def release_asr_stream(
+    settings: GatewaySettings,
+    *,
+    session_id: str,
+    recording_id: str,
+) -> ASRServiceStreamReleaseResponse:
+    query = urllib_parse.urlencode({"session_id": session_id, "recording_id": recording_id})
+    request = urllib_request.Request(
+        url=f"{settings.asr_service_base_url.rstrip('/')}/api/asr/stream/release?{query}",
+        data=b"",
+        headers={"Content-Type": "application/octet-stream"},
+        method="POST",
+    )
+
+    try:
+        with open_internal_request(request, timeout=settings.asr_timeout_seconds) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"asr stream release http {exc.code}: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise RuntimeError(f"asr stream release unavailable: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("asr stream release returned invalid json") from exc
+
+    try:
+        return ASRServiceStreamReleaseResponse.model_validate(raw_payload)
+    except ValidationError as exc:
+        raise RuntimeError(f"invalid asr stream release: {exc}") from exc
+
+
 def create_audio_message_record(
     repository: SessionRepository,
     settings: GatewaySettings,
@@ -2755,6 +2884,7 @@ def create_audio_message_record(
     content: bytes,
     duration_ms: int | None,
     mime_type: str,
+    recording_id: str | None = None,
 ) -> dict[str, Any] | JSONResponse:
     normalized_mime_type = normalize_mime_type(mime_type)
     audio_asset = create_audio_finalize_asset_record(
@@ -2799,6 +2929,12 @@ def create_audio_message_record(
             ),
         )
 
+    if recording_id:
+        try:
+            release_asr_stream(settings, session_id=session_id, recording_id=recording_id)
+        except RuntimeError:
+            pass
+
     resolved_duration_ms = resolve_finalized_audio_duration_ms(duration_ms, transcription)
 
     audio_message_metadata = {
@@ -2812,6 +2948,7 @@ def create_audio_message_record(
         "transcript_language": transcription.transcript_language,
         "confidence_mean": transcription.confidence_mean,
         "confidence_available": transcription.confidence_available,
+        "recording_id": recording_id,
     }
 
     try:
@@ -2899,10 +3036,24 @@ def create_audio_preview_record(
         )
 
     try:
-        transcription = request_asr_transcription(
+        transcription = request_asr_stream_preview(
             settings,
             body=content,
             mime_type=normalized_mime_type,
+            session_id=session_id,
+            recording_id=recording_id,
+            preview_seq=preview_seq,
+        )
+    except ASRStreamPreviewRequestError as exc:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_payload(
+                error_code=exc.error_code,
+                message=exc.message,
+                session_id=session_id,
+                retryable=exc.retryable,
+                details=exc.details,
+            ),
         )
     except RuntimeError as exc:
         return JSONResponse(
@@ -3046,6 +3197,8 @@ def build_transcript_final_event(result: dict[str, Any]) -> dict[str, Any]:
         "mime_type": result["audio"]["mime_type"],
         "generated_at": transcription.get("generated_at"),
         "source_kind": result["message"].get("source_kind"),
+        "message_id": result["message"].get("message_id"),
+        "recording_id": message_metadata.get("recording_id"),
     }
     return jsonable_encoder(
         build_event_envelope(
@@ -3581,6 +3734,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
         session_id: str,
         request: Request,
         duration_ms: int | None = None,
+        recording_id: str | None = None,
     ) -> Any:
         repository = request.app.state.session_repository
         settings: GatewaySettings = request.app.state.settings
@@ -3594,6 +3748,7 @@ def create_app(repository: SessionRepository | None = None) -> FastAPI:
             content=body,
             duration_ms=duration_ms,
             mime_type=mime_type,
+            recording_id=recording_id,
         )
         if isinstance(result, JSONResponse):
             return result

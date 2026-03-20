@@ -47,6 +47,7 @@ def test_web_audio_final_transcript_flow_keeps_chunk_uploads_and_finalize_call()
     assert payload["uploadCalls"][-1]["isFinal"] is True
     assert len(payload["finalizeCalls"]) == 1
     assert payload["finalizeCalls"][0]["contentType"] == "audio/wav"
+    assert payload["finalizeCalls"][0]["recordingId"] == payload["previewCalls"][0]["recordingId"]
     assert payload["afterReply"]["lastMessageId"] == "msg_mock_audio_001"
 
 

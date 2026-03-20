@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records the current factual baseline of `emotion_app/` before migration work begins. It is intended to freeze what the React frontend is today, what is real versus simulated, and what capability gaps still exist relative to `apps/web`.
+This document records the current factual baseline of `emotion_app/` after the first migration round landed. It describes which runtime capabilities are now real, which prototype-only surfaces still remain, and what structural gaps still exist relative to `apps/web`.
 
 ## Current project shape
 
@@ -53,31 +53,27 @@ This document records the current factual baseline of `emotion_app/` before migr
 
 ## What is real today
 
-The current React frontend has a small amount of genuine browser functionality:
+The current React frontend now has real browser/runtime integration across the main session loop:
 
 - language switching is real local UI state
-- camera permission request is real
-- camera preview is real via `navigator.mediaDevices.getUserMedia`
-- camera stream cleanup is real when stopping preview
-- text input editing is real local UI state
+- runtime config loading is real through `emotion_app/src/index.js`, with `window.__APP_CONFIG__`-compatible inputs for API / WS / TTS / affect base URLs
+- session creation, restore, and active-session persistence are real via gateway APIs and local storage
+- realtime WebSocket connection, heartbeat, reconnect handling, and event-envelope parsing are real
+- text submit is real against `POST /api/session/{session_id}/text`
+- microphone permission, recording, chunk upload, preview upload, finalize, and partial/final transcript rendering are real
+- camera permission request, preview, stream cleanup, frame upload, and session-aware local-only fallback are real
+- affect refresh and websocket `affect.snapshot` rendering are real
+- direct TTS synthesis, browser playback, runtime-event logging, avatar runtime state, and replay-safe autoplay suppression are real
+- export download, export cache update, and frontend-only replay from exported JSON are real
 - modal open/close flows are real local UI state
 
 ## What is still simulated or prototype-only
 
-The rest of the frontend is still prototype behavior rather than integrated product behavior:
+A few visible surfaces are still prototype-oriented even though the main runtime loop is now integrated:
 
-- microphone recognition is simulated with nested `setTimeout` transitions
-- chat bubbles are scripted local copy, not backend replies
-- the send button only clears local input and flips a local status index
-- emotion summary and timeline are static content, not affect-service data
-- auth flow is local-only modal behavior
-- avatar scene is decorative and not driven by runtime session state
-- there is no real fetch-based API integration in `App.jsx`
-- there is no WebSocket integration
-- there is no TTS integration
-- there is no affect integration
-- there is no export/replay integration
-- there is no session creation, restore, or persistence logic
+- auth flow is still local-only modal behavior
+- some decorative avatar scene elements and marketing-style copy remain presentational rather than fully data-driven
+- the implementation is still concentrated in one large `App.jsx` instead of separated state, transport, media, and presentation layers
 
 ## UI area to future system responsibility mapping
 
@@ -172,25 +168,12 @@ The migration should preserve these browser/backend semantics:
 
 ## Capability gap versus apps/web
 
-Compared with `apps/web`, `emotion_app` is currently missing these integrated runtime capabilities:
+Compared with `apps/web`, `emotion_app` is no longer missing the primary session/realtime/audio/video/tts/export capabilities. The remaining gap is mostly structural and presentation-oriented:
 
-- runtime config loading compatible with `window.__APP_CONFIG__`
-- session creation
-- session restore
-- local active-session persistence
-- realtime WebSocket connection
-- realtime envelope parsing and state application
-- text submit to the gateway
-- audio chunk upload
-- audio preview / partial transcript handling
-- audio finalize / final transcript handling
-- camera frame upload
-- affect refresh and rendering from real payloads
-- TTS synthesis and playback lifecycle
-- avatar runtime state driving
-- export retrieval
-- local replay from export JSON
-- reconnect handling and stale-event protection
+- runtime concerns are still heavily concentrated inside `emotion_app/src/App.jsx`
+- API helpers, realtime reducer logic, media capture flows, affect/TTS/avatar integration, and replay orchestration have not yet been split into clearer modules
+- some navigation/auth/profile/timeline affordances are still UI placeholders rather than contract-backed product behavior
+- the React shell has reached feature parity for this migration slice, but not maintainability parity
 
 ## Migration implication
 
@@ -215,8 +198,8 @@ This is a frontend migration, not a protocol rewrite.
 
 At this point:
 
-- `emotion_app` is a visually strong React prototype
-- `apps/web` is still the stable frontend reference implementation
-- backend/browser contracts should remain unchanged during initial migration
-- the first migration priority should be a verified session/realtime/text baseline in `emotion_app`
+- `emotion_app` has completed the first migration round and now covers session, realtime, audio, video/affect, TTS/avatar, and export/replay flows on the existing browser/backend contract
+- `apps/web` is still the stable frontend reference implementation and rollback baseline
+- backend/browser contracts should remain unchanged while React-side cleanup continues
+- the next frontend priority is not adding another missing protocol path, but splitting the monolithic `App.jsx` into clearer responsibility boundaries
 - old frontend removal is explicitly out of scope for this first migration round

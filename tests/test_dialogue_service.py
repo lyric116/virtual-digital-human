@@ -276,6 +276,26 @@ def test_dialogue_service_builds_fallback_reply_for_timeout():
     assert "基础回退模式" in response.reply
 
 
+def test_dialogue_service_falls_back_for_openai_sdk_upstream_errors():
+    module = load_dialogue_module()
+    import httpx
+    import openai
+
+    request = httpx.Request("POST", "https://llm.example/v1/chat/completions")
+    response = httpx.Response(502, request=request)
+    exc = openai.InternalServerError("Error code: 502", response=response, body=None)
+
+    assert module.is_upstream_llm_sdk_error(exc) is True
+    assert module.should_fallback_dialogue_reply(exc) is True
+
+    fallback = module.build_dialogue_fallback_reply(
+        build_request(module, content_text="普通文本", current_stage="engage"),
+        exc,
+    )
+    assert "dialogue_fallback_response" in fallback.safety_flags
+    assert "dialogue_fallback_reason:upstream_error" in fallback.safety_flags
+
+
 def test_dialogue_service_routes_fallback_on_reply_error_and_keep_summary_errors(monkeypatch):
     module = load_dialogue_module()
     app = module.create_app()

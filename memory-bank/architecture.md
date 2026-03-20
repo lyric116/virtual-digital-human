@@ -63,16 +63,36 @@ Automation appends new insights under the marker block below.
 
 <!-- architecture:insights:start -->
 
+## 2026-03-19 - emotion_app first-round migration is feature-complete but still structurally monolithic
+
+- emotion_app now covers the same first-round runtime contract surface as apps/web for session create/restore, realtime envelopes, text, audio, video/affect, TTS/avatar, and export/replay; new frontend work should assume these protocol paths already exist unless current code disproves it.
+- The main remaining frontend risk is structural rather than contractual: App.jsx still centralizes session state, websocket lifecycle, media capture, affect refresh, TTS playback, replay orchestration, and most presentation state, so follow-up work should prefer extracting boundaries instead of adding more logic inline.
+- apps/web remains the semantic baseline and rollback path even after parity on this slice; React cleanup must preserve existing identifiers, event semantics, direct-to-service TTS/affect calls, and export/replay behavior rather than inventing React-only contract variants.
+
+
 ## 2026-03-17 - emotion_app Phase D audio should stay on the existing raw-blob plus realtime contract
 
 - emotion_app audio capture should only start when an active session exists and websocket realtime is connected; the React migration does not introduce a local-only recording path detached from the gateway session contract.
 - The frontend should mirror apps/web by sending raw Blob bodies to POST /api/session/{session_id}/audio/chunk, /audio/preview, and /audio/finalize with the existing query parameters; do not switch this path to multipart or invent new browser/backend payload shapes.
 - transcript.partial remains preview-only and must be stale-guarded by recording_id plus preview_seq, while message.accepted with source_kind=audio and the following dialogue.reply remain the authoritative completion path for an audio turn.
 
-## 2026-03-17 - emotion_app Phase E should layer real video upload and affect refresh onto the existing preview shell
+## 2026-03-18 - emotion_app Phase G replay must stay frontend-only and export-driven
 
-- emotion_app already has real getUserMedia camera preview and inbound affect.snapshot handling, so the next migration slice should add apps/web-style frame capture/upload plus affect refresh behavior instead of rewriting session, realtime, or audio flows.
-- The authoritative parity reference remains apps/web/app.js state and contract behavior: camera permission, video upload state, POST /api/session/{session_id}/video/frame, and text/audio/video/fusion affect lanes should be mirrored without changing docs/shared_contracts.md or gateway envelope names.
+- emotion_app replay should start only from cached export JSON, prefer exported events, and fall back to exported messages when events are absent; replay is a local UI reconstruction path, not a live gateway/orchestrator round trip.
+- Starting replay must tear down websocket, heartbeat/reconnect timers, microphone, camera, pending affect refresh, and in-flight TTS playback before the exported sequence is scheduled; replay mode must not reopen live transports or mutate the stored live session identity.
+- Replay should reuse the normal realtime envelope reducer for transcript, affect, retrieval, dialogue, TTS, and avatar UI updates, but with live side effects disabled: no runtime-event POSTs, no fresh TTS synthesis, and no autoplay requests against live services.
+
+## 2026-03-18 - emotion_app Phase F TTS/avatar parity should remain event-driven and replay-safe
+
+- emotion_app now mirrors apps/web TTS/avatar state through dialogue.reply, tts.synthesized, tts.playback.started, tts.playback.ended, and avatar.command envelopes instead of relying on local-only timers or placeholder animation state.
+- dialogue.reply may still trigger live browser TTS synthesis during connected sessions, but the same state path must accept replay envelopes with triggerTts disabled so exported playback can rebuild UI state without contacting tts-service again.
+- Avatar mouth-state and speech-state transitions should close cleanly on playback-ended and avatar idle events so live playback, replay playback, and late media errors converge on the same visible resting state.
+
+## 2026-03-18 - emotion_app Phase E camera upload and affect refresh are now part of the React parity baseline
+
+- emotion_app now includes real getUserMedia camera preview, periodic POST /api/session/{session_id}/video/frame upload, and direct affect-service refresh/render behavior aligned with apps/web; this is no longer a planned slice.
+- affect snapshots from websocket and direct refresh should share the same panel state, with stale-guarding so delayed direct-refresh failures cannot overwrite newer realtime snapshots.
+- The authoritative parity reference remains apps/web/app.js state and contract behavior: camera permission, video upload state, POST /api/session/{session_id}/video/frame, and text/audio/video/fusion affect lanes should stay contract-compatible with docs/shared_contracts.md and existing gateway envelope names.
 
 ## 2026-03-17 - emotion_app Phase C text realtime should stay WS-first with state fallback
 
@@ -333,6 +353,8 @@ Automation appends new insights under the marker block below.
 - scripts/prepare_magicdata_eval.py now defines a second ASR evaluation lane: MAGICDATA official references are imported into data/derived/transcripts-local/, not into val_transcripts_template.jsonl, so public Chinese WER baselines and enterprise transcript review remain isolated.
 - The frozen MAGICDATA core subset is the only public-Chinese file allowed to carry locked_for_eval=true; the full imported catalog remains unlocked to prevent accidental high-cost API evaluation over the entire corpus.
 - Because MAGICDATA licensing is local-only in this repository context, raw archives, extracted audio, transcript catalogs, and report outputs under data/external/, data/derived/transcripts-local/, and data/derived/eval-local/ must stay gitignored while scripts, tests, and docs remain versioned.
+- As of 2026-03-18, this is no longer just a secondary lane: unless a task says otherwise, repository-level ASR metrics, WER/SER discussions, and regression gates should default to the MAGICDATA Chinese evaluation path under data/external/asr.
+- NoXI/RECOLA enterprise samples should not be treated as the default ASR gold-reference source anymore; they remain read-only assets for multimodal alignment, replay, latency sampling, and avatar-driver validation.
 
 ## 2026-03-08 - Formal ASR Evaluation Is Now Gated By Locked Human References
 

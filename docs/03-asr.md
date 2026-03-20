@@ -119,12 +119,15 @@ flowchart LR
 - 再从中冻结一个受控中文评测子集 `data/derived/transcripts-local/magicdata_eval_core.jsonl`
 - 正式中文 WER/SER 通过 `scripts/eval_asr_baseline.py --hypothesis-source service` 对该冻结子集计算
 - 当前默认冻结策略为：按每个可用 `split + gender` 组各取 `12` 条，当前本地数据下合计 `36` 条
+- 默认 `scripts/verify_magicdata_asr_eval.py` 保持这条稳定 36 条基线不变，用于长期横向对比
+- 如需扩样实验，可显式传 `--core-per-group`，并配合 `--label` 输出独立产物，避免覆盖默认基线文件
 
 这样做的原因：
 
 - 企业验证集当前主要用于多模态和离线回放，不适合作为中文正式 WER 金标准
 - MAGICDATA 自带官方参考文本，可以直接充当 `human_verified` 参考
 - 冻结子集后，后续热词、静音检测和后处理优化都能稳定横向对比
+- 团队当前不再要求对 NoXI/RECOLA 法语或德语样本补人工 ASR 金标；后续如无额外说明，正式 ASR 指标默认只看这条中文公开评测链
 
 ## 8. 时延优化
 
@@ -185,7 +188,10 @@ flowchart LR
 
 当前边界：
 
-- 只支持上传一个完整音频文件并返回整句结果
+- 保留 `POST /api/asr/transcribe` 作为完整音频 final transcript 主路径
+- 新增 `POST /api/asr/stream/preview` 与 `POST /api/asr/stream/release`，按 `session_id + recording_id` 维护内存态 preview stream state
+- preview 输入语义已改为“本次新增 delta 音频”，不再要求浏览器重复上传截至当前的累计快照
+- preview 仍复用当前 whole-file 引擎对累计音频做 best-effort partial transcript，因此它是 session-aware incremental preview，而不是 provider-native token streaming
 - 输入优先使用企业 manifest 中的 `audio_path_16k_mono`
 - 当前 live 校验脚本为 `scripts/verify_asr_service.py`
 - 当前批量写回入口为 `scripts/write_asr_drafts.py transcribe-service`
@@ -193,11 +199,16 @@ flowchart LR
 - 当前 `qwen3-asr-flash` 主路径已切到 DashScope 原生同步接口，接口地址为 `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`
 - 服务内部保留 DashScope OpenAI-compatible 路径作为回退，不再把兼容路径当作主配置
 - 当前提供方仍不暴露 token 级置信度，因此服务响应保留 `confidence_mean=null` 和 `confidence_available=false`
+- 步骤 20 已落到 session-aware partial transcript：gateway preview 已切到 streaming helper，浏览器 preview 已切到增量 delta blob，finalize 继续保留 whole-file final lane
+- partial transcript 只做轻量规范化和热词归一；更重的静音切分与标点恢复继续留在 final transcript 阶段
 - 步骤 21 已在 `services/asr-service/main.py` 内加入确定性后处理：长静音切分、基础标点恢复、`services/asr-service/hotwords.json` 热词归一
 - 步骤 21 的验证脚本为 `scripts/verify_asr_postprocess.py`，可直接对比增强前后的同一段音频文本
 - 步骤 22 的评测脚本为 `scripts/eval_asr_baseline.py`，只读取 `verified + locked_for_eval + human_verified` 的记录
 - 当前如果真实工作流中尚无锁定样本，评测脚本会输出 `blocked` 报告，而不是使用机器初稿伪造正式 WER/SER
 - 已新增 `scripts/prepare_magicdata_eval.py`，可把本地 `MAGICDATA dev+test` 生成中文全量参考清单与冻结子集
 - 已新增 `scripts/verify_magicdata_asr_eval.py`，可直接启动 `services/asr-service` 并对 MAGICDATA 中文冻结子集生成真实 WER/SER 报告
+- `scripts/verify_magicdata_asr_eval.py` 默认输出仍写入稳定基线路径；如传 `--core-per-group 24 --label expanded24`，会生成独立的 transcripts/report/details 产物，供扩样分析使用
+- `scripts/eval_asr_baseline.py` 现在会在样本明细和 failure examples 中保留 `split`、`speaker_gender`、`speaker_dialect`、`speaker_id`，便于扩样后按人群分布分析失败
 - 已新增 `scripts/verify_asr_regression.py`，可把企业样本 live 校验、后处理校验、基线门禁校验和 MAGICDATA 中文基线统一串成一个 ASR 回归入口
+- `scripts/verify_asr_regression.py` 默认仍走稳定 36 条 MAGICDATA 基线；只有显式传 `--magicdata-core-per-group` 时才会跑更大的本地实验集
 - MAGICDATA 相关清单与评测报告默认输出到 `data/derived/transcripts-local/` 和 `data/derived/eval-local/`，保持本地使用，不进入版本库

@@ -241,9 +241,10 @@
 ### 步骤 20：升级为流式 partial transcript
 
 - 指令：在不改变最终结果结构的前提下，增加局部转写事件，让前端在用户说话过程中逐步显示文本。
+- 当前实现：已新增 session-aware preview lane。浏览器 `/audio/preview` 现在发送自上次 preview 以来的增量 delta blob；gateway 调用独立的 ASR streaming preview helper；ASR service 按 `session_id + recording_id` 维护内存态 stream state；`/audio/finalize` 继续保留 authoritative whole-file final transcript 主路径。
 - 产出：流式转写事件。
 - 验证测试：用户说一段较长句子时，句子未说完之前页面已出现 partial transcript，停止说话后出现 final transcript。
-- 通过标准：语音交互的实时感达到可演示水平。
+- 通过标准：语音交互的实时感达到可演示水平，且不破坏离线评测、draft write-back、以及 `/audio/finalize -> message.accepted -> dialogue.reply` 主链路。
 
 ### 步骤 21：加入静音检测、标点和热词
 
@@ -261,17 +262,24 @@
 
 补充说明：
 
-- 如果企业验证集当前缺少中文可用参考文本，可并行引入公开中文评测集作为独立链路，例如本地 `MAGICDATA dev+test`
+- 当前正式 ASR WER/SER 默认只使用公开中文评测集，例如本地 `MAGICDATA dev+test`
+- NoXI/RECOLA 企业验证集不再承担 ASR 正式金标职责；它们继续用于多模态对齐、离线回放、数字人驱动验证和非中文样本排查
 - 公开中文评测集必须走独立 transcript 文件，不得污染企业 `val_transcripts_template.jsonl`
 - 公开中文评测集的全量参考目录和冻结评测子集都应生成在本地派生目录，并保持 `locked_for_eval` 语义不变
 - 一旦公开中文评测集建立完成，应为其提供一个固定回归入口，例如统一的 `verify_asr_regression`，避免后续每次手工拼接多个校验命令
 
 ### 步骤 22A：冻结正式评测参考集
 
-- 指令：从已人工复核完成的记录中挑选一批正式评测样本，显式标记为 `locked_for_eval`，后续除发现明显标注错误外不得随意改写。
-- 产出：正式评测参考集和锁定规则。
-- 验证测试：检查被锁定样本是否都有 `final_text`、`reviewer`、`reviewed_at` 和明确的审核结论；再次执行转录模板生成脚本时，确认这些记录不会退回 `pending_asr` 或丢失人工复核信息。
+- 指令：优先从公开中文评测集的官方参考文本中挑选一批正式评测样本，显式标记为 `locked_for_eval`，后续除发现明显标注错误外不得随意改写。
+- 产出：正式中文评测参考集和锁定规则。
+- 验证测试：检查被锁定样本是否都有 `final_text`、`reviewer`、`reviewed_at` 和明确的审核结论；再次执行公开评测集准备脚本时，确认这些记录仍保持 `verified + locked_for_eval + human_verified`。
 - 通过标准：ASR 指标的对比基线固定，后续优化可复现、可对照。
+
+补充约束：
+
+- 当前默认正式评测集为 `data/external/asr` 下的中文公开语料（当前为 `MAGICDATA`）
+- NoXI/RECOLA 法语/德语样本不再要求用户提供 ASR 人工金标，也不再作为正式 WER/SER 基线来源
+- 企业样本继续保留给多模态、回放、角色映射和离线验证链路使用
 
 ## 6. 第四阶段：真实对话服务与状态机
 
@@ -662,6 +670,8 @@
 - 不再依赖 `setTimeout` 模拟识别
 
 状态更新（2026-03-17）：本地语音自检已通过，`emotion_app` 当前可以接收正常完整的语音输入，最终转写会继续进入既有对话主链路。Phase D 可视为完成，下一步进入 Phase E。
+
+状态更新（2026-03-18）：Phase E/F/G 也已完成首轮落地。`emotion_app` 当前已经接入真实视频帧上传与 affect 刷新、事件驱动的 TTS/avatar 播放态，以及基于 `GET /api/session/{session_id}/export` 的前端本地 replay。当前迁移首轮剩余工作不再是补协议能力，而是围绕 `App.jsx` 单体实现做职责拆分与清理。
 
 #### Phase E：把摄像头预览接到真实视频与 affect 链路
 

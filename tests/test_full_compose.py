@@ -30,3 +30,4 @@ def test_full_compose_only_partially_loads_repo_root_env_file_for_runtime_servic
     assert content.count("- ../../.env") == 4
     assert "ASR_API_KEY:" not in content
     assert "LLM_API_KEY:" not in content
+    assert "http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:3000,http://localhost:3000" in content

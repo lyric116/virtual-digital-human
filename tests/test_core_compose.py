@@ -61,3 +61,4 @@ def test_core_compose_only_partially_loads_repo_root_env_file_at_runtime():
     assert compose_content.count("- ../../.env") == 3
     assert "LLM_API_KEY:" not in compose_content
     assert "WEB_PUBLIC_API_BASE_URL:" not in compose_content
+    assert "http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:3000,http://localhost:3000" in compose_content

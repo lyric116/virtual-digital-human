@@ -101,7 +101,7 @@ services:
       AFFECT_SERVICE_HOST: 0.0.0.0
       AFFECT_SERVICE_PORT: 8060
       AFFECT_SERVICE_BASE_URL: http://affect-service:8060
-      AFFECT_CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173
+      AFFECT_CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:3000,http://localhost:3000
     ports:
       - "8060:8060"
     volumes:
@@ -124,7 +124,7 @@ services:
       TTS_SERVICE_HOST: 0.0.0.0
       TTS_SERVICE_PORT: 8040
       TTS_SERVICE_BASE_URL: http://tts-service:8040
-      TTS_CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173
+      TTS_CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:3000,http://localhost:3000
       TTS_STORAGE_ROOT: data/derived/tts_audio
     ports:
       - "8040:8040"
@@ -218,7 +218,7 @@ services:
       GATEWAY_PORT: 8000
       GATEWAY_PUBLIC_BASE_URL: ${GATEWAY_PUBLIC_BASE_URL:-http://localhost:8000}
       GATEWAY_WS_PATH: ${GATEWAY_WS_PATH:-/ws}
-      GATEWAY_CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173
+      GATEWAY_CORS_ORIGINS: http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:3000,http://localhost:3000
       ORCHESTRATOR_BASE_URL: http://orchestrator:8010
       ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS: ${ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS:-60}
       ASR_SERVICE_HOST: asr-service

@@ -134,3 +134,24 @@ def test_prepare_magicdata_eval_builds_full_and_core_outputs(tmp_path):
     assert summary["selection_strategy"] == "round_robin_by_split_gender_then_speaker"
     assert summary["core_per_group_target"] == 1
     assert summary["audio_format_examples"]["dev"]["sample_rate_hz"] == 16000
+
+
+def test_select_core_subset_respects_per_group_target_when_expanded(tmp_path):
+    module = load_module()
+    extracted_root = tmp_path / "magicdata"
+    write_fixture_dataset(extracted_root)
+
+    full_rows = module.build_reference_rows(extracted_root)
+    selected_one = module.select_core_subset(full_rows, per_group=1)
+    selected_two = module.select_core_subset(full_rows, per_group=2)
+
+    assert len(selected_one) == 4
+    assert len(selected_two) == 8
+    counts_one = {(row["split"], row["speaker_gender"]): 0 for row in selected_one}
+    counts_two = {(row["split"], row["speaker_gender"]): 0 for row in selected_two}
+    for row in selected_one:
+        counts_one[(row["split"], row["speaker_gender"])] += 1
+    for row in selected_two:
+        counts_two[(row["split"], row["speaker_gender"])] += 1
+    assert set(counts_one.values()) == {1}
+    assert set(counts_two.values()) == {2}

@@ -681,6 +681,14 @@ def build_affect_conflict_reply(
     )
 
 
+def is_upstream_llm_sdk_error(exc: Exception) -> bool:
+    try:
+        from openai import APIError
+    except Exception:
+        return False
+    return isinstance(exc, APIError)
+
+
 def translate_llm_exception(exc: Exception) -> HTTPException:
     if isinstance(exc, HTTPException):
         return exc
@@ -695,6 +703,8 @@ def translate_llm_exception(exc: Exception) -> HTTPException:
 
 def should_fallback_dialogue_reply(exc: Exception) -> bool:
     if isinstance(exc, TimeoutError):
+        return True
+    if is_upstream_llm_sdk_error(exc):
         return True
     return isinstance(exc, RuntimeError)
 

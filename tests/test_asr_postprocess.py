@@ -100,6 +100,10 @@ def test_create_transcription_record_applies_pause_punctuation_and_hotword_clean
     assert "," in enhanced_result["transcript_text"] or "." in enhanced_result["transcript_text"]
     assert enhanced_result["transcript_text"].endswith(".")
     assert len(enhanced_result["transcript_segments"]) >= 2
+    assert "si tu," not in enhanced_result["transcript_text"]
+    assert "qu'ont," not in enhanced_result["transcript_text"]
+    assert "si tu connais" in enhanced_result["transcript_text"]
+    assert "qu'on peut" in enhanced_result["transcript_text"]
 
 
 def test_detect_silence_spans_finds_long_pauses_in_wave_audio():

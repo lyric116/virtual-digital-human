@@ -53,6 +53,21 @@ export async function requestSessionState(apiBaseUrl, sessionId) {
   return payload;
 }
 
+export async function requestSessionExport(apiBaseUrl, sessionId) {
+  const response = await fetch(`${apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/export`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  const payload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(payload, `Session export failed with status ${response.status}`));
+  }
+  return payload;
+}
+
 export async function requestTextMessage(apiBaseUrl, sessionId, contentText, clientSeq) {
   const response = await fetch(`${apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/text`, {
     method: 'POST',
@@ -135,6 +150,9 @@ export async function requestAudioFinalize(apiBaseUrl, sessionId, payload) {
   if (typeof payload.durationMs === 'number') {
     query.set('duration_ms', String(payload.durationMs));
   }
+  if (typeof payload.recordingId === 'string' && payload.recordingId.trim()) {
+    query.set('recording_id', payload.recordingId);
+  }
 
   const response = await fetch(
     `${apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/audio/finalize?${query.toString()}`,
@@ -150,6 +168,80 @@ export async function requestAudioFinalize(apiBaseUrl, sessionId, payload) {
   const responsePayload = await parseJson(response);
   if (!response.ok) {
     throw new Error(buildErrorMessage(responsePayload, `Audio finalize failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
+
+export async function requestAsrTranscription(asrBaseUrl, payload) {
+  const query = new URLSearchParams();
+  if (typeof payload.filename === 'string' && payload.filename.trim()) {
+    query.set('filename', payload.filename);
+  }
+  if (typeof payload.recordId === 'string' && payload.recordId.trim()) {
+    query.set('record_id', payload.recordId);
+  }
+  const queryString = query.toString();
+
+  const response = await fetch(
+    `${asrBaseUrl}/api/asr/transcribe${queryString ? `?${queryString}` : ''}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': payload.blob?.type || 'application/octet-stream',
+      },
+      body: payload.blob,
+    },
+  );
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `ASR transcription failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
+
+export async function requestAsrStreamPreview(asrBaseUrl, payload) {
+  const query = new URLSearchParams();
+  query.set('session_id', payload.sessionId);
+  query.set('recording_id', payload.recordingId);
+  query.set('preview_seq', String(payload.previewSeq));
+  if (typeof payload.filename === 'string' && payload.filename.trim()) {
+    query.set('filename', payload.filename);
+  }
+
+  const response = await fetch(
+    `${asrBaseUrl}/api/asr/stream/preview?${query.toString()}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': payload.blob?.type || 'application/octet-stream',
+      },
+      body: payload.blob,
+    },
+  );
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `ASR stream preview failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
+
+export async function requestAsrStreamRelease(asrBaseUrl, payload) {
+  const query = new URLSearchParams();
+  query.set('session_id', payload.sessionId);
+  query.set('recording_id', payload.recordingId);
+
+  const response = await fetch(
+    `${asrBaseUrl}/api/asr/stream/release?${query.toString()}`,
+    {
+      method: 'POST',
+    },
+  );
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `ASR stream release failed with status ${response.status}`));
   }
   return responsePayload;
 }

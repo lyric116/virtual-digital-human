@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from array import array
 import base64
 import json
@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+from threading import Lock
 from typing import Any, Protocol
 import urllib.error
 import urllib.request
@@ -16,6 +17,7 @@ from uuid import uuid4
 import wave
 
 from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -31,6 +33,79 @@ DEFAULT_DASHSCOPE_QWEN3_NATIVE_URL = (
 DEFAULT_DASHSCOPE_COMPATIBLE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 CJK_PUNCTUATION = "，。！？；："
 LATIN_TERMINAL_PUNCTUATION = ".!?"
+LATIN_STRONG_BOUNDARY_START_TOKENS = {
+    "alors",
+    "and",
+    "but",
+    "ensuite",
+    "et",
+    "however",
+    "mais",
+    "or",
+    "puis",
+    "so",
+    "then",
+}
+LATIN_BAD_BOUNDARY_END_TOKENS = {
+    "a",
+    "an",
+    "at",
+    "car",
+    "d",
+    "de",
+    "des",
+    "du",
+    "for",
+    "i",
+    "if",
+    "il",
+    "ils",
+    "in",
+    "j",
+    "je",
+    "la",
+    "le",
+    "les",
+    "nous",
+    "of",
+    "on",
+    "or",
+    "ou",
+    "que",
+    "qu",
+    "si",
+    "the",
+    "to",
+    "tu",
+    "un",
+    "une",
+    "vous",
+    "we",
+    "you",
+}
+LATIN_BAD_BOUNDARY_START_TOKENS = {
+    "a",
+    "an",
+    "at",
+    "d",
+    "de",
+    "des",
+    "du",
+    "for",
+    "in",
+    "l",
+    "la",
+    "le",
+    "les",
+    "of",
+    "on",
+    "qu",
+    "que",
+    "the",
+    "to",
+    "un",
+    "une",
+}
 
 
 def normalize_mime_type(value: str | None) -> str:
@@ -210,6 +285,8 @@ class ASRSettings:
     silence_min_duration_ms: int
     silence_threshold_ratio: float
     hotword_map_path: str
+    service_base_url: str = f"http://127.0.0.1:{DEFAULT_ASR_SERVICE_PORT}"
+    cors_origins: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "ASRSettings":
@@ -217,9 +294,24 @@ class ASRSettings:
         model = os.getenv("ASR_MODEL", "qwen3-asr-flash")
         base_url = os.getenv("ASR_BASE_URL")
         api_key = os.getenv("ASR_API_KEY")
+        service_host = os.getenv("ASR_SERVICE_HOST", DEFAULT_ASR_SERVICE_HOST)
+        service_port = int(os.getenv("ASR_SERVICE_PORT", str(DEFAULT_ASR_SERVICE_PORT)))
+        service_base_url = os.getenv("ASR_SERVICE_BASE_URL")
+        if not service_base_url:
+            public_host = "127.0.0.1" if service_host in {"0.0.0.0", "::"} else service_host
+            service_base_url = f"http://{public_host}:{service_port}"
         return cls(
-            service_host=os.getenv("ASR_SERVICE_HOST", DEFAULT_ASR_SERVICE_HOST),
-            service_port=int(os.getenv("ASR_SERVICE_PORT", str(DEFAULT_ASR_SERVICE_PORT))),
+            service_host=service_host,
+            service_port=service_port,
+            service_base_url=service_base_url.rstrip("/"),
+            cors_origins=tuple(
+                value.strip()
+                for value in os.getenv(
+                    "ASR_CORS_ORIGINS",
+                    "http://127.0.0.1:4173,http://localhost:4173",
+                ).split(",")
+                if value.strip()
+            ),
             provider=provider,
             base_url=normalize_base_url_for_model(model, base_url),
             api_key=api_key,
@@ -260,6 +352,33 @@ class ASRTranscriptionResponse(BaseModel):
     generated_at: datetime
 
 
+class ASRPreviewResponse(BaseModel):
+    request_id: str
+    session_id: str
+    recording_id: str
+    preview_seq: int = Field(ge=1)
+    provider: str
+    model: str
+    transcript_text: str
+    transcript_language: str | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
+    confidence_mean: float | None = None
+    confidence_available: bool = False
+    audio: AudioMetadata
+    generated_at: datetime
+    stream_created: bool = False
+    stream_updated_at: datetime
+
+
+class ASRStreamReleaseResponse(BaseModel):
+    request_id: str
+    session_id: str
+    recording_id: str
+    released: bool
+    reason: str
+    released_at: datetime
+
+
 class ASREngineResult(BaseModel):
     transcript_text: str
     transcript_language: str | None = None
@@ -273,6 +392,101 @@ class TranscriptPostprocessResult:
     transcript_text: str
     transcript_segments: list[dict[str, Any]]
     silence_spans: list[dict[str, int]]
+
+
+@dataclass
+class ASRPreviewStreamState:
+    session_id: str
+    recording_id: str
+    mime_type: str
+    audio_bytes: bytearray = field(default_factory=bytearray)
+    last_preview_seq: int = 0
+    last_partial_result: str = ""
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ASRPreviewStreamStore:
+    def __init__(self, *, idle_ttl_seconds: int = 300):
+        self.idle_ttl = timedelta(seconds=max(1, idle_ttl_seconds))
+        self._lock = Lock()
+        self._streams: dict[tuple[str, str], ASRPreviewStreamState] = {}
+
+    def append(
+        self,
+        *,
+        session_id: str,
+        recording_id: str,
+        mime_type: str,
+        preview_seq: int,
+        audio_delta: bytes,
+    ) -> tuple[ASRPreviewStreamState, bool]:
+        now = datetime.now(timezone.utc)
+        normalized_mime_type = normalize_mime_type(mime_type)
+        key = (session_id, recording_id)
+        with self._lock:
+            self.cleanup_expired(now=now)
+            state = self._streams.get(key)
+            created = state is None
+            if state is None:
+                state = ASRPreviewStreamState(
+                    session_id=session_id,
+                    recording_id=recording_id,
+                    mime_type=normalized_mime_type,
+                    updated_at=now,
+                )
+                self._streams[key] = state
+            else:
+                if state.mime_type != normalized_mime_type:
+                    raise ValueError("preview mime_type must stay stable within one recording")
+                if preview_seq <= state.last_preview_seq:
+                    raise ValueError("preview_seq must increase monotonically within one recording")
+                state.updated_at = now
+
+            state.audio_bytes.extend(audio_delta)
+            state.last_preview_seq = preview_seq
+            state.updated_at = now
+            return state, created
+
+    def update_partial_result(self, *, session_id: str, recording_id: str, partial_text: str) -> None:
+        key = (session_id, recording_id)
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            state = self._streams.get(key)
+            if state is None:
+                return
+            state.last_partial_result = partial_text
+            state.updated_at = now
+
+    def release(self, *, session_id: str, recording_id: str) -> bool:
+        key = (session_id, recording_id)
+        with self._lock:
+            return self._streams.pop(key, None) is not None
+
+    def cleanup_expired(self, *, now: datetime | None = None) -> int:
+        current_time = now or datetime.now(timezone.utc)
+        removed_keys = [
+            key
+            for key, state in self._streams.items()
+            if current_time - state.updated_at > self.idle_ttl
+        ]
+        for key in removed_keys:
+            self._streams.pop(key, None)
+        return len(removed_keys)
+
+    def get(self, *, session_id: str, recording_id: str) -> ASRPreviewStreamState | None:
+        with self._lock:
+            state = self._streams.get((session_id, recording_id))
+            if state is None:
+                return None
+            return ASRPreviewStreamState(
+                session_id=state.session_id,
+                recording_id=state.recording_id,
+                mime_type=state.mime_type,
+                audio_bytes=bytearray(state.audio_bytes),
+                last_preview_seq=state.last_preview_seq,
+                last_partial_result=state.last_partial_result,
+                updated_at=state.updated_at,
+            )
 
 
 class ASREngine(Protocol):
@@ -596,7 +810,33 @@ def choose_segment_count(text: str, silence_spans: list[dict[str, int]]) -> int:
     return max(1, min(len(silence_spans) + 1, 4))
 
 
-def split_text_into_segments(text: str, segment_count: int) -> list[str]:
+def normalize_latin_boundary_token(token: str) -> str:
+    return re.sub(r"^[^\w']+|[^\w']+$", "", token.lower())
+
+
+def choose_latin_boundary_index(words: list[str], start: int, target_end: int, latest_end: int) -> int:
+    if latest_end <= start:
+        return start + 1
+    bounded_target = min(max(start + 1, target_end), latest_end)
+    candidate_scores: list[tuple[int, int]] = []
+    for end in range(start + 1, latest_end + 1):
+        left_token = normalize_latin_boundary_token(words[end - 1])
+        right_token = normalize_latin_boundary_token(words[end]) if end < len(words) else ""
+        score = 0
+        if left_token in LATIN_BAD_BOUNDARY_END_TOKENS:
+            score -= 4
+        if right_token in LATIN_BAD_BOUNDARY_START_TOKENS:
+            score -= 4
+        if right_token in LATIN_STRONG_BOUNDARY_START_TOKENS:
+            score += 3
+        score -= abs(end - bounded_target)
+        candidate_scores.append((score, end))
+    return max(candidate_scores, key=lambda item: (item[0], -abs(item[1] - bounded_target), -item[1]))[1]
+
+
+def split_text_into_segments(text: str, segment_count: int, *, cjk: bool) -> list[str]:
+    if cjk:
+        return [text]
     words = [item for item in text.split(" ") if item]
     if segment_count <= 1 or len(words) < segment_count:
         return [text]
@@ -607,8 +847,13 @@ def split_text_into_segments(text: str, segment_count: int) -> list[str]:
     for index in range(segment_count):
         remaining_segments = segment_count - index
         remaining_words = total_words - start
-        segment_size = max(1, round(remaining_words / remaining_segments))
-        end = total_words if index == segment_count - 1 else min(total_words, start + segment_size)
+        if index == segment_count - 1:
+            end = total_words
+        else:
+            target_size = max(1, round(remaining_words / remaining_segments))
+            target_end = min(total_words - (remaining_segments - 1), start + target_size)
+            latest_end = min(total_words - (remaining_segments - 1), total_words)
+            end = choose_latin_boundary_index(words, start, target_end, latest_end)
         segment_words = words[start:end]
         if segment_words:
             segments.append(" ".join(segment_words))
@@ -643,7 +888,7 @@ def restore_punctuation(
 
     cjk = is_cjk_dominant(normalized) if language in {None, "auto"} else language.lower().startswith("zh")
     segment_count = choose_segment_count(normalized, silence_spans)
-    segment_texts = split_text_into_segments(normalized, segment_count)
+    segment_texts = split_text_into_segments(normalized, segment_count, cjk=cjk)
     rendered_segments: list[dict[str, Any]] = []
     punctuated_parts: list[str] = []
     for index, segment_text in enumerate(segment_texts):
@@ -670,13 +915,11 @@ def restore_punctuation(
     return punctuated, rendered_segments
 
 
-def postprocess_transcript(
+def postprocess_partial_transcript(
     settings: ASRSettings,
     *,
     text: str,
     transcript_language: str | None,
-    audio_path: Path,
-    audio_metadata: AudioMetadata,
 ) -> TranscriptPostprocessResult:
     normalized = normalize_transcript_spacing(text)
     if not settings.postprocess_enabled:
@@ -692,9 +935,32 @@ def postprocess_transcript(
         language=transcript_language,
         hotword_map=hotword_map,
     )
+    return TranscriptPostprocessResult(
+        transcript_text=hotword_normalized,
+        transcript_segments=[],
+        silence_spans=[],
+    )
+
+
+def postprocess_transcript(
+    settings: ASRSettings,
+    *,
+    text: str,
+    transcript_language: str | None,
+    audio_path: Path,
+    audio_metadata: AudioMetadata,
+) -> TranscriptPostprocessResult:
+    partial_result = postprocess_partial_transcript(
+        settings,
+        text=text,
+        transcript_language=transcript_language,
+    )
+    if not settings.postprocess_enabled:
+        return partial_result
+
     silence_spans = detect_silence_spans(audio_path, audio_metadata, settings)
     punctuated_text, transcript_segments = restore_punctuation(
-        hotword_normalized,
+        partial_result.transcript_text,
         silence_spans=silence_spans,
         language=transcript_language,
     )
@@ -760,7 +1026,7 @@ def ensure_asr_runtime_configured(settings: ASRSettings) -> None:
         raise RuntimeError("ASR_BASE_URL is not configured")
 
 
-def create_transcription_record(
+def transcribe_audio_bytes(
     engine: ASREngine,
     settings: ASRSettings,
     *,
@@ -768,7 +1034,7 @@ def create_transcription_record(
     filename: str,
     content_type: str,
     record_id: str | None = None,
-) -> dict[str, Any] | JSONResponse:
+) -> tuple[ASREngineResult, AudioMetadata, Path, tempfile.TemporaryDirectory[str]] | JSONResponse:
     normalized_content_type = normalize_mime_type(content_type)
     if not body:
         return JSONResponse(
@@ -781,41 +1047,68 @@ def create_transcription_record(
         )
 
     suffix = Path(filename).suffix or ".wav"
-    with tempfile.TemporaryDirectory(prefix="vdh_asr_") as temp_dir:
-        temp_audio_path = Path(temp_dir) / f"input{suffix}"
-        temp_audio_path.write_bytes(body)
-        try:
-            audio_metadata = inspect_audio_file(
-                temp_audio_path,
-                filename=filename,
-                content_type=normalized_content_type,
-            )
-        except (wave.Error, EOFError, OSError) as exc:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=error_payload(
-                    error_code="audio_file_invalid",
-                    message=f"invalid or unreadable audio file: {exc}",
-                    record_id=record_id,
-                ),
-            )
-
-        try:
-            engine_result = engine.transcribe_file(
-                temp_audio_path,
+    temp_dir = tempfile.TemporaryDirectory(prefix="vdh_asr_")
+    temp_audio_path = Path(temp_dir.name) / f"input{suffix}"
+    temp_audio_path.write_bytes(body)
+    try:
+        audio_metadata = inspect_audio_file(
+            temp_audio_path,
+            filename=filename,
+            content_type=normalized_content_type,
+        )
+    except (wave.Error, EOFError, OSError) as exc:
+        temp_dir.cleanup()
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_payload(
+                error_code="audio_file_invalid",
+                message=f"invalid or unreadable audio file: {exc}",
                 record_id=record_id,
-                audio_metadata=audio_metadata,
-            )
-        except Exception as exc:
-            return JSONResponse(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                content=error_payload(
-                    error_code="asr_transcription_failed",
-                    message=str(exc),
-                    record_id=record_id,
-                ),
-            )
+            ),
+        )
 
+    try:
+        engine_result = engine.transcribe_file(
+            temp_audio_path,
+            record_id=record_id,
+            audio_metadata=audio_metadata,
+        )
+    except Exception as exc:
+        temp_dir.cleanup()
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content=error_payload(
+                error_code="asr_transcription_failed",
+                message=str(exc),
+                record_id=record_id,
+            ),
+        )
+
+    return engine_result, audio_metadata, temp_audio_path, temp_dir
+
+
+def create_transcription_record(
+    engine: ASREngine,
+    settings: ASRSettings,
+    *,
+    body: bytes,
+    filename: str,
+    content_type: str,
+    record_id: str | None = None,
+) -> dict[str, Any] | JSONResponse:
+    transcription_bundle = transcribe_audio_bytes(
+        engine,
+        settings,
+        body=body,
+        filename=filename,
+        content_type=content_type,
+        record_id=record_id,
+    )
+    if isinstance(transcription_bundle, JSONResponse):
+        return transcription_bundle
+
+    engine_result, audio_metadata, temp_audio_path, temp_dir = transcription_bundle
+    try:
         postprocessed = postprocess_transcript(
             settings,
             text=engine_result.transcript_text,
@@ -823,6 +1116,8 @@ def create_transcription_record(
             audio_path=temp_audio_path,
             audio_metadata=audio_metadata,
         )
+    finally:
+        temp_dir.cleanup()
 
     if not engine_result.transcript_text.strip():
         return JSONResponse(
@@ -851,6 +1146,137 @@ def create_transcription_record(
     return response.model_dump(mode="json")
 
 
+def create_preview_record(
+    engine: ASREngine,
+    settings: ASRSettings,
+    stream_store: ASRPreviewStreamStore,
+    *,
+    body: bytes,
+    session_id: str,
+    recording_id: str,
+    preview_seq: int,
+    content_type: str,
+    filename: str = "preview.wav",
+) -> dict[str, Any] | JSONResponse:
+    normalized_content_type = normalize_mime_type(content_type)
+    if not session_id.strip():
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_payload(
+                error_code="preview_session_id_invalid",
+                message="session_id must not be empty",
+            ),
+        )
+    if not recording_id.strip():
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_payload(
+                error_code="preview_recording_id_invalid",
+                message="recording_id must not be empty",
+            ),
+        )
+    if preview_seq < 1:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_payload(
+                error_code="preview_seq_invalid",
+                message="preview_seq must be greater than or equal to 1",
+            ),
+        )
+    if not body:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_payload(
+                error_code="audio_body_empty",
+                message="audio body must not be empty",
+            ),
+        )
+
+    try:
+        stream_state, stream_created = stream_store.append(
+            session_id=session_id,
+            recording_id=recording_id,
+            mime_type=normalized_content_type,
+            preview_seq=preview_seq,
+            audio_delta=body,
+        )
+    except ValueError as exc:
+        error_message = str(exc)
+        error_code = "preview_seq_stale" if "preview_seq" in error_message else "preview_mime_type_mismatch"
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=error_payload(
+                error_code=error_code,
+                message=error_message,
+            ),
+        )
+
+    transcription_bundle = transcribe_audio_bytes(
+        engine,
+        settings,
+        body=bytes(stream_state.audio_bytes),
+        filename=filename,
+        content_type=normalized_content_type,
+    )
+    if isinstance(transcription_bundle, JSONResponse):
+        return transcription_bundle
+
+    engine_result, audio_metadata, _temp_audio_path, temp_dir = transcription_bundle
+    try:
+        postprocessed = postprocess_partial_transcript(
+            settings,
+            text=engine_result.transcript_text,
+            transcript_language=engine_result.transcript_language,
+        )
+    finally:
+        temp_dir.cleanup()
+
+    transcript_text = postprocessed.transcript_text
+    stream_store.update_partial_result(
+        session_id=session_id,
+        recording_id=recording_id,
+        partial_text=transcript_text,
+    )
+    refreshed_state = stream_store.get(session_id=session_id, recording_id=recording_id)
+    stream_updated_at = refreshed_state.updated_at if refreshed_state is not None else datetime.now(timezone.utc)
+    response = ASRPreviewResponse(
+        request_id=f"asr_preview_{uuid4().hex[:24]}",
+        session_id=session_id,
+        recording_id=recording_id,
+        preview_seq=preview_seq,
+        provider=settings.provider,
+        model=settings.model,
+        transcript_text=transcript_text,
+        transcript_language=engine_result.transcript_language,
+        duration_ms=audio_metadata.duration_ms,
+        confidence_mean=engine_result.confidence_mean,
+        confidence_available=engine_result.confidence_available,
+        audio=audio_metadata,
+        generated_at=datetime.now(timezone.utc),
+        stream_created=stream_created,
+        stream_updated_at=stream_updated_at,
+    )
+    return response.model_dump(mode="json")
+
+
+def release_preview_stream(
+    stream_store: ASRPreviewStreamStore,
+    *,
+    session_id: str,
+    recording_id: str,
+) -> dict[str, Any]:
+    released = stream_store.release(session_id=session_id, recording_id=recording_id)
+    response = ASRStreamReleaseResponse(
+        request_id=f"asr_stream_release_{uuid4().hex[:24]}",
+        session_id=session_id,
+        recording_id=recording_id,
+        released=released,
+        reason="released" if released else "not_found",
+        released_at=datetime.now(timezone.utc),
+    )
+    return response.model_dump(mode="json")
+
+
 def create_app(engine: ASREngine | None = None) -> FastAPI:
     bootstrap_runtime_env()
     settings = ASRSettings.from_env()
@@ -859,8 +1285,17 @@ def create_app(engine: ASREngine | None = None) -> FastAPI:
     service_engine = engine or OpenAICompatibleASREngine(settings)
 
     app = FastAPI(title="virtual-huamn-asr-service", version="0.1.0")
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_origins),
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["*"],
+        )
     app.state.settings = settings
     app.state.asr_engine = service_engine
+    app.state.preview_stream_store = ASRPreviewStreamStore()
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -886,6 +1321,45 @@ def create_app(engine: ASREngine | None = None) -> FastAPI:
                 request.headers.get("content-type", "application/octet-stream")
             ),
             record_id=record_id,
+        )
+
+    @app.post(
+        "/api/asr/stream/preview",
+        response_model=ASRPreviewResponse,
+        status_code=status.HTTP_200_OK,
+    )
+    async def preview_stream_audio(
+        request: Request,
+        session_id: str,
+        recording_id: str,
+        preview_seq: int,
+        filename: str = "preview.wav",
+    ) -> Any:
+        body = await request.body()
+        return create_preview_record(
+            request.app.state.asr_engine,
+            request.app.state.settings,
+            request.app.state.preview_stream_store,
+            body=body,
+            session_id=session_id,
+            recording_id=recording_id,
+            preview_seq=preview_seq,
+            filename=filename,
+            content_type=normalize_mime_type(
+                request.headers.get("content-type", "application/octet-stream")
+            ),
+        )
+
+    @app.post(
+        "/api/asr/stream/release",
+        response_model=ASRStreamReleaseResponse,
+        status_code=status.HTTP_200_OK,
+    )
+    async def release_stream_audio(session_id: str, recording_id: str, request: Request) -> Any:
+        return release_preview_stream(
+            request.app.state.preview_stream_store,
+            session_id=session_id,
+            recording_id=recording_id,
         )
 
     return app

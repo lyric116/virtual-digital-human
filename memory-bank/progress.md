@@ -21,6 +21,77 @@ Automation appends new entries under the marker block below.
 
 <!-- progress:entries:start -->
 
+## 2026-03-19 - ASR step 21 readability guardrails and emotion_app doc alignment
+
+### Scope
+
+Closed the remaining post-step-20 ASR bug sweep by fixing a real French postprocess readability regression in step 21, then aligned the emotion_app migration documents with the already-landed Phase E/F/G implementation state.
+
+### Outputs
+
+- Updated `services/asr-service/main.py` pause-aware segmentation heuristics so Latin-language punctuation boundaries avoid obvious bad splits around short function-word clauses.
+- Corrected `services/asr-service/hotwords.json` so the French normalization path no longer rewrites `qu on` into the invalid `qu'ont` form.
+- Expanded `tests/test_asr_postprocess.py` and `scripts/verify_asr_postprocess.py` to lock in the readable French output expectations and prevent regression to `si tu,` / `qu'ont,` style boundaries.
+- Updated `docs/implementation_plan.md`, `docs/emotion_app_frontend_understanding.md`, `memory-bank/architecture.md`, and this progress log so emotion_app Phase E/F/G are recorded as already complete and the next frontend work is cleanup/refactor rather than missing protocol integration.
+
+### Checks
+
+- Ran `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_asr_postprocess.py` and confirmed the enhanced transcript now reads `de réflexe mais compact je sais pas, si tu connais un petit peu les appareils photo qu'on peut changer, ensuite l optique fait souvent la photo.`
+- Preserved the existing step-20 streaming partial/final split while tightening only the final-text readability heuristics.
+
+### Next
+
+- Treat the next frontend task as structural cleanup: start splitting `emotion_app/src/App.jsx` along session/realtime/media/affect-tts-replay boundaries without changing existing browser/backend contracts.
+- Keep ASR preview behavior unchanged and only extend final-text postprocess rules when they improve readability without introducing language-specific corruption.
+
+
+## 2026-03-18 - Step 22A default ASR baseline switched to MAGICDATA Chinese eval
+
+### Scope
+
+The repository ASR evaluation direction was explicitly narrowed so formal WER/SER now defaults to the local Chinese public corpus under `data/external/asr` instead of trying to freeze NoXI/RECOLA French or German enterprise samples as ASR gold references.
+
+### Outputs
+
+- Updated `docs/implementation_plan.md` so Step 22/22A now treat the MAGICDATA Chinese path as the default formal ASR evaluation lane and explicitly remove NoXI/RECOLA from the formal ASR gold-reference role.
+- Updated `docs/data_spec.md` and `docs/03-asr.md` to document that future ASR metrics, WER, SER, and regression gates default to the Chinese public evaluation chain under `data/external/asr/magicdata-zh`.
+- Regenerated the local MAGICDATA catalogs with `scripts/prepare_magicdata_eval.py`, producing `36072` full reference rows and a frozen `36`-sample eval core subset.
+- Ran `scripts/verify_magicdata_asr_eval.py`, which produced a complete service-mode baseline at `data/derived/eval-local/magicdata_asr_baseline_report.md` and `data/derived/eval-local/magicdata_asr_baseline_details.json`.
+
+### Checks
+
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/prepare_magicdata_eval.py`
+- `UV_CACHE_DIR=.uv-cache uv run python scripts/verify_magicdata_asr_eval.py`
+- Latest MAGICDATA service baseline: `sample_count=36`, `WER=0.021368`, `SER=0.055556`, `eligible_records=36`.
+
+### Next
+
+Keep future ASR regressions centered on `scripts/verify_asr_regression.py`, and only return to enterprise transcript review when the task is multimodal/replay-related rather than formal ASR WER/SER.
+
+## 2026-03-18 - emotion_app Phase G export and local replay baseline added
+
+### Scope
+
+emotion_app now reaches apps/web-aligned export plus frontend-only replay parity: the React shell can export the current session JSON, cache the export locally, and rebuild transcript, affect, retrieval, TTS, and avatar UI state from that exported payload without recontacting live backend services.
+
+### Outputs
+
+- Updated emotion_app/src/App.jsx to wire the existing export helpers into visible export controls, download flow, cache status, and replay status rendering.
+- Completed emotion_app/src/App.jsx replay lifecycle handling around cached export loading, event-first sequencing with messages fallback, replay progress/completion state, and replay-safe teardown of websocket, timers, microphone, camera, affect refresh, runtime logging, and live TTS side effects.
+- Extended emotion_app/src/App.jsx realtime envelope handling so replay can rebuild TTS/avatar state from dialogue.reply, tts.synthesized, tts.playback.started, tts.playback.ended, and avatar.command events while keeping triggerTts disabled in replay mode.
+- Expanded emotion_app/src/App.test.js with regression coverage for export success, export failure, replay from exported events, replay fallback from exported messages, live-control locking during replay, and suppression of live TTS/runtime-event/websocket side effects.
+- Removed an unused helper from emotion_app/src/App.jsx so the verified production build is clean.
+
+### Checks
+
+- Ran CI=true npm test -- --watch=false src/App.test.js in /home/lyricx/code/virtual_huamn/emotion_app successfully (32 tests passed).
+- Ran npm run build in /home/lyricx/code/virtual_huamn/emotion_app successfully after Phase G cleanup with no remaining CRA lint warnings.
+
+### Next
+
+- If Phase G behavior is accepted, the remaining work is follow-up cleanup/refactor only; export/replay parity no longer blocks treating emotion_app as functionally aligned with apps/web for this slice.
+- Keep replay frontend-only and export-driven; do not add a replay backend endpoint or reintroduce live TTS/runtime side effects into replay mode.
+
 ## 2026-03-17 - emotion_app Phase D realtime audio baseline added
 
 ### Scope

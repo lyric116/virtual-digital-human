@@ -85,16 +85,27 @@ This frontend shell now covers steps 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 2
 
 From repository root:
 
-Recommended shortcuts:
+Default local startup:
+
+- `make start-core`
+- `make status-core`
+- `make logs-core`
+- `make verify-core`
+- open `http://127.0.0.1:4173`
+- `make stop-core`
+
+Use the full stack only when you need ASR or the full voice/avatar path:
+
+- `make start-full`
+- `make status-full`
+- `make logs-full`
+- `make stop-full`
+
+Manual startup remains available for advanced debugging only:
 
 - `make web`
 - `make backend-core`
 - `make backend-full`
-- `make up-core`
-- `make up-full`
-
-Underlying native commands:
-
 - start the gateway:
   - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir apps/api-gateway main:app --host 0.0.0.0 --port 8000`
 - start the orchestrator:
@@ -107,9 +118,9 @@ Underlying native commands:
   - `UV_CACHE_DIR=.uv-cache uv run uvicorn --app-dir services/affect-service main:app --host 0.0.0.0 --port 8060`
 - `python3 -m http.server 4173 --directory apps/web`
 
-Then open:
-
-- `http://127.0.0.1:4173`
+Do not mix raw `uvicorn` processes with `make start-core` or `make start-full` on the
+same ports. If ports are already occupied, stop the compose stack with `make stop-core`
+or `make stop-full` before switching workflows.
 
 ## Runtime Notes
 
@@ -136,8 +147,9 @@ Then open:
   submits one complete audio blob to `/api/session/{session_id}/audio/finalize` and
   waits for the final transcript realtime acknowledgement
 - when `window.__APP_CONFIG__.enableAudioPreview !== false`, recording also submits
-  growing preview snapshots to `/api/session/{session_id}/audio/preview` so the page can
-  display partial transcript text before stop
+  incremental preview delta blobs to `/api/session/{session_id}/audio/preview`; the
+  gateway appends them to session-aware ASR preview state so the page can display
+  partial transcript text before stop
 - the latest assistant reply shown in transcript, avatar, and fusion cards is derived
   from the same live events that feed the timeline
 - after one valid assistant reply, the frontend requests one TTS asset, attempts

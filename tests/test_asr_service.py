@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import importlib.util
 import io
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -157,6 +159,258 @@ def test_create_transcription_record_rejects_invalid_wav_bytes():
     assert engine.calls == []
 
 
+def test_preview_stream_store_appends_incrementally_and_releases():
+    module = load_asr_module()
+    store = module.ASRPreviewStreamStore(idle_ttl_seconds=300)
+
+    first_state, created = store.append(
+        session_id="sess_001",
+        recording_id="rec_001",
+        mime_type="audio/wav",
+        preview_seq=1,
+        audio_delta=b"abc",
+    )
+    assert created is True
+    assert bytes(first_state.audio_bytes) == b"abc"
+    assert first_state.last_preview_seq == 1
+
+    second_state, created = store.append(
+        session_id="sess_001",
+        recording_id="rec_001",
+        mime_type="audio/wav",
+        preview_seq=2,
+        audio_delta=b"def",
+    )
+    assert created is False
+    assert bytes(second_state.audio_bytes) == b"abcdef"
+    assert second_state.last_preview_seq == 2
+
+    store.update_partial_result(session_id="sess_001", recording_id="rec_001", partial_text="partial text")
+    refreshed = store.get(session_id="sess_001", recording_id="rec_001")
+    assert refreshed is not None
+    assert refreshed.last_partial_result == "partial text"
+    assert store.release(session_id="sess_001", recording_id="rec_001") is True
+    assert store.release(session_id="sess_001", recording_id="rec_001") is False
+
+
+def test_preview_stream_store_rejects_stale_preview_seq_and_mime_mismatch():
+    module = load_asr_module()
+    store = module.ASRPreviewStreamStore(idle_ttl_seconds=300)
+
+    store.append(
+        session_id="sess_001",
+        recording_id="rec_001",
+        mime_type="audio/wav",
+        preview_seq=1,
+        audio_delta=b"abc",
+    )
+
+    try:
+        store.append(
+            session_id="sess_001",
+            recording_id="rec_001",
+            mime_type="audio/wav",
+            preview_seq=1,
+            audio_delta=b"def",
+        )
+    except ValueError as exc:
+        assert "preview_seq" in str(exc)
+    else:
+        raise AssertionError("expected stale preview_seq to fail")
+
+    try:
+        store.append(
+            session_id="sess_001",
+            recording_id="rec_001",
+            mime_type="audio/webm",
+            preview_seq=2,
+            audio_delta=b"ghi",
+        )
+    except ValueError as exc:
+        assert "mime_type" in str(exc)
+    else:
+        raise AssertionError("expected mime_type mismatch to fail")
+
+
+def test_preview_stream_store_cleans_up_expired_entries():
+    module = load_asr_module()
+    store = module.ASRPreviewStreamStore(idle_ttl_seconds=1)
+    state, _ = store.append(
+        session_id="sess_001",
+        recording_id="rec_001",
+        mime_type="audio/wav",
+        preview_seq=1,
+        audio_delta=b"abc",
+    )
+    stale_now = state.updated_at + timedelta(seconds=5)
+    removed_count = store.cleanup_expired(now=stale_now)
+
+    assert removed_count == 1
+    assert store.get(session_id="sess_001", recording_id="rec_001") is None
+
+
+def test_create_preview_record_returns_incremental_preview_contract_shape():
+    module = load_asr_module()
+    settings = build_settings(module)
+    engine = FakeASREngine()
+    store = module.ASRPreviewStreamStore(idle_ttl_seconds=300)
+
+    result = module.create_preview_record(
+        engine,
+        settings,
+        store,
+        body=make_wave_bytes(duration_frames=2000),
+        session_id="sess_001",
+        recording_id="rec_001",
+        preview_seq=1,
+        content_type="audio/wav",
+        filename="preview.wav",
+    )
+
+    assert isinstance(result, dict)
+    assert result["session_id"] == "sess_001"
+    assert result["recording_id"] == "rec_001"
+    assert result["preview_seq"] == 1
+    assert result["stream_created"] is True
+    assert result["transcript_text"] == "bonjour test"
+    assert result["audio"]["content_type"] == "audio/wav"
+    assert len(engine.calls) == 1
+
+
+def test_create_preview_record_accumulates_audio_across_previews():
+    module = load_asr_module()
+    settings = build_settings(module)
+    engine = FakeASREngine()
+    store = module.ASRPreviewStreamStore(idle_ttl_seconds=300)
+    first_body = make_wave_bytes(duration_frames=2000)
+    second_body = make_wave_bytes(duration_frames=1000)
+
+    first = module.create_preview_record(
+        engine,
+        settings,
+        store,
+        body=first_body,
+        session_id="sess_001",
+        recording_id="rec_001",
+        preview_seq=1,
+        content_type="audio/wav",
+        filename="preview.wav",
+    )
+    second = module.create_preview_record(
+        engine,
+        settings,
+        store,
+        body=second_body,
+        session_id="sess_001",
+        recording_id="rec_001",
+        preview_seq=2,
+        content_type="audio/wav",
+        filename="preview.wav",
+    )
+
+    assert isinstance(first, dict)
+    assert isinstance(second, dict)
+    assert len(engine.calls) == 2
+    assert engine.calls[0]["audio_metadata"].byte_size == len(first_body)
+    assert engine.calls[1]["audio_metadata"].byte_size == len(first_body) + len(second_body)
+    assert second["stream_created"] is False
+    assert second["preview_seq"] == 2
+
+
+def test_create_preview_record_rejects_stale_preview_seq():
+    module = load_asr_module()
+    settings = build_settings(module)
+    engine = FakeASREngine()
+    store = module.ASRPreviewStreamStore(idle_ttl_seconds=300)
+    body = make_wave_bytes(duration_frames=2000)
+
+    first = module.create_preview_record(
+        engine,
+        settings,
+        store,
+        body=body,
+        session_id="sess_001",
+        recording_id="rec_001",
+        preview_seq=1,
+        content_type="audio/wav",
+        filename="preview.wav",
+    )
+    assert isinstance(first, dict)
+
+    response = module.create_preview_record(
+        engine,
+        settings,
+        store,
+        body=body,
+        session_id="sess_001",
+        recording_id="rec_001",
+        preview_seq=1,
+        content_type="audio/wav",
+        filename="preview.wav",
+    )
+
+    assert response.status_code == 409
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["error_code"] == "preview_seq_stale"
+
+
+def test_create_preview_record_rejects_mime_type_mismatch():
+    module = load_asr_module()
+    settings = build_settings(module)
+    engine = FakeASREngine()
+    store = module.ASRPreviewStreamStore(idle_ttl_seconds=300)
+    body = make_wave_bytes(duration_frames=2000)
+
+    first = module.create_preview_record(
+        engine,
+        settings,
+        store,
+        body=body,
+        session_id="sess_001",
+        recording_id="rec_001",
+        preview_seq=1,
+        content_type="audio/wav",
+        filename="preview.wav",
+    )
+    assert isinstance(first, dict)
+
+    response = module.create_preview_record(
+        engine,
+        settings,
+        store,
+        body=b"webm-preview",
+        session_id="sess_001",
+        recording_id="rec_001",
+        preview_seq=2,
+        content_type="audio/webm",
+        filename="preview.webm",
+    )
+
+    assert response.status_code == 409
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["error_code"] == "preview_mime_type_mismatch"
+
+
+def test_release_preview_stream_reports_release_state():
+    module = load_asr_module()
+    store = module.ASRPreviewStreamStore(idle_ttl_seconds=300)
+    store.append(
+        session_id="sess_001",
+        recording_id="rec_001",
+        mime_type="audio/wav",
+        preview_seq=1,
+        audio_delta=b"abc",
+    )
+
+    released = module.release_preview_stream(store, session_id="sess_001", recording_id="rec_001")
+    missing = module.release_preview_stream(store, session_id="sess_001", recording_id="rec_001")
+
+    assert released["released"] is True
+    assert released["reason"] == "released"
+    assert missing["released"] is False
+    assert missing["reason"] == "not_found"
+
+
 def test_asr_service_routes_and_docs_are_present():
     module = load_asr_module()
     app = module.create_app(engine=FakeASREngine())
@@ -166,7 +420,11 @@ def test_asr_service_routes_and_docs_are_present():
 
     assert "/health" in paths
     assert "/api/asr/transcribe" in paths
+    assert "/api/asr/stream/preview" in paths
+    assert "/api/asr/stream/release" in paths
     assert "POST /api/asr/transcribe" in service_readme
+    assert "POST /api/asr/stream/preview" in service_readme
+    assert "POST /api/asr/stream/release" in service_readme
     assert "scripts/verify_asr_service.py" in service_readme
     assert "scripts/verify_asr_service.py" in root_readme
 

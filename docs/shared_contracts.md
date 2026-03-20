@@ -139,9 +139,10 @@ contains one browser-captured snapshot. The gateway stores the binary and record
 ## Audio Preview And Partial Transcript
 
 This contract is used by `POST /api/session/{id}/audio/preview`. The raw request body
-contains the current accumulated recording snapshot. The gateway sends the snapshot to
-the standalone ASR service and emits `transcript.partial` over WebSocket without
-persisting a new row in `messages`.
+contains the incremental audio delta since the last preview for the same
+`session_id + recording_id`. The gateway appends that delta to the ASR service's
+session-aware preview stream state, emits `transcript.partial` over WebSocket, and does
+not persist a new row in `messages`.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -154,7 +155,7 @@ persisting a new row in `messages`.
 | `language` | string | No | Language tag when the provider exposes it. |
 | `confidence` | number | No | Mean confidence if available from the ASR provider. |
 | `confidence_available` | boolean | Yes | Whether `confidence` is real. |
-| `duration_ms` | integer | No | Duration of the preview snapshot. |
+| `duration_ms` | integer | No | Browser-reported duration covered by the preview stream so far. |
 | `asr_engine` | string | No | Provider or model identifier, for example `qwen3-asr-flash`. |
 | `generated_at` | string | Yes | Time when the ASR service produced the preview text. |
 
@@ -177,6 +178,7 @@ reuses the existing `message.accepted -> dialogue.reply` realtime path.
 | `content_text` | string | Yes | Final ASR transcript text written into `messages`. |
 | `mime_type` | string | Yes | Media type of the finalized recording, for example `audio/wav`. |
 | `duration_ms` | integer | No | Browser-reported recording duration passed to the gateway. |
+| `recording_id` | string | No | Browser-side recording id propagated through finalize and `transcript.final`. |
 | `submitted_at` | string | Yes | Time when the accepted transcript message was stored. |
 
 ## Transcript Result
@@ -191,6 +193,7 @@ This payload is used for offline ASR backfill and later live transcript events. 
 | `session_id` | string | Yes | Live or replay session id. |
 | `trace_id` | string | Yes | Trace id for transcript generation. |
 | `message_id` | string | No | Related user message id if one already exists. |
+| `recording_id` | string | No | Browser recording id used to match partial/final transcript events to one live recording. |
 | `transcript_kind` | string | Yes | `partial` or `final`. |
 | `text` | string | Yes | Transcript text emitted to downstream consumers. |
 | `language` | string | No | Language tag such as `fr-FR` or `zh-CN`. |

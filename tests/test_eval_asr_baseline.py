@@ -31,8 +31,12 @@ def eligible_row(record_id: str, *, draft_text: str, final_text: str) -> dict:
     return {
         "record_id": record_id,
         "dataset": "noxi",
+        "split": "test",
         "canonical_role": "speaker_a",
         "segment_id": "1",
+        "speaker_id": "speaker-1",
+        "speaker_gender": "female",
+        "speaker_dialect": "standard",
         "audio_path_16k_mono": "data/derived/audio_16k_mono/NoXI/example.wav",
         "workflow_status": "verified",
         "locked_for_eval": True,
@@ -83,6 +87,10 @@ def test_evaluate_rows_computes_wer_and_ser_from_draft_text():
     assert metrics["wer"] == 0.166667
     assert metrics["ser"] == 0.5
     assert sample_rows[1]["sentence_error"] is True
+    assert sample_rows[0]["split"] == "test"
+    assert sample_rows[0]["speaker_id"] == "speaker-1"
+    assert sample_rows[0]["speaker_gender"] == "female"
+    assert sample_rows[0]["speaker_dialect"] == "standard"
 
 
 def test_evaluate_rows_tokenizes_chinese_at_character_level():
@@ -98,6 +106,75 @@ def test_evaluate_rows_tokenizes_chinese_at_character_level():
     assert sample_rows[0]["edit_distance"] == 1
     assert metrics["wer"] == 0.25
     assert metrics["ser"] == 1.0
+
+
+def test_normalize_text_for_eval_collapses_magicdata_brand_and_erhua_variants():
+    module = load_module()
+
+    assert module.normalize_text_for_eval("QQ音乐。") == module.normalize_text_for_eval("口口音乐")
+    assert module.normalize_text_for_eval("等一会儿再关") == module.normalize_text_for_eval("等一会再关")
+
+
+def test_evaluate_rows_applies_chinese_eval_normalization_rules():
+    module = load_module()
+    rows = [
+        eligible_row("magicdata/test/brand", draft_text="QQ音乐", final_text="口口音乐"),
+        eligible_row("magicdata/test/erhua", draft_text="等一会再关", final_text="等一会儿再关"),
+    ]
+
+    sample_rows, metrics = module.evaluate_rows(rows, hypothesis_source="draft", service_base_url=None)
+
+    assert sample_rows[0]["edit_distance"] == 0
+    assert sample_rows[1]["edit_distance"] == 0
+    assert metrics["edit_distance_total"] == 0
+    assert metrics["wer"] == 0.0
+    assert metrics["ser"] == 0.0
+
+
+def test_build_summary_includes_failure_metadata_fields():
+    module = load_module()
+    sample_rows = [
+        {
+            "record_id": "magicdata/test/1",
+            "split": "test",
+            "speaker_id": "speaker-1",
+            "speaker_gender": "female",
+            "speaker_dialect": "standard",
+            "sample_wer": 0.25,
+            "edit_distance": 1,
+            "reviewer": "reviewer_a",
+        }
+    ]
+
+    transcripts_path = Path("/tmp/transcripts.jsonl")
+    summary = module.build_summary(
+        generated_at="2026-03-18T00:00:00+00:00",
+        transcripts_path=transcripts_path,
+        report_path=Path("/tmp/report.md"),
+        details_path=Path("/tmp/details.json"),
+        hypothesis_source="draft",
+        gating={
+            "total_rows": 1,
+            "eligible_records": 1,
+            "not_verified": 0,
+            "not_locked_for_eval": 0,
+            "not_human_verified": 0,
+            "missing_final_text": 0,
+        },
+        metrics={
+            "sample_count": 1,
+            "reference_token_total": 4,
+            "edit_distance_total": 1,
+            "wer": 0.25,
+            "ser": 1.0,
+        },
+        sample_rows=sample_rows,
+    )
+
+    assert summary["failure_examples"][0]["split"] == "test"
+    assert summary["failure_examples"][0]["speaker_id"] == "speaker-1"
+    assert summary["failure_examples"][0]["speaker_gender"] == "female"
+    assert summary["failure_examples"][0]["speaker_dialect"] == "standard"
 
 
 def test_main_writes_blocked_report_when_no_locked_samples(tmp_path, monkeypatch):

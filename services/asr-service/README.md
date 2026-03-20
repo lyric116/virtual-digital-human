@@ -2,17 +2,22 @@
 
 ## Purpose
 
-This service implements implementation plan steps 18 and 21: a standalone offline ASR
-baseline that accepts one complete audio file, returns one final transcript result, and
-now applies silence handling, punctuation restoration, and hotword cleanup inside the
-service before returning the final text.
+This service implements implementation plan steps 18, 20, and 21: a standalone ASR
+service that keeps the existing whole-file final transcription lane while also exposing a
+session-aware incremental preview lane for live partial transcript updates. Final
+transcripts still apply silence handling, punctuation restoration, and hotword cleanup
+before returning the final text.
 
 ## Endpoints
 
 - `GET /health`
 - `POST /api/asr/transcribe`
+- `POST /api/asr/stream/preview`
+- `POST /api/asr/stream/release`
 
 ## Request Shape
+
+Whole-file final lane:
 
 - send the full audio file as the raw HTTP request body
 - pass `filename` as a query parameter, for example `sample.wav`
@@ -20,11 +25,25 @@ service before returning the final text.
 - preferred input is the already normalized `16kHz mono wav` from manifest
   `audio_path_16k_mono`
 
-Example:
+Streaming preview lane:
+
+- send only the incremental audio delta since the previous preview as the raw HTTP request body
+- pass `session_id`, `recording_id`, `preview_seq`, and `filename` as query parameters
+- keep `preview_seq` monotonic within one `session_id + recording_id`
+- keep `Content-Type` stable within one recording; the service rejects MIME changes with `409`
+- call `POST /api/asr/stream/release` with `session_id` and `recording_id` when finalize completes or the preview stream should be dropped
+
+Example final request:
 
 - `POST /api/asr/transcribe?filename=1.wav&record_id=noxi/...`
 - `Content-Type: audio/wav`
 - request body: full wav bytes
+
+Example preview request:
+
+- `POST /api/asr/stream/preview?session_id=sess_001&recording_id=rec_001&preview_seq=2&filename=preview.wav`
+- `Content-Type: audio/wav`
+- request body: delta wav bytes appended to the same preview stream state
 
 ## Response Shape
 
@@ -43,14 +62,14 @@ endpoint as the primary transport and keeps the older OpenAI-compatible route on
 fallback. Neither path exposes token-level confidence here, so `confidence_mean` stays
 `null` and `confidence_available=false` in this baseline.
 
-The current service-level postprocess pass does three deterministic things without
-changing the HTTP contract:
+The current service-level postprocess pass now splits by lane:
 
-- silence handling: detect long silent spans in wav input and use them as clause breaks
-- punctuation restoration: add commas or sentence endings when the provider returns plain
-  text without punctuation
-- hotword cleanup: normalize configured domain phrases from
-  `services/asr-service/hotwords.json`
+- partial transcript preview: only light normalization plus hotword cleanup so preview stays responsive
+- final transcript: silence handling, punctuation restoration, and hotword cleanup before returning authoritative text
+
+Preview state is stored in memory per `session_id + recording_id`, with monotonic
+`preview_seq` checks, best-effort release, and idle TTL cleanup to avoid unbounded
+retention after interrupted recordings.
 
 ## Local Run
 
@@ -99,3 +118,22 @@ The MAGICDATA import path is separate from the enterprise transcript workflow:
 - `scripts/verify_asr_regression.py` is the stable ASR regression gate and enforces
   threshold checks on the MAGICDATA Chinese baseline when the local corpus is present
 - both outputs stay local and should not be committed
+
+## Current Chinese ASR Result
+
+The current expanded MAGICDATA Chinese evaluation has been run on a local frozen
+`216`-sample subset:
+
+- transcripts: `data/derived/transcripts-local/magicdata_eval_core_expanded216.jsonl`
+- details: `data/derived/eval-local/magicdata_asr_baseline_details_expanded216.json`
+- report: `data/derived/eval-local/magicdata_asr_baseline_report_expanded216.md`
+- eligible records: `216`
+- reference tokens: `1380`
+- edit distance total: `5`
+- WER: `0.003623`
+- SER: `0.023148`
+
+This result is strong enough to treat the current Chinese public-eval ASR baseline as
+ready for the next planned optimization stage. Keep the default `36`-sample MAGICDATA
+run as the stable regression baseline, and use the expanded `216`-sample run for
+broader failure analysis and follow-up optimization work.

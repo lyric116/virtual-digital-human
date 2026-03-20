@@ -1,70 +1,83 @@
-# Getting Started with Create React App
+# emotion_app
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## Purpose
 
-## Available Scripts
+`emotion_app` is the active React frontend in this repository. It targets the same local
+backend stack as the static shell, but gives you a live-reload developer workflow on port
+`3000`.
 
-In the project directory, you can run:
+## Supported local workflows
 
-### `npm start`
+### Default backend startup
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+From the repository root, start the compose-backed backend first:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- text, TTS, and affect flows: `make start-core`
+- ASR, audio finalize, or full voice/avatar chain: `make start-full`
 
-### `npm test`
+Useful companion commands:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+- `make status-core`
+- `make logs-core`
+- `make stop-core`
+- `make status-full`
+- `make logs-full`
+- `make stop-full`
 
-### `npm run build`
+Do not run raw `uvicorn` services while the compose stack is already using the same ports.
+If you hit `address already in use`, stop the active stack with `make stop-core` or
+`make stop-full` before switching workflows.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### React dev server
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+From `emotion_app/`:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+- `npm install`
+- `npm start`
 
-### `npm run eject`
+Then open:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+- `http://localhost:3000`
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+The backend services continue to run through Docker Compose while the React dev server
+handles frontend hot reload.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### Production-style local preview
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+From `emotion_app/`:
 
-## Learn More
+- `npm run build`
+- `python3 -m http.server 3000 --directory build`
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Then open:
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+- `http://localhost:3000`
 
-### Code Splitting
+## Runtime configuration
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+- the app reads `window.__APP_CONFIG__` when present and otherwise falls back to built-in
+  local defaults in `emotion_app/src/appHelpers.js`
+- built-in defaults point at:
+  - `http://127.0.0.1:8000`
+  - `ws://127.0.0.1:8000/ws`
+  - `http://127.0.0.1:8040`
+  - `http://127.0.0.1:8060`
+- local backend CORS defaults now allow both the compose-served shell on `4173` and the
+  React dev server on `3000`
 
-### Analyzing the Bundle Size
+## Verification
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+Recommended checks for the React developer flow:
 
-### Making a Progressive Web App
+1. `make start-core`
+2. `cd emotion_app && npm start`
+3. open `http://localhost:3000`
+4. verify session create, text submit, TTS playback, and affect fetch
+5. `make stop-core`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+When voice or ASR paths are needed:
 
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+1. `make start-full`
+2. `cd emotion_app && npm start`
+3. verify audio recording and finalize flows
+4. `make stop-full`

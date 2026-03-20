@@ -54,12 +54,17 @@ by the current codebase:
 
 Bring up the stack:
 
-- recommended shortcuts: `make up-core`, `make down-core`, `make logs-core`, `make verify-core`
+- recommended shortcuts: `make start-core`, `make status-core`, `make logs-core`, `make verify-core`, `make stop-core`
 - raw command: `docker compose --env-file .env -f infra/compose/docker-compose.core.yml up -d --build`
 - before first start, ensure local Python deps are present with `uv sync` or `make sync`
 - current step-51 core stack mounts the repo root to `/app` and mounts `.venv/lib/python3.11/site-packages` read-only into each Python service container
 - runtime service configuration is loaded from the repository-root `.env` through
   `env_file: ../../.env`; keep the real `.env` in the project root
+- this is the default local startup path for the repo; prefer it over manually starting
+  backend services one by one
+- do not mix raw `uvicorn` processes with the compose stack on the same ports; if you hit
+  `address already in use`, stop the running stack with `make stop-core` or
+  `make stop-full` before switching workflows
 
 Run the end-to-end verification workflow:
 
@@ -87,10 +92,12 @@ Primary file:
 
 Current expectation:
 
-- recommended shortcuts: `make compose-full-config`, `make up-full`, `make down-full`, `make logs-full`
+- recommended shortcuts: `make compose-full-config`, `make start-full`, `make status-full`, `make logs-full`, `make stop-full`
 - use `docker compose --env-file .env -f infra/compose/docker-compose.full.yml config` to validate the
   expanded deployment file
 - use the same local repo bind mount + `.venv` site-packages mount strategy as the core
   stack until final packaging replaces it with production images
 - use `docker compose --env-file .env -f infra/compose/docker-compose.full.yml up -d --build`
   when you need the full voice + avatar chain with external credentials
+- use the full stack when ASR or the full audio/avatar path is required; otherwise prefer
+  `make start-core`

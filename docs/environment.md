@@ -48,7 +48,7 @@ or deployment.
 | `GATEWAY_PORT` | Yes | `8000` | External HTTP port for gateway APIs. |
 | `GATEWAY_PUBLIC_BASE_URL` | Yes | `http://localhost:8000` | Public base URL used in generated links and callbacks. |
 | `GATEWAY_WS_PATH` | Yes | `/ws` | WebSocket path used by the frontend. |
-| `GATEWAY_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173` | Comma-separated browser origins allowed to call the gateway during local frontend preview. |
+| `GATEWAY_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:3000,http://localhost:3000` | Comma-separated browser origins allowed to call the gateway during local frontend preview, including both the compose-served shell on `4173` and the React dev server on `3000`. |
 
 ## Orchestrator
 
@@ -74,7 +74,7 @@ or deployment.
 | `AFFECT_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for the affect placeholder and later multimodal inference service. |
 | `AFFECT_SERVICE_PORT` | Yes | `8060` | HTTP port for the standalone affect service. |
 | `AFFECT_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8060` | Browser-facing base URL used by the step-37 emotion panel. |
-| `AFFECT_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173` | Browser origins allowed to call the affect service directly during frontend preview. |
+| `AFFECT_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:3000,http://localhost:3000` | Browser origins allowed to call the affect service directly during frontend preview, including both the compose-served shell on `4173` and the React dev server on `3000`. |
 
 ## RAG Service
 
@@ -141,6 +141,8 @@ or deployment.
 | --- | --- | --- | --- |
 | `ASR_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for the standalone ASR service. |
 | `ASR_SERVICE_PORT` | Yes | `8020` | HTTP port for the standalone ASR service. |
+| `ASR_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8020` | Browser-facing base URL used when the frontend calls the ASR service directly for local microphone testing. |
+| `ASR_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:3000,http://localhost:3000` | Browser origins allowed to call the ASR service directly during frontend preview, including the upper microphone test flow. |
 | `ASR_PROVIDER` | Yes | `dashscope` | Logical provider name for ASR. |
 | `ASR_BASE_URL` | Yes | `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation` | Canonical ASR endpoint used by the standalone service for `qwen3-asr-flash`. |
 | `ASR_API_KEY` | Yes | empty | Canonical ASR credential read by `services/asr-service` itself at startup/runtime; browser and gateway do not forward this secret. |
@@ -161,7 +163,7 @@ or deployment.
 | `TTS_SERVICE_HOST` | Yes | `0.0.0.0` | Bind address for the standalone TTS service. |
 | `TTS_SERVICE_PORT` | Yes | `8040` | HTTP port for the standalone TTS service. |
 | `TTS_SERVICE_BASE_URL` | Yes | `http://127.0.0.1:8040` | Public base URL used when the TTS service returns `audio_url`. |
-| `TTS_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173` | Browser origins allowed to call the TTS service directly during frontend preview. |
+| `TTS_CORS_ORIGINS` | Yes | `http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:3000,http://localhost:3000` | Browser origins allowed to call the TTS service directly during frontend preview, including both the compose-served shell on `4173` and the React dev server on `3000`. |
 | `TTS_PROVIDER` | Yes | `edge_tts` | Logical provider name for TTS. |
 | `TTS_BASE_URL` | No | empty | API endpoint for TTS if a remote provider is used. |
 | `TTS_API_KEY` | No | empty | API key for the TTS provider. |

@@ -1983,6 +1983,8 @@ def test_finalize_audio_route_schedules_background_pipeline(monkeypatch):
         and "POST" in getattr(route, "methods", set())
     )
     scheduled: dict[str, object] = {}
+    recorded_events: list[dict] = []
+    released_calls: list[dict] = []
 
     async def fake_to_thread(func, *args, **kwargs):
         return func(*args, **kwargs)
@@ -2005,9 +2007,32 @@ def test_finalize_audio_route_schedules_background_pipeline(monkeypatch):
             generated_at="2026-03-07T14:01:00Z",
         )
 
+    def fake_release_asr_stream(settings, *, session_id: str, recording_id: str):
+        released_calls.append({"session_id": session_id, "recording_id": recording_id})
+        return module.ASRServiceStreamReleaseResponse(
+            request_id="req_release_001",
+            session_id=session_id,
+            recording_id=recording_id,
+            released=True,
+            reason="released",
+            released_at="2026-03-07T14:01:00Z",
+        )
+
     monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
     monkeypatch.setattr(module, "dispatch_message_pipeline", fake_dispatch_message_pipeline)
     monkeypatch.setattr(module, "request_asr_transcription", fake_request_asr_transcription)
+    monkeypatch.setattr(module, "release_asr_stream", fake_release_asr_stream)
+
+    def fake_record_system_event(envelope: dict):
+        recorded_events.append(envelope)
+        return None
+
+    app.state.session_repository.record_system_event = fake_record_system_event
+
+    async def fake_enqueue_event(session_id: str, envelope: dict):
+        scheduled.setdefault("enqueued_events", []).append({"session_id": session_id, "event": envelope})
+
+    app.state.connection_registry.enqueue_event = fake_enqueue_event
 
     def fake_schedule_background_task(app_value, coro, *, task_name: str):
         scheduled["task_name"] = task_name
@@ -2029,6 +2054,7 @@ def test_finalize_audio_route_schedules_background_pipeline(monkeypatch):
                 body=fake_body,
             ),
             200,
+            "rec_route_001",
         )
     )
 
@@ -2038,6 +2064,12 @@ def test_finalize_audio_route_schedules_background_pipeline(monkeypatch):
     assert scheduled["task_name"] == "dispatch_message_pipeline:sess_fake_001:audio"
     assert "coro" in scheduled
     assert "awaited" not in scheduled
+    assert released_calls == [{"session_id": "sess_fake_001", "recording_id": "rec_route_001"}]
+    assert len(recorded_events) == 1
+    assert recorded_events[0]["event_type"] == "transcript.final"
+    assert recorded_events[0]["payload"]["recording_id"] == "rec_route_001"
+    assert recorded_events[0]["payload"]["message_id"] == "msg_audio_001"
+    assert scheduled["enqueued_events"][0]["event"]["event_type"] == "transcript.final"
 
 
 def test_text_message_rejects_blank_content():

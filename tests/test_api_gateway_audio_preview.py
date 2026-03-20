@@ -51,37 +51,67 @@ def build_settings(module):
     )
 
 
+def build_preview_response(module, **overrides):
+    return module.ASRServicePreviewResponse(
+        request_id="req_asr_preview_001",
+        session_id=overrides.pop("session_id", "sess_fake_001"),
+        recording_id=overrides.pop("recording_id", "rec_001"),
+        preview_seq=overrides.pop("preview_seq", 2),
+        provider="dashscope",
+        model="qwen3-asr-flash",
+        transcript_text=overrides.pop("transcript_text", "Bonjour, je me sens ..."),
+        transcript_language=overrides.pop("transcript_language", "fr"),
+        duration_ms=overrides.pop("duration_ms", 500),
+        confidence_mean=overrides.pop("confidence_mean", None),
+        confidence_available=overrides.pop("confidence_available", False),
+        audio=overrides.pop(
+            "audio",
+            {"filename": "recording.webm", "content_type": "audio/webm", "byte_size": 11},
+        ),
+        generated_at=overrides.pop("generated_at", datetime(2026, 3, 8, 20, 0, 1, tzinfo=timezone.utc)),
+        stream_created=overrides.pop("stream_created", True),
+        stream_updated_at=overrides.pop(
+            "stream_updated_at",
+            datetime(2026, 3, 8, 20, 0, 1, tzinfo=timezone.utc),
+        ),
+        **overrides,
+    )
+
+
 def test_audio_preview_record_returns_partial_contract_shape():
     module = load_gateway_module()
     repository = FakeAudioPreviewRepository()
     settings = build_settings(module)
 
-    def fake_request_asr_transcription(settings_obj, *, body: bytes, mime_type: str):
+    def fake_request_asr_stream_preview(
+        settings_obj,
+        *,
+        body: bytes,
+        mime_type: str,
+        session_id: str,
+        recording_id: str,
+        preview_seq: int,
+    ):
         assert settings_obj.asr_service_base_url == "http://127.0.0.1:8020"
-        assert body == b"wav-preview"
+        assert body == b"preview-delta"
         assert mime_type == "audio/wav"
-        return module.ASRServiceTranscriptionResponse(
-            request_id="req_asr_preview_001",
-            record_id=None,
-            provider="dashscope",
-            model="qwen3-asr-flash",
-            transcript_text="Bonjour, je me sens ...",
-            transcript_language="fr",
-            duration_ms=500,
-            confidence_mean=None,
-            confidence_available=False,
-            transcript_segments=[],
-            audio={"filename": "recording.wav", "content_type": "audio/wav", "byte_size": 11},
-            generated_at=datetime(2026, 3, 8, 20, 0, 1, tzinfo=timezone.utc),
+        assert session_id == "sess_fake_001"
+        assert recording_id == "rec_001"
+        assert preview_seq == 2
+        return build_preview_response(
+            module,
+            session_id=session_id,
+            recording_id=recording_id,
+            preview_seq=preview_seq,
         )
 
-    module.request_asr_transcription = fake_request_asr_transcription
+    module.request_asr_stream_preview = fake_request_asr_stream_preview
 
     result = module.create_audio_preview_record(
         repository,
         settings,
         "sess_fake_001",
-        content=b"wav-preview",
+        content=b"preview-delta",
         duration_ms=500,
         mime_type="audio/wav",
         preview_seq=2,
@@ -138,29 +168,68 @@ def test_audio_preview_record_rejects_invalid_preview_seq():
     assert payload["error_code"] == "audio_preview_invalid_seq"
 
 
+def test_audio_preview_record_rejects_invalid_duration():
+    module = load_gateway_module()
+    repository = FakeAudioPreviewRepository()
+    settings = build_settings(module)
+
+    response = module.create_audio_preview_record(
+        repository,
+        settings,
+        "sess_fake_001",
+        content=b"wav-preview",
+        duration_ms=-1,
+        mime_type="audio/wav",
+        preview_seq=1,
+        recording_id="rec_001",
+    )
+
+    assert response.status_code == 400
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["error_code"] == "audio_preview_invalid_duration"
+
+
+def test_audio_preview_record_rejects_blank_recording_id():
+    module = load_gateway_module()
+    repository = FakeAudioPreviewRepository()
+    settings = build_settings(module)
+
+    response = module.create_audio_preview_record(
+        repository,
+        settings,
+        "sess_fake_001",
+        content=b"wav-preview",
+        duration_ms=500,
+        mime_type="audio/wav",
+        preview_seq=1,
+        recording_id="   ",
+    )
+
+    assert response.status_code == 400
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["error_code"] == "audio_preview_invalid_recording_id"
+
+
 def test_audio_preview_record_normalizes_webm_content_type_parameters():
     module = load_gateway_module()
     repository = FakeAudioPreviewRepository()
     settings = build_settings(module)
 
-    def fake_request_asr_transcription(settings_obj, *, body: bytes, mime_type: str):
-        assert mime_type == "audio/webm"
-        return module.ASRServiceTranscriptionResponse(
-            request_id="req_asr_preview_002",
-            record_id=None,
-            provider="dashscope",
-            model="qwen3-asr-flash",
+    def fake_request_asr_stream_preview(settings_obj, **kwargs):
+        assert settings_obj is settings
+        assert kwargs["mime_type"] == "audio/webm"
+        return build_preview_response(
+            module,
+            session_id=kwargs["session_id"],
+            recording_id=kwargs["recording_id"],
+            preview_seq=kwargs["preview_seq"],
             transcript_text="测试预览",
             transcript_language="zh-CN",
             duration_ms=260,
-            confidence_mean=None,
-            confidence_available=False,
-            transcript_segments=[],
-            audio={"filename": "recording.webm", "content_type": mime_type, "byte_size": 11},
-            generated_at=datetime(2026, 3, 8, 20, 0, 1, tzinfo=timezone.utc),
+            audio={"filename": "recording.webm", "content_type": "audio/webm", "byte_size": 12},
         )
 
-    module.request_asr_transcription = fake_request_asr_transcription
+    module.request_asr_stream_preview = fake_request_asr_stream_preview
 
     result = module.create_audio_preview_record(
         repository,
@@ -175,6 +244,64 @@ def test_audio_preview_record_normalizes_webm_content_type_parameters():
 
     assert isinstance(result, dict)
     assert result["transcript"]["text"] == "测试预览"
+
+
+def test_audio_preview_record_accepts_empty_partial_transcript_without_error():
+    module = load_gateway_module()
+    repository = FakeAudioPreviewRepository()
+    settings = build_settings(module)
+    module.request_asr_stream_preview = lambda *args, **kwargs: build_preview_response(module, transcript_text="   ")
+
+    response = module.create_audio_preview_record(
+        repository,
+        settings,
+        "sess_fake_001",
+        content=b"preview-delta",
+        duration_ms=500,
+        mime_type="audio/wav",
+        preview_seq=4,
+        recording_id="rec_004",
+    )
+
+    assert response.status_code == 202
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["transcript_kind"] == "partial"
+    assert payload["text"] == ""
+    assert payload["recording_id"] == "rec_004"
+
+
+def test_audio_preview_record_preserves_asr_stream_conflict_errors():
+    module = load_gateway_module()
+    repository = FakeAudioPreviewRepository()
+    settings = build_settings(module)
+
+    def fake_request_asr_stream_preview(*args, **kwargs):
+        raise module.ASRStreamPreviewRequestError(
+            status_code=409,
+            error_code="preview_seq_stale",
+            message="preview_seq must increase monotonically within one recording",
+            retryable=False,
+            details={"upstream_status": 409},
+        )
+
+    module.request_asr_stream_preview = fake_request_asr_stream_preview
+
+    response = module.create_audio_preview_record(
+        repository,
+        settings,
+        "sess_fake_001",
+        content=b"preview-delta",
+        duration_ms=500,
+        mime_type="audio/wav",
+        preview_seq=2,
+        recording_id="rec_001",
+    )
+
+    assert response.status_code == 409
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload["error_code"] == "preview_seq_stale"
+    assert payload["retryable"] is False
+    assert payload["details"] == {"upstream_status": 409}
 
 
 def test_audio_preview_route_and_readme_are_present():

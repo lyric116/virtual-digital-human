@@ -42,6 +42,18 @@ def test_web_audio_partial_transcript_preview_call_happens_before_finalize():
     assert len(payload["finalizeCalls"]) == 1
 
 
+def test_web_audio_partial_transcript_preview_uses_incremental_delta_blobs():
+    payload = run_harness()
+
+    preview_sizes = [call["bodySize"] for call in payload["previewCalls"]]
+
+    assert len(preview_sizes) >= 2
+    assert all(size is not None and size > 0 for size in preview_sizes)
+    assert preview_sizes[1] <= preview_sizes[0]
+    assert all(size <= preview_sizes[0] for size in preview_sizes[1:])
+    assert payload["finalizeCalls"][0]["bodySize"] > max(preview_sizes)
+
+
 def test_audio_preview_docs_are_present():
     web_readme = WEB_README.read_text(encoding="utf-8")
     gateway_readme = GATEWAY_README.read_text(encoding="utf-8")

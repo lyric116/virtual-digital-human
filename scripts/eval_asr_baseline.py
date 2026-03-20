@@ -18,6 +18,18 @@ DEFAULT_REPORT = ROOT / "data" / "derived" / "eval" / "asr_baseline_report.md"
 DEFAULT_DETAILS = ROOT / "data" / "derived" / "eval" / "asr_baseline_details.json"
 LATIN_TOKEN_CLEAN_RE = re.compile(r"[^\w\s'\u00C0-\u024F]+", re.UNICODE)
 WHITESPACE_RE = re.compile(r"\s+")
+CHINESE_EVAL_LITERAL_REPLACEMENTS = {
+    "qq 音乐": "口口音乐",
+    "qq音乐": "口口音乐",
+}
+CHINESE_EVAL_ERHUA_REPLACEMENTS = (
+    ("一会儿", "一会"),
+    ("这会儿", "这会"),
+    ("那会儿", "那会"),
+    ("哪儿", "哪"),
+    ("这儿", "这"),
+    ("那儿", "那"),
+)
 
 
 def now_iso() -> str:
@@ -47,10 +59,21 @@ def is_cjk_dominant(text: str) -> bool:
     return cjk_count > latin_count
 
 
+def normalize_chinese_eval_text(text: str) -> str:
+    normalized = text
+    for source, target in CHINESE_EVAL_LITERAL_REPLACEMENTS.items():
+        normalized = normalized.replace(source, target)
+    for source, target in CHINESE_EVAL_ERHUA_REPLACEMENTS:
+        normalized = normalized.replace(source, target)
+    return normalized
+
+
 def normalize_text_for_eval(text: str) -> str:
     normalized = text.strip().lower().replace("’", "'")
     if not normalized:
         return ""
+    if any("\u4e00" <= char <= "\u9fff" for char in normalized):
+        normalized = normalize_chinese_eval_text(normalized)
     if is_cjk_dominant(normalized):
         filtered = "".join(char for char in normalized if "\u4e00" <= char <= "\u9fff")
         return filtered
@@ -184,8 +207,12 @@ def evaluate_rows(
             {
                 "record_id": row["record_id"],
                 "dataset": row.get("dataset"),
+                "split": row.get("split"),
                 "canonical_role": row.get("canonical_role"),
                 "segment_id": row.get("segment_id"),
+                "speaker_id": row.get("speaker_id"),
+                "speaker_gender": row.get("speaker_gender"),
+                "speaker_dialect": row.get("speaker_dialect"),
                 "reviewer": row.get("reviewer"),
                 "reviewed_at": row.get("reviewed_at"),
                 "audio_path_16k_mono": row.get("audio_path_16k_mono"),
@@ -347,6 +374,10 @@ def build_summary(
         "failure_examples": [
             {
                 "record_id": row["record_id"],
+                "split": row.get("split"),
+                "speaker_id": row.get("speaker_id"),
+                "speaker_gender": row.get("speaker_gender"),
+                "speaker_dialect": row.get("speaker_dialect"),
                 "sample_wer": row["sample_wer"],
                 "reviewer": row["reviewer"],
             }

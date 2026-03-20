@@ -14,6 +14,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 MAGICDATA_RAW_ROOT = ROOT / "data" / "external" / "asr" / "magicdata-zh" / "raw"
 MAGICDATA_DETAILS = ROOT / "data" / "derived" / "eval-local" / "magicdata_asr_baseline_details.json"
+DEFAULT_MAGICDATA_CORE_PER_GROUP = 12
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -75,6 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-magicdata-wer", type=float, default=0.10)
     parser.add_argument("--max-magicdata-ser", type=float, default=0.40)
+    parser.add_argument("--magicdata-core-per-group", type=int, default=DEFAULT_MAGICDATA_CORE_PER_GROUP)
     return parser
 
 
@@ -109,15 +111,30 @@ def main() -> None:
 
     magicdata_metrics = None
     if magicdata_available():
+        magicdata_command = [sys.executable, str(ROOT / "scripts" / "verify_magicdata_asr_eval.py")]
+        if args.magicdata_core_per_group != DEFAULT_MAGICDATA_CORE_PER_GROUP:
+            magicdata_command.extend(
+                [
+                    "--core-per-group",
+                    str(args.magicdata_core_per_group),
+                    "--label",
+                    f"regression_core{args.magicdata_core_per_group}",
+                ]
+            )
         steps.append(
             run_command(
                 "verify_magicdata_asr_eval",
-                [sys.executable, str(ROOT / "scripts" / "verify_magicdata_asr_eval.py")],
+                magicdata_command,
                 env,
             )
         )
+        details_path = MAGICDATA_DETAILS
+        if args.magicdata_core_per_group != DEFAULT_MAGICDATA_CORE_PER_GROUP:
+            details_path = MAGICDATA_DETAILS.with_name(
+                f"magicdata_asr_baseline_details_regression_core{args.magicdata_core_per_group}.json"
+            )
         magicdata_metrics = enforce_magicdata_thresholds(
-            MAGICDATA_DETAILS,
+            details_path,
             max_wer=args.max_magicdata_wer,
             max_ser=args.max_magicdata_ser,
         )

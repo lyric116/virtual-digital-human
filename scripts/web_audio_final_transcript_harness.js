@@ -402,10 +402,29 @@ function createMockRuntime() {
     }
 
     if (url.includes(`/api/session/${sessionPayload.session_id}/audio/finalize`)) {
+      const parsed = new URL(url);
+      const recordingId = parsed.searchParams.get("recording_id") || null;
       finalizeCalls.push({
+        recordingId,
         bodySize: typeof options.body.size === "number" ? options.body.size : null,
         contentType: options.headers ? options.headers["Content-Type"] : null,
       });
+      const transcriptFinalPayload = {
+        transcript_kind: "final",
+        text: "Bonjour, je me sens un peu tendu aujourd'hui.",
+        language: "fr",
+        confidence: null,
+        confidence_available: false,
+        duration_ms: 740,
+        asr_engine: "qwen3-asr-flash",
+        provider: "dashscope",
+        media_id: "media_mock_final_001",
+        mime_type: options.headers ? options.headers["Content-Type"] : "audio/wav",
+        generated_at: "2026-03-08T16:20:04Z",
+        source_kind: "audio",
+        message_id: "msg_mock_audio_001",
+        recording_id: recordingId,
+      };
       const acceptedPayload = {
         media_id: "media_mock_final_001",
         message_id: "msg_mock_audio_001",
@@ -414,7 +433,7 @@ function createMockRuntime() {
         role: "user",
         status: "accepted",
         source_kind: "audio",
-        content_text: "Bonjour, je me sens un peu tendu aujourd'hui.",
+        content_text: transcriptFinalPayload.text,
         mime_type: options.headers ? options.headers["Content-Type"] : "audio/wav",
         duration_ms: 740,
         submitted_at: "2026-03-08T16:20:04Z",
@@ -440,6 +459,18 @@ function createMockRuntime() {
         if (!currentSocket || currentSocket.readyState !== MockWebSocket.OPEN) {
           return;
         }
+        currentSocket.emit("message", {
+          data: JSON.stringify(
+            buildEnvelope(
+              sessionPayload.session_id,
+              sessionPayload.trace_id,
+              "transcript.final",
+              transcriptFinalPayload,
+              transcriptFinalPayload.message_id,
+              "asr_service",
+            ),
+          ),
+        });
         currentSocket.emit("message", {
           data: JSON.stringify(
             buildEnvelope(
@@ -735,14 +766,24 @@ async function main() {
     "audio upload did not start during recording",
   );
   await waitFor(
-    () => runtime.window.__virtualHumanConsoleController.getState().recordingChunkCount >= 2,
+    () => runtime.window.__virtualHumanConsoleController.getState().recordingChunkCount >= 3,
     5000,
-    "recording did not produce multiple audio chunks before stop",
+    "recording did not produce enough audio chunks before stop",
   );
+  if (Array.isArray(runtimeConfig.previewCalls)) {
+    await waitFor(
+      () => runtimeConfig.previewCalls.length >= 2,
+      5000,
+      "recording did not produce multiple preview calls before stop",
+    );
+  }
   await waitFor(
     () => {
       const text = runtime.document.getElementById("transcript-user-partial-text");
-      return text && text.textContent && !text.textContent.startsWith("等待");
+      return runtime.document.body.dataset.partialTranscriptState === "streaming"
+        && text
+        && text.textContent
+        && !text.textContent.startsWith("等待");
     },
     10000,
     "partial transcript did not appear during recording",
@@ -769,12 +810,14 @@ async function main() {
   );
 
   const afterReply = collectSnapshot(runtime.document, runtime.window);
-  runtimeConfig.replayFinalizedTurn();
-  await waitFor(
-    () => collectSnapshot(runtime.document, runtime.window).timelineEntryCount === afterReply.timelineEntryCount,
-    5000,
-    "replayed audio events changed chat timeline count",
-  );
+  if (typeof runtimeConfig.replayFinalizedTurn === "function") {
+    runtimeConfig.replayFinalizedTurn();
+    await waitFor(
+      () => collectSnapshot(runtime.document, runtime.window).timelineEntryCount === afterReply.timelineEntryCount,
+      5000,
+      "replayed audio events changed chat timeline count",
+    );
+  }
   const afterReplayDuplicate = collectSnapshot(runtime.document, runtime.window);
 
   runtime.window.__virtualHumanConsoleController.shutdownForTest();
