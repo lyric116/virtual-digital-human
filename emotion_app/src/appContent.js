@@ -534,6 +534,13 @@ export const avatarProfiles = {
     idleDetail: '陪伴角色已准备好开始回应。',
     speakingDetail: '陪伴角色正在温和回应。',
     voicePreview: 'zh-CN-XiaoxiaoNeural',
+    renderKind: 'live2d',
+    live2dModelPath: '/live2d/haru_greeter_pro_jp/haru_greeter_t05.model3.json',
+    live2dCorePath: '/live2d/live2dcubismcore.min.js',
+    live2dIdleMotion: {
+      group: '',
+      index: 0,
+    },
   },
   coach_male_01: {
     avatarId: 'coach_male_01',
