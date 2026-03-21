@@ -441,7 +441,7 @@ export function createInitialFinalTranscriptState() {
 export function createInitialAffectSnapshot() {
   return {
     panelState: 'idle',
-    panelMessage: 'Waiting for affect snapshot.',
+    panelMessage: '',
     currentStage: 'idle',
     generatedAt: null,
     sourceContext: {

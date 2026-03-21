@@ -182,7 +182,7 @@ export function useCameraAffect({
         record_id: currentSourceContext?.recordId && currentSourceContext.recordId !== 'pending'
           ? currentSourceContext.recordId
           : `session/${activeSessionId || 'pending'}`,
-        sample_note: currentSourceContext?.note || 'Waiting for session sample information.',
+        sample_note: currentSourceContext?.note || '',
       },
       capture_state: {
         camera_state: cameraState,

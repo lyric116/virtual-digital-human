@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { MessageCircleHeart, Mic, Send, User } from 'lucide-react';
 import { formatDurationMs, resolveAvatarExpressionPreset } from './appHelpers';
 import Live2DAvatar from './Live2DAvatar';
@@ -31,6 +31,13 @@ export default function AvatarComposerPanel({
   const shouldRenderAssistantLive2D = effectiveAvatarProfile?.avatarId === 'companion_female_01'
     && effectiveAvatarProfile?.renderKind === 'live2d'
     && effectiveAvatarProfile?.live2dModelPath;
+  const assistantLive2DFitOptions = useMemo(() => ({
+    logicalHeight: 4.52,
+    centerX: 1.16,
+    centerY: 0.28,
+    offsetX: 0,
+    offsetY: 0,
+  }), []);
 
   const assistantAvatarFallback = (
     <svg width="200" height="240" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -83,8 +90,12 @@ export default function AvatarComposerPanel({
           </svg>
         </div>
 
-        <div className="absolute right-4 md:right-20 bottom-0 flex flex-col items-center animate-breathe-delayed" data-testid="assistant-avatar-surface">
-          <div className={`absolute -top-24 md:-top-28 right-10 md:right-24 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 max-w-[220px] md:max-w-[280px] transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="absolute right-0 md:right-10 bottom-0 animate-breathe-delayed" data-testid="assistant-avatar-surface">
+          <div className="absolute left-20 md:left-[68px] top-[84px] md:top-[132px] z-10 rounded-2xl bg-white/80 border border-[#F0E5D8] px-4 py-3 text-center shadow-sm min-w-[220px]">
+            <div className="text-sm font-semibold text-[#5C4D42]">{effectiveAvatarProfile.label}</div>
+            <div className="mt-1 text-xs text-[#8C7A6B]">{effectiveAvatarProfile.stageNote}</div>
+          </div>
+          <div className={`absolute -left-2 md:-left-[148px] top-[132px] md:top-[166px] z-10 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 max-w-[220px] md:max-w-[236px] transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
             <p className="text-sm md:text-base text-[#5C4D42] leading-relaxed">
               {latestAssistantMessage?.content_text || t.bubble2}
             </p>
@@ -92,16 +103,13 @@ export default function AvatarComposerPanel({
               {effectiveAvatarProfile.label}
             </div>
           </div>
-          <div className="mb-3 rounded-2xl bg-white/80 border border-[#F0E5D8] px-4 py-3 text-center shadow-sm min-w-[220px]">
-            <div className="text-sm font-semibold text-[#5C4D42]">{effectiveAvatarProfile.label}</div>
-            <div className="mt-1 text-xs text-[#8C7A6B]">{effectiveAvatarProfile.stageNote}</div>
-          </div>
           {shouldRenderAssistantLive2D ? (
             <Live2DAvatar
-              className="w-[200px] h-[240px]"
+              className="w-[330px] h-[370px] md:w-[380px] md:h-[500px]"
               corePath={effectiveAvatarProfile.live2dCorePath}
               expressionPreset={avatarExpressionPreset}
               fallback={assistantAvatarFallback}
+              fitOptions={assistantLive2DFitOptions}
               idleMotion={effectiveAvatarProfile.live2dIdleMotion}
               modelPath={effectiveAvatarProfile.live2dModelPath}
               mouthState={avatarMouthState}

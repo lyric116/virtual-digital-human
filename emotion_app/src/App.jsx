@@ -705,11 +705,30 @@ export default function App({ appConfig }) {
     : ttsPlaybackState === 'completed'
       ? 'completed'
       : 'idle';
-  const displayedEmotionLabel = normalizeEmotionLabel(affectSnapshot.fusion.emotionState) !== 'pending'
+  const normalizedAffectEmotion = normalizeEmotionLabel(affectSnapshot.fusion.emotionState);
+  const hasResolvedEmotion = ![
+    'pending',
+    'pending_multimodal',
+    'observe_more',
+    'needs_clarification',
+  ].includes(normalizedAffectEmotion);
+  const hasResolvedEmotionDetail = hasResolvedEmotion
+    && typeof affectSnapshot.fusion.detail === 'string'
+    && affectSnapshot.fusion.detail.trim()
+    && !/等待|调试|占位|waiting|debug|placeholder/i.test(affectSnapshot.fusion.detail);
+  const hasResolvedEmotionQuote = hasResolvedEmotion
+    && typeof affectSnapshot.sourceContext.note === 'string'
+    && affectSnapshot.sourceContext.note.trim()
+    && !/等待|调试|样本信息|waiting for session sample information|sample information|debug/i.test(affectSnapshot.sourceContext.note);
+  const displayedEmotionLabel = hasResolvedEmotion
     ? affectSnapshot.fusion.emotionState
     : t.emoState;
-  const displayedEmotionDetail = affectSnapshot.fusion.detail || t.emoDesc;
-  const displayedEmotionQuote = affectSnapshot.sourceContext.note || latestAssistantMessage?.content_text || t.emoQuote;
+  const displayedEmotionDetail = hasResolvedEmotionDetail
+    ? affectSnapshot.fusion.detail
+    : t.emoDesc;
+  const displayedEmotionQuote = hasResolvedEmotionQuote
+    ? affectSnapshot.sourceContext.note
+    : t.emoQuote;
   const liveTranscriptText = isMicModalOpen
     ? ''
     : (partialTranscriptState.status === 'streaming' && partialTranscriptState.text

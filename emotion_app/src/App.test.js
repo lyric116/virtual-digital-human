@@ -336,6 +336,7 @@ test('renders the base experience with timeline hidden by default', () => {
   expect(screen.getByRole('button', { name: /时光记录|time log/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /摄像头预览|camera preview/i })).toBeInTheDocument();
   expect(screen.queryByText(/^对话记录$|^Conversation$/i)).not.toBeInTheDocument();
+
 });
 
 test('create session connects websocket with the expected url', async () => {
@@ -734,4 +735,39 @@ test('upper mic button streams local mic debug transcript without submitting a c
   expect(fetch.mock.calls.filter(([url]) => String(url).includes('/api/asr/stream/preview')).length).toBeGreaterThanOrEqual(2);
   expect(fetch.mock.calls.some(([url, options]) => String(url).includes('/api/asr/stream/release') && options?.method === 'POST')).toBe(true);
   expect(latestDebugRecordingId).toBeTruthy();
+});
+
+test('affect panel shows calm default copy before any affect input arrives', () => {
+  render(<App appConfig={appConfig} />);
+
+  expect(screen.getByText(/当前情绪感知|current emotion/i)).toBeInTheDocument();
+  expect(screen.getByText(/放松|relaxed/i)).toBeInTheDocument();
+  expect(screen.getByText(/呼吸平稳，状态舒适|steady breathing, comfortable/i)).toBeInTheDocument();
+  expect(screen.getByText(/感觉到您现在的状态很不错|I feel that you are in a good state/i)).toBeInTheDocument();
+  expect(screen.queryByText(/pending/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/waiting/i)).not.toBeInTheDocument();
+});
+
+test('affect panel hides placeholder affect-service labels and sample-note debug text', async () => {
+  const socket = await createConnectedSession();
+
+  act(() => {
+    socket.receive(buildEnvelope('affect.snapshot', buildAffectPayload({
+      source_context: {
+        note: 'Waiting for session sample information.',
+      },
+      fusion_result: {
+        emotion_state: 'pending_multimodal',
+        detail: '三路结果仍以占位为主，等待后续步骤接入真实分析。',
+      },
+    }), { source_service: 'affect_service' }));
+  });
+
+  await waitFor(() => expect(screen.getByText(/当前情绪感知|current emotion/i)).toBeInTheDocument());
+  expect(screen.getByText(/放松|relaxed/i)).toBeInTheDocument();
+  expect(screen.getByText(/呼吸平稳，状态舒适|steady breathing, comfortable/i)).toBeInTheDocument();
+  expect(screen.getByText(/感觉到您现在的状态很不错|I feel that you are in a good state/i)).toBeInTheDocument();
+  expect(screen.queryByText(/pending_multimodal/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/waiting for session sample information/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/三路结果仍以占位为主，等待后续步骤接入真实分析/)).not.toBeInTheDocument();
 });
