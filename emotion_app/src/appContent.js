@@ -541,6 +541,13 @@ export const avatarProfiles = {
       group: '',
       index: 0,
     },
+    live2dFitOptions: {
+      logicalHeight: 4.52,
+      centerX: 1.16,
+      centerY: 0.28,
+      offsetX: 0,
+      offsetY: 0,
+    },
   },
   coach_male_01: {
     avatarId: 'coach_male_01',
@@ -551,6 +558,20 @@ export const avatarProfiles = {
     idleDetail: '引导角色已准备好继续对话。',
     speakingDetail: '引导角色正在给出更清晰的建议。',
     voicePreview: 'zh-CN-YunxiNeural',
+    renderKind: 'live2d',
+    live2dModelPath: '/live2d/chitose/chitose.model3.json',
+    live2dCorePath: '/live2d/live2dcubismcore.min.js',
+    live2dIdleMotion: {
+      group: 'Idle',
+      index: 0,
+    },
+    live2dFitOptions: {
+      logicalHeight: 4.52,
+      centerX: 1.78,
+      centerY: 0.46,
+      offsetX: 0,
+      offsetY: 0,
+    },
   },
 };
 

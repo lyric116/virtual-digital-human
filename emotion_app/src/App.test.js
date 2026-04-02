@@ -382,6 +382,71 @@ test('create session connects websocket with the expected url', async () => {
   });
 });
 
+test('create session sends the selected role B avatar id', async () => {
+  fetch.mockResolvedValueOnce(jsonResponse({
+    ...sessionPayload,
+    avatar_id: 'coach_male_01',
+  }, 201));
+
+  render(<App appConfig={appConfig} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '引导角色 B' }));
+  fireEvent.click(screen.getByRole('button', { name: /创建会话|create session/i }));
+
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining('/api/session/create'),
+    expect.any(Object),
+  ));
+
+  const [, requestOptions] = fetch.mock.calls.find(([url]) => String(url).includes('/api/session/create'));
+  expect(JSON.parse(requestOptions.body)).toMatchObject({
+    avatar_id: 'coach_male_01',
+  });
+  await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+});
+
+test('avatar buttons switch the assistant preview between Lily and role B', () => {
+  render(<App appConfig={appConfig} />);
+
+  const assistantSurface = screen.getByTestId('assistant-avatar-surface');
+  expect(within(assistantSurface).getAllByText('莉莉').length).toBeGreaterThan(0);
+
+  fireEvent.click(screen.getByRole('button', { name: '引导角色 B' }));
+  expect(within(assistantSurface).getAllByText('引导角色 B').length).toBeGreaterThan(0);
+
+  fireEvent.click(screen.getByRole('button', { name: '莉莉' }));
+  expect(within(assistantSurface).getAllByText('莉莉').length).toBeGreaterThan(0);
+});
+
+test('avatar buttons switch the assistant preview even when a Lily session is restored', async () => {
+  window.localStorage.setItem(appConfig.activeSessionStorageKey, sessionPayload.session_id);
+  fetch.mockResolvedValueOnce(jsonResponse(buildSessionState({
+    session: {
+      ...sessionPayload,
+      avatar_id: 'companion_female_01',
+    },
+    messages: [],
+  })));
+
+  render(<App appConfig={appConfig} />);
+
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining('/api/session/sess_test_001/state'),
+    expect.any(Object),
+  ));
+
+  const assistantSurface = screen.getByTestId('assistant-avatar-surface');
+  expect(within(assistantSurface).getAllByText('莉莉').length).toBeGreaterThan(0);
+
+  const coachButton = screen.getByRole('button', { name: '引导角色 B' });
+  await waitFor(() => expect(coachButton).toBeEnabled());
+  fireEvent.click(coachButton);
+
+  await waitFor(() => expect(within(assistantSurface).getAllByText('引导角色 B').length).toBeGreaterThan(0));
+  expect(screen.getByText('当前对话角色：莉莉')).toBeInTheDocument();
+  expect(screen.getByText('下次创建会话时将使用：引导角色 B')).toBeInTheDocument();
+});
+
 test('restore session keeps the session panel hidden until timeline is opened', async () => {
   window.localStorage.setItem(appConfig.activeSessionStorageKey, sessionPayload.session_id);
   fetch.mockResolvedValueOnce(jsonResponse(buildSessionState({

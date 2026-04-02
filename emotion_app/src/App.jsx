@@ -882,10 +882,10 @@ export default function App({ appConfig }) {
         <AvatarComposerPanel
           activeMessage={activeMessage}
           assistantAudioRef={assistantAudioRef}
+          avatarProfile={selectedAvatarProfile}
           avatarMouthState={avatarMouthState}
           avatarSpeechState={avatarSpeechState}
           canSubmitText={canSubmitText}
-          effectiveAvatarProfile={effectiveAvatarProfile}
           handleMicAction={handleMicAction}
           inputText={inputText}
           latestAssistantMessage={latestAssistantMessage}

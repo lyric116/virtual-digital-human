@@ -13,6 +13,37 @@ import {
   resizeLive2DCanvas,
 } from './live2dHelpers';
 
+const LIVE2D_PARAMETER_ALIASES = Object.freeze({
+  ParamAngleX: ['ParamAngleX', 'PARAM_ANGLE_X'],
+  ParamAngleY: ['ParamAngleY', 'PARAM_ANGLE_Y'],
+  ParamAngleZ: ['ParamAngleZ', 'PARAM_ANGLE_Z'],
+  ParamBodyAngleX: ['ParamBodyAngleX', 'PARAM_BODY_ANGLE_X'],
+  ParamBodyAngleY: ['ParamBodyAngleY', 'PARAM_BODY_ANGLE_Y'],
+  ParamBodyAngleZ: ['ParamBodyAngleZ', 'PARAM_BODY_ANGLE_Z'],
+  ParamMouthForm: ['ParamMouthForm', 'PARAM_MOUTH_FORM'],
+  ParamMouthOpenY: ['ParamMouthOpenY', 'PARAM_MOUTH_OPEN_Y'],
+  ParamBrowLY: ['ParamBrowLY', 'PARAM_BROW_L_Y'],
+  ParamBrowRY: ['ParamBrowRY', 'PARAM_BROW_R_Y'],
+  ParamBrowLX: ['ParamBrowLX', 'PARAM_BROW_L_X'],
+  ParamBrowRX: ['ParamBrowRX', 'PARAM_BROW_R_X'],
+  ParamBrowLAngle: ['ParamBrowLAngle', 'PARAM_BROW_L_ANGLE'],
+  ParamBrowRAngle: ['ParamBrowRAngle', 'PARAM_BROW_R_ANGLE'],
+  ParamBrowLForm: ['ParamBrowLForm', 'PARAM_BROW_L_FORM'],
+  ParamBrowRForm: ['ParamBrowRForm', 'PARAM_BROW_R_FORM'],
+  ParamEyeLSmile: ['ParamEyeLSmile', 'PARAM_EYE_L_SMILE'],
+  ParamEyeRSmile: ['ParamEyeRSmile', 'PARAM_EYE_R_SMILE'],
+  ParamEyeLOpen: ['ParamEyeLOpen', 'PARAM_EYE_L_OPEN'],
+  ParamEyeROpen: ['ParamEyeROpen', 'PARAM_EYE_R_OPEN'],
+  ParamEyeBallX: ['ParamEyeBallX', 'PARAM_EYE_BALL_X'],
+  ParamEyeBallY: ['ParamEyeBallY', 'PARAM_EYE_BALL_Y'],
+  ParamEyeBallForm: ['ParamEyeBallForm', 'PARAM_EYE_BALL_FORM'],
+  ParamCheek: ['ParamCheek', 'PARAM_CHEEK'],
+  ParamBreath: ['ParamBreath', 'PARAM_BREATH'],
+  ParamHairFront: ['ParamHairFront', 'PARAM_HAIR_FRONT'],
+  ParamHairSide: ['ParamHairSide', 'PARAM_HAIR_SIDE'],
+  ParamHairBack: ['ParamHairBack', 'PARAM_HAIR_BACK'],
+});
+
 function clearElementChildren(element) {
   if (!element) {
     return;
@@ -114,6 +145,7 @@ class CubismCanvasModel {
     this.modelSetting = null;
     this.baseAssetUrl = '';
     this.parameterIdCache = new Map();
+    this.resolvedParameterNameCache = new Map();
     this.motionCache = new Map();
     this.textureIds = [];
     this.eyeBlinkIds = [];
@@ -144,12 +176,32 @@ class CubismCanvasModel {
     return this.parameterIdCache.get(parameterName);
   }
 
-  hasParameter(parameterName) {
+  resolveParameterName(parameterName) {
+    if (this.resolvedParameterNameCache.has(parameterName)) {
+      return this.resolvedParameterNameCache.get(parameterName);
+    }
+
     const model = this.getModel();
     if (!model) {
-      return false;
+      return null;
     }
-    return model.getParameterIndex(this.getId(parameterName)) < model.getParameterCount();
+
+    const candidates = LIVE2D_PARAMETER_ALIASES[parameterName] || [parameterName];
+    const resolvedParameterName = candidates.find((candidate) => (
+      model.getParameterIndex(this.getId(candidate)) < model.getParameterCount()
+    )) || null;
+
+    this.resolvedParameterNameCache.set(parameterName, resolvedParameterName);
+    return resolvedParameterName;
+  }
+
+  hasParameter(parameterName) {
+    return Boolean(this.resolveParameterName(parameterName));
+  }
+
+  getResolvedParameterId(parameterName) {
+    const resolvedParameterName = this.resolveParameterName(parameterName);
+    return resolvedParameterName ? this.getId(resolvedParameterName) : null;
   }
 
   setExpressionValues(expressionValues, mouthOpenY) {
@@ -174,8 +226,12 @@ class CubismCanvasModel {
       if (!this.hasParameter(parameterName)) {
         return items;
       }
+      const parameterId = this.getResolvedParameterId(parameterName);
+      if (!parameterId) {
+        return items;
+      }
       items.push(
-        new this.runtime.BreathParameterData(this.getId(parameterName), offset, peak, cycle, weight),
+        new this.runtime.BreathParameterData(parameterId, offset, peak, cycle, weight),
       );
       return items;
     }, []);
@@ -325,10 +381,11 @@ class CubismCanvasModel {
       if ((parameterName === 'ParamEyeLOpen' || parameterName === 'ParamEyeROpen') && this.userModel?._eyeBlink) {
         return;
       }
-      if (!this.hasParameter(parameterName)) {
+      const parameterId = this.getResolvedParameterId(parameterName);
+      if (!parameterId) {
         return;
       }
-      model.setParameterValueById(this.getId(parameterName), value);
+      model.setParameterValueById(parameterId, value);
     });
 
     if (this.lipSyncIds.length > 0) {
@@ -338,8 +395,9 @@ class CubismCanvasModel {
       return;
     }
 
-    if (this.hasParameter('ParamMouthOpenY')) {
-      model.setParameterValueById(this.getId('ParamMouthOpenY'), this.mouthOpenY);
+    const mouthParameterId = this.getResolvedParameterId('ParamMouthOpenY');
+    if (mouthParameterId) {
+      model.setParameterValueById(mouthParameterId, this.mouthOpenY);
     }
   }
 
@@ -416,6 +474,7 @@ class CubismCanvasModel {
     this.textureIds = [];
     this.motionCache.clear();
     this.parameterIdCache.clear();
+    this.resolvedParameterNameCache.clear();
 
     if (this.modelSetting?.release) {
       this.modelSetting.release();

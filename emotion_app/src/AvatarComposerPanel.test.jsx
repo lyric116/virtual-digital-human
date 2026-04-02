@@ -23,10 +23,10 @@ function renderAvatarPanel(overrides = {}) {
     <AvatarComposerPanel
       activeMessage={1}
       assistantAudioRef={{ current: null }}
+      avatarProfile={getAvatarProfile('companion_female_01')}
       avatarMouthState="closed"
       avatarSpeechState="idle"
       canSubmitText
-      effectiveAvatarProfile={getAvatarProfile('companion_female_01')}
       handleMicAction={jest.fn()}
       inputText="hello"
       latestAssistantMessage={{ content_text: 'assistant reply' }}
@@ -48,12 +48,34 @@ test('renders companion A through Live2D with fallback in jsdom', () => {
 
   const assistantSurface = screen.getByTestId('assistant-avatar-surface');
   expect(assistantSurface.querySelector('[data-live2d-state="fallback"]')).toBeInTheDocument();
+  expect(assistantSurface.querySelector('[data-avatar-fallback-profile="companion"]')).toBeInTheDocument();
 });
 
-test('keeps role B on the legacy svg renderer', () => {
-  renderAvatarPanel({ effectiveAvatarProfile: getAvatarProfile('coach_male_01') });
+test('renders role B through Live2D with the coach fallback surface in jsdom', () => {
+  renderAvatarPanel({ avatarProfile: getAvatarProfile('coach_male_01') });
 
   const assistantSurface = screen.getByTestId('assistant-avatar-surface');
-  expect(assistantSurface.querySelector('[data-live2d-state]')).not.toBeInTheDocument();
-  expect(assistantSurface.querySelector('svg')).toBeInTheDocument();
+  expect(assistantSurface.querySelector('[data-live2d-state="fallback"]')).toBeInTheDocument();
+  expect(assistantSurface.querySelector('[data-avatar-fallback-profile="coach"]')).toBeInTheDocument();
+});
+
+test('renders any avatar profile through Live2D when the profile provides model config', () => {
+  renderAvatarPanel({
+    avatarProfile: {
+      ...getAvatarProfile('coach_male_01'),
+      renderKind: 'live2d',
+      live2dCorePath: '/live2d/live2dcubismcore.min.js',
+      live2dModelPath: '/live2d/chitose/chitose.model3.json',
+      live2dFitOptions: {
+        logicalHeight: 4.52,
+        centerX: 1.16,
+        centerY: 0.28,
+        offsetX: 0,
+        offsetY: 0,
+      },
+    },
+  });
+
+  const assistantSurface = screen.getByTestId('assistant-avatar-surface');
+  expect(assistantSurface.querySelector('[data-live2d-state="fallback"]')).toBeInTheDocument();
 });

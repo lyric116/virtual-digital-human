@@ -3,13 +3,79 @@ import { MessageCircleHeart, Mic, Send, User } from 'lucide-react';
 import { formatDurationMs, resolveAvatarExpressionPreset } from './appHelpers';
 import Live2DAvatar from './Live2DAvatar';
 
+function AvatarFallbackMouth({ avatarMouthState }) {
+  if (avatarMouthState === 'wide') {
+    return <ellipse cx="100" cy="101" rx="10" ry="6" fill="#B38A78" />;
+  }
+  if (avatarMouthState === 'round') {
+    return <ellipse cx="100" cy="101" rx="6" ry="7" fill="#B38A78" />;
+  }
+  if (avatarMouthState === 'small') {
+    return <ellipse cx="100" cy="101" rx="7" ry="4" fill="#B38A78" />;
+  }
+  return <path d="M92 100Q100 102 108 100" stroke="#B38A78" strokeWidth="2" strokeLinecap="round" />;
+}
+
+function AssistantAvatarFallback({
+  avatarMouthState,
+  avatarSpeechState,
+  profileId,
+}) {
+  if (profileId === 'coach') {
+    return (
+      <svg
+        width="200"
+        height="240"
+        viewBox="0 0 200 240"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        data-testid="assistant-avatar-fallback"
+        data-avatar-fallback-profile="coach"
+      >
+        <path d="M32 240C32 168 58 126 100 126C142 126 168 168 168 240H32Z" fill={avatarSpeechState === 'speaking' ? '#E4EEF8' : '#EDF2F7'} />
+        <path d="M46 240C46 182 66 145 100 145C134 145 154 182 154 240H46Z" fill="#5D748C" fillOpacity={avatarSpeechState === 'speaking' ? '0.2' : '0.12'} />
+        <rect x="85" y="105" width="30" height="40" rx="10" fill="#F2D6C2"/>
+        <rect x="65" y="36" width="70" height="85" rx="34" fill="#F2D6C2"/>
+        <path d="M60 66C60 34 78 20 100 20C122 20 140 34 140 66C140 84 136 96 128 102C124 82 114 68 100 68C86 68 76 82 72 102C64 96 60 84 60 66Z" fill="#3E4955"/>
+        <path d="M74 56C82 42 90 36 100 36C110 36 118 42 126 56" stroke="#3E4955" strokeWidth="10" strokeLinecap="round"/>
+        <path d="M79 81Q85 79 91 81" stroke="#2F3842" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M109 81Q115 79 121 81" stroke="#2F3842" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M84 93Q92 88 96 93" stroke="#2F3842" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M104 93Q108 88 116 93" stroke="#2F3842" strokeWidth="2" strokeLinecap="round"/>
+        <AvatarFallbackMouth avatarMouthState={avatarMouthState} />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      width="200"
+      height="240"
+      viewBox="0 0 200 240"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      data-testid="assistant-avatar-fallback"
+      data-avatar-fallback-profile="companion"
+    >
+      <path d="M30 240C30 170 55 130 100 130C145 130 170 170 170 240H30Z" fill={avatarSpeechState === 'speaking' ? '#DFF4EE' : '#E8F3EE'}/>
+      <path d="M45 240C45 180 65 145 100 145C135 145 155 180 155 240H45Z" fill="#6B9080" fillOpacity={avatarSpeechState === 'speaking' ? '0.18' : '0.1'}/>
+      <rect x="85" y="105" width="30" height="40" rx="10" fill="#FCE5D0"/>
+      <rect x="65" y="35" width="70" height="85" rx="35" fill="#FCE5D0"/>
+      <path d="M60 65C60 30 75 20 100 20C125 20 140 30 140 65C140 85 135 95 130 100C125 80 115 65 100 65C85 65 75 80 70 100C65 95 60 85 60 65Z" fill="#5C4D42"/>
+      <path d="M80 80Q85 82 90 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M110 80Q115 82 120 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
+      <AvatarFallbackMouth avatarMouthState={avatarMouthState} />
+    </svg>
+  );
+}
+
 export default function AvatarComposerPanel({
   activeMessage,
   assistantAudioRef,
+  avatarProfile,
   avatarMouthState,
   avatarSpeechState,
   canSubmitText,
-  effectiveAvatarProfile,
   handleMicAction,
   inputText,
   latestAssistantMessage,
@@ -28,36 +94,24 @@ export default function AvatarComposerPanel({
     emotion: latestAssistantMessage?.metadata?.emotion,
   });
 
-  const shouldRenderAssistantLive2D = effectiveAvatarProfile?.avatarId === 'companion_female_01'
-    && effectiveAvatarProfile?.renderKind === 'live2d'
-    && effectiveAvatarProfile?.live2dModelPath;
-  const assistantLive2DFitOptions = useMemo(() => ({
-    logicalHeight: 4.52,
-    centerX: 1.16,
-    centerY: 0.28,
-    offsetX: 0,
-    offsetY: 0,
-  }), []);
+  const shouldRenderAssistantLive2D = avatarProfile?.renderKind === 'live2d'
+    && avatarProfile?.live2dModelPath;
+  const assistantLive2DFitOptions = useMemo(() => (
+    avatarProfile?.live2dFitOptions || {
+      logicalHeight: 4.52,
+      centerX: 1.16,
+      centerY: 0.28,
+      offsetX: 0,
+      offsetY: 0,
+    }
+  ), [avatarProfile]);
 
   const assistantAvatarFallback = (
-    <svg width="200" height="240" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M30 240C30 170 55 130 100 130C145 130 170 170 170 240H30Z" fill={avatarSpeechState === 'speaking' ? '#DFF4EE' : '#E8F3EE'}/>
-      <path d="M45 240C45 180 65 145 100 145C135 145 155 180 155 240H45Z" fill="#6B9080" fillOpacity={avatarSpeechState === 'speaking' ? '0.18' : '0.1'}/>
-      <rect x="85" y="105" width="30" height="40" rx="10" fill="#FCE5D0"/>
-      <rect x="65" y="35" width="70" height="85" rx="35" fill="#FCE5D0"/>
-      <path d="M60 65C60 30 75 20 100 20C125 20 140 30 140 65C140 85 135 95 130 100C125 80 115 65 100 65C85 65 75 80 70 100C65 95 60 85 60 65Z" fill="#5C4D42"/>
-      <path d="M80 80Q85 82 90 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M110 80Q115 82 120 80" stroke="#4A3D34" strokeWidth="2" strokeLinecap="round"/>
-      {avatarMouthState === 'wide' ? (
-        <ellipse cx="100" cy="101" rx="10" ry="6" fill="#B38A78" />
-      ) : avatarMouthState === 'round' ? (
-        <ellipse cx="100" cy="101" rx="6" ry="7" fill="#B38A78" />
-      ) : avatarMouthState === 'small' ? (
-        <ellipse cx="100" cy="101" rx="7" ry="4" fill="#B38A78" />
-      ) : (
-        <path d="M92 100Q100 102 108 100" stroke="#B38A78" strokeWidth="2" strokeLinecap="round"/>
-      )}
-    </svg>
+    <AssistantAvatarFallback
+      avatarMouthState={avatarMouthState}
+      avatarSpeechState={avatarSpeechState}
+      profileId={avatarProfile?.profileId}
+    />
   );
 
   return (
@@ -92,26 +146,27 @@ export default function AvatarComposerPanel({
 
         <div className="absolute right-0 md:right-10 bottom-0 animate-breathe-delayed" data-testid="assistant-avatar-surface">
           <div className="absolute left-20 md:left-[98px] top-[84px] md:top-[132px] z-10 rounded-2xl bg-white/80 border border-[#F0E5D8] px-4 py-3 text-center shadow-sm min-w-[160px]">
-            <div className="text-sm font-semibold text-[#5C4D42]">{effectiveAvatarProfile.label}</div>
-            <div className="mt-1 text-xs text-[#8C7A6B]">{effectiveAvatarProfile.stageNote}</div>
+            <div className="text-sm font-semibold text-[#5C4D42]">{avatarProfile.label}</div>
+            <div className="mt-1 text-xs text-[#8C7A6B]">{avatarProfile.stageNote}</div>
           </div>
           <div className={`absolute -left-2 md:-left-[148px] top-[132px] md:top-[166px] z-10 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 max-w-[220px] md:max-w-[236px] transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
             <p className="text-sm md:text-base text-[#5C4D42] leading-relaxed">
               {latestAssistantMessage?.content_text || t.bubble2}
             </p>
             <div className="mt-2 text-[11px] text-[#8C7A6B]">
-              {effectiveAvatarProfile.label}
+              {avatarProfile.label}
             </div>
           </div>
           {shouldRenderAssistantLive2D ? (
             <Live2DAvatar
+              key={avatarProfile.avatarId}
               className="w-[330px] h-[370px] md:w-[380px] md:h-[500px]"
-              corePath={effectiveAvatarProfile.live2dCorePath}
+              corePath={avatarProfile.live2dCorePath}
               expressionPreset={avatarExpressionPreset}
               fallback={assistantAvatarFallback}
               fitOptions={assistantLive2DFitOptions}
-              idleMotion={effectiveAvatarProfile.live2dIdleMotion}
-              modelPath={effectiveAvatarProfile.live2dModelPath}
+              idleMotion={avatarProfile.live2dIdleMotion}
+              modelPath={avatarProfile.live2dModelPath}
               mouthState={avatarMouthState}
               speechState={avatarSpeechState}
             />

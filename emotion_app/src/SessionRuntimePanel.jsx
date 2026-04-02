@@ -35,6 +35,8 @@ export default function SessionRuntimePanel({
   const hasActiveSession = Boolean(sessionSummary?.session_id);
   const showsSeparateError = sessionErrorMessage && sessionErrorMessage !== sessionStatusMessage;
   const hasSupplementaryPanel = React.Children.count(children) > 0;
+  const hasPendingAvatarSwitch = hasActiveSession
+    && selectedAvatarId !== effectiveAvatarProfile?.avatarId;
 
   return (
     <section className="bg-white/85 backdrop-blur-sm p-5 rounded-3xl border border-[#F0E5D8] shadow-sm flex flex-col gap-4">
@@ -109,9 +111,16 @@ export default function SessionRuntimePanel({
               })}
             </div>
             <div className="mt-2 text-xs text-[#8C7A6B]">
-              {hasActiveSession
-                ? `${t.activeAvatarPrefix}${effectiveAvatarProfile?.label}`
-                : `${t.nextAvatarPrefix}${selectedAvatarProfile?.label}`}
+              {hasPendingAvatarSwitch ? (
+                <>
+                  <div>{`${t.activeAvatarPrefix}${effectiveAvatarProfile?.label}`}</div>
+                  <div>{`${t.nextAvatarPrefix}${selectedAvatarProfile?.label}`}</div>
+                </>
+              ) : (
+                hasActiveSession
+                  ? `${t.activeAvatarPrefix}${effectiveAvatarProfile?.label}`
+                  : `${t.nextAvatarPrefix}${selectedAvatarProfile?.label}`
+              )}
             </div>
           </div>
 
