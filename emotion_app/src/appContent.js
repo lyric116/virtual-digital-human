@@ -528,9 +528,9 @@ export const avatarProfiles = {
   companion_female_01: {
     avatarId: 'companion_female_01',
     profileId: 'companion',
-    label: '莉莉',
+    label: '陪伴角色 A',
     meta: '温和、稳定、陪你慢慢说',
-    stageNote: '愿您美好心情每一天~',
+    stageNote: '更适合温和接住情绪、慢慢展开对话。',
     idleDetail: '陪伴角色已准备好开始回应。',
     speakingDetail: '陪伴角色正在温和回应。',
     voicePreview: 'zh-CN-XiaoxiaoNeural',

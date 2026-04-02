@@ -91,7 +91,7 @@ export default function AvatarComposerPanel({
         </div>
 
         <div className="absolute right-0 md:right-10 bottom-0 animate-breathe-delayed" data-testid="assistant-avatar-surface">
-          <div className="absolute left-20 md:left-[98px] top-[84px] md:top-[132px] z-10 rounded-2xl bg-white/80 border border-[#F0E5D8] px-4 py-3 text-center shadow-sm min-w-[160px]">
+          <div className="absolute left-20 md:left-[68px] top-[84px] md:top-[132px] z-10 rounded-2xl bg-white/80 border border-[#F0E5D8] px-4 py-3 text-center shadow-sm min-w-[220px]">
             <div className="text-sm font-semibold text-[#5C4D42]">{effectiveAvatarProfile.label}</div>
             <div className="mt-1 text-xs text-[#8C7A6B]">{effectiveAvatarProfile.stageNote}</div>
           </div>
