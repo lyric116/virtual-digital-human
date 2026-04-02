@@ -20,3 +20,5 @@ tmp_logs/
 /.playwright-cli
 /.playwright/
 /playwright-cli.json
+
+/node_modules/
