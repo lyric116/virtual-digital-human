@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
 const originalMediaDevices = navigator.mediaDevices;
@@ -269,13 +269,13 @@ function getConversationMessageTexts() {
 
 async function openCameraModal() {
   await act(async () => {
-    fireEvent.click(screen.getAllByRole('button', { name: /摄像头预览|camera preview/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /摄像头预览|camera preview/i }));
   });
 }
 
 async function openMicTestModal() {
   await act(async () => {
-    fireEvent.click(screen.getAllByRole('button', { name: /麦克风调试|mic debug|mikrofontest|test micro/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /麦克风调试|mic debug|mikrofontest|test micro/i }));
   });
 }
 
@@ -334,34 +334,9 @@ test('renders the base experience with timeline hidden by default', () => {
   expect(screen.getByText('和光心苑')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /创建会话|create session/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /时光记录|time log/i })).toBeInTheDocument();
-  expect(screen.getAllByRole('button', { name: /摄像头预览|camera preview/i }).length).toBeGreaterThan(0);
+  expect(screen.getByRole('button', { name: /摄像头预览|camera preview/i })).toBeInTheDocument();
   expect(screen.queryByText(/^对话记录$|^Conversation$/i)).not.toBeInTheDocument();
 
-});
-
-test('session runtime panel camera and mic controls open the same debug modals', async () => {
-  installMockCameraEnvironment();
-
-  render(<App appConfig={appConfig} />);
-
-  const runtimeSection = screen
-    .getByText(/开始一段陪伴式对话|start a gentle conversation/i)
-    .closest('section');
-  expect(runtimeSection).not.toBeNull();
-
-  await act(async () => {
-    fireEvent.click(within(runtimeSection).getByRole('button', { name: /摄像头预览|camera preview/i }));
-  });
-  expect(screen.getByRole('heading', { name: /摄像头预览|camera check/i })).toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole('button', { name: /完成|done/i }));
-  await waitFor(() => expect(screen.queryByRole('heading', { name: /摄像头预览|camera check/i })).not.toBeInTheDocument());
-
-  await act(async () => {
-    fireEvent.click(within(runtimeSection).getByRole('button', { name: /麦克风调试|mic debug|mikrofontest|test micro/i }));
-  });
-  expect(screen.getByRole('heading', { name: /麦克风调试|mic debug|mikrofontest|test micro/i })).toBeInTheDocument();
-  expect(screen.getByText(/这里只用于调试麦克风，不会发送成一轮对话|microphone debugging only/i)).toBeInTheDocument();
 });
 
 test('create session connects websocket with the expected url', async () => {
@@ -600,9 +575,9 @@ test('camera close hides the preview card, supports adjust reopen, and restores 
   await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).includes('/video/frame'))).toBe(true));
   await closeCameraModal();
 
-  await waitFor(() => expect(screen.getAllByRole('button', { name: /调整设置|adjust settings/i })).toHaveLength(1));
+  await waitFor(() => expect(screen.getByRole('button', { name: /调整设置|adjust settings/i })).toBeInTheDocument());
 
-  fireEvent.click(screen.getAllByRole('button', { name: /调整设置|adjust settings/i })[0]);
+  fireEvent.click(screen.getByRole('button', { name: /调整设置|adjust settings/i }));
   await waitFor(() => expect(screen.getByRole('button', { name: /关闭预览|turn off preview/i })).toBeInTheDocument());
   await closeCameraModal();
 
@@ -611,12 +586,12 @@ test('camera close hides the preview card, supports adjust reopen, and restores 
   });
 
   await act(async () => {
-    fireEvent.click(screen.getAllByTitle(/取消|cancel/i)[0]);
+    fireEvent.click(screen.getByTitle(/取消|cancel/i));
   });
 
   await waitFor(() => expect(track.stop).toHaveBeenCalled());
-  await waitFor(() => expect(screen.queryAllByRole('button', { name: /调整设置|adjust settings/i })).toHaveLength(0));
-  expect(screen.getAllByRole('button', { name: /摄像头预览|camera preview/i }).length).toBeGreaterThan(0);
+  await waitFor(() => expect(screen.queryByRole('button', { name: /调整设置|adjust settings/i })).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: /摄像头预览|camera preview/i })).toBeInTheDocument();
 });
 
 test('camera denial keeps the default entry and does not upload frames', async () => {
@@ -629,7 +604,7 @@ test('camera denial keeps the default entry and does not upload frames', async (
 
   await waitFor(() => expect(screen.getAllByText(/无法访问摄像头|cannot access camera/i).length).toBeGreaterThan(0));
   expect(fetch.mock.calls.some(([url]) => String(url).includes('/video/frame'))).toBe(false);
-  expect(screen.queryAllByRole('button', { name: /调整设置|adjust settings/i })).toHaveLength(0);
+  expect(screen.queryByRole('button', { name: /调整设置|adjust settings/i })).not.toBeInTheDocument();
 });
 
 test('camera preview stays local-only without a session and can reopen after close', async () => {
@@ -642,14 +617,14 @@ test('camera preview stays local-only without a session and can reopen after clo
   expect(fetch.mock.calls.some(([url]) => String(url).includes('/video/frame'))).toBe(false);
   await closeCameraModal();
 
-  await waitFor(() => expect(screen.getAllByRole('button', { name: /调整设置|adjust settings/i })).toHaveLength(1));
+  await waitFor(() => expect(screen.getByRole('button', { name: /调整设置|adjust settings/i })).toBeInTheDocument());
 
   await act(async () => {
-    fireEvent.click(screen.getAllByTitle(/取消|cancel/i)[0]);
+    fireEvent.click(screen.getByTitle(/取消|cancel/i));
   });
 
   await waitFor(() => expect(track.stop).toHaveBeenCalled());
-  await waitFor(() => expect(screen.getAllByRole('button', { name: /摄像头预览|camera preview/i }).length).toBeGreaterThan(0));
+  await waitFor(() => expect(screen.getByRole('button', { name: /摄像头预览|camera preview/i })).toBeInTheDocument());
 
   await openCameraModal();
   await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
@@ -760,95 +735,6 @@ test('upper mic button streams local mic debug transcript without submitting a c
   expect(fetch.mock.calls.filter(([url]) => String(url).includes('/api/asr/stream/preview')).length).toBeGreaterThanOrEqual(2);
   expect(fetch.mock.calls.some(([url, options]) => String(url).includes('/api/asr/stream/release') && options?.method === 'POST')).toBe(true);
   expect(latestDebugRecordingId).toBeTruthy();
-});
-
-test('upper mic button keeps the last meaningful transcript when the final preview only returns punctuation', async () => {
-  const getUserMedia = jest.fn().mockResolvedValue({
-    getTracks: () => [{ stop: jest.fn() }],
-  });
-  const mediaRecorderListeners = new Map();
-  const mediaRecorderStop = jest.fn(() => {
-    mediaRecorder.state = 'inactive';
-    mediaRecorderListeners.get('dataavailable')?.({ data: new Blob(['audio-final'], { type: 'audio/webm' }) });
-    mediaRecorderListeners.get('stop')?.();
-  });
-  const mediaRecorder = {
-    state: 'inactive',
-    start: jest.fn(() => {
-      mediaRecorder.state = 'recording';
-    }),
-    stop: mediaRecorderStop,
-    addEventListener: jest.fn((type, listener) => {
-      mediaRecorderListeners.set(type, listener);
-    }),
-  };
-
-  setMediaDevices({ getUserMedia });
-  window.MediaRecorder = jest.fn(() => mediaRecorder);
-  fetch.mockImplementation((url) => {
-    const requestUrl = String(url);
-    if (requestUrl.includes('/internal/affect/analyze')) {
-      return Promise.resolve(jsonResponse(buildAffectPayload()));
-    }
-    if (requestUrl.includes('/api/asr/stream/preview')) {
-      const requestObject = new URL(requestUrl);
-      const previewSeq = requestObject.searchParams.get('preview_seq');
-      return Promise.resolve(jsonResponse({
-        request_id: `asr_preview_keep_text_${previewSeq}`,
-        session_id: 'mic_debug',
-        recording_id: requestObject.searchParams.get('recording_id'),
-        preview_seq: Number(previewSeq),
-        provider: 'dashscope',
-        model: 'qwen3-asr-flash',
-        transcript_text: previewSeq === '1' ? '测试麦克风转写成功' : '。',
-        transcript_language: 'zh',
-        duration_ms: 500,
-        confidence_mean: previewSeq === '1' ? 0.93 : 0.12,
-        confidence_available: true,
-        audio: {
-          filename: 'mic-debug.webm',
-          content_type: 'audio/webm',
-          byte_size: 128,
-        },
-        generated_at: `2026-03-19T09:10:0${previewSeq}Z`,
-        stream_created: previewSeq === '1',
-        stream_updated_at: `2026-03-19T09:10:0${previewSeq}Z`,
-      }));
-    }
-    if (requestUrl.includes('/api/asr/stream/release')) {
-      return Promise.resolve(jsonResponse({
-        request_id: 'asr_stream_release_002',
-        session_id: 'mic_debug',
-        recording_id: new URL(requestUrl).searchParams.get('recording_id'),
-        released: true,
-        reason: 'released',
-        released_at: '2026-03-19T09:10:03Z',
-      }));
-    }
-    throw new Error(`Unexpected fetch URL: ${requestUrl}`);
-  });
-
-  render(<App appConfig={appConfig} />);
-  await openMicTestModal();
-
-  fireEvent.click(screen.getByRole('button', { name: /开始测试|start test/i }));
-
-  await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
-  await waitFor(() => expect(screen.getByRole('button', { name: /结束测试|stop test/i })).toBeInTheDocument());
-  act(() => {
-    mediaRecorderListeners.get('dataavailable')?.({ data: new Blob(['audio-preview-1'], { type: 'audio/webm' }) });
-    mediaRecorderListeners.get('dataavailable')?.({ data: new Blob(['audio-preview-2'], { type: 'audio/webm' }) });
-  });
-  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
-    expect.stringContaining('/api/asr/stream/preview'),
-    expect.objectContaining({ method: 'POST' }),
-  ));
-
-  fireEvent.click(screen.getByRole('button', { name: /结束测试|stop test/i }));
-
-  await waitFor(() => expect(mediaRecorderStop).toHaveBeenCalled());
-  await waitFor(() => expect(screen.getByText('测试麦克风转写成功')).toBeInTheDocument());
-  expect(screen.queryByText(/^。$|^\.$/)).not.toBeInTheDocument();
 });
 
 test('affect panel shows calm default copy before any affect input arrives', () => {

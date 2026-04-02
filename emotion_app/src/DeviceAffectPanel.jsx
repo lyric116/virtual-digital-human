@@ -13,39 +13,7 @@ export default function DeviceAffectPanel({
   onOpenMicModal,
   replayLocked,
   t,
-  variant = 'full',
 }) {
-  const emotionPanel = (
-    <div className="bg-gradient-to-br from-[#FFFBF5] to-[#FFF5EB] p-6 rounded-3xl border border-[#F0E5D8] shadow-sm flex h-full flex-col justify-center relative overflow-hidden min-h-[220px]">
-      <Heart className="absolute -right-4 -bottom-4 text-orange-100 opacity-50" size={120} />
-      <div className="relative z-10">
-        <h3 className="text-sm font-medium text-[#8C7A6B] flex items-center gap-2 mb-3">
-          <Sparkles size={16} /> {t.emoTitle}
-        </h3>
-        <div className="flex items-end gap-4 flex-wrap">
-          <span className="text-4xl font-bold text-[#D97757] tracking-wider">
-            {displayedEmotionLabel}
-          </span>
-          <span className="text-sm text-[#8C7A6B] mb-1 bg-white/60 px-3 py-1 rounded-full">
-            {displayedEmotionDetail}
-          </span>
-        </div>
-        <p className="mt-4 text-[#5C4D42] text-sm leading-relaxed italic">
-          {displayedEmotionQuote}
-        </p>
-        {affectSnapshot.fusion.conflict ? (
-          <div className="mt-4 rounded-2xl bg-red-50 px-3 py-2 border border-red-100 text-sm text-[#5C4D42]">
-            {affectSnapshot.fusion.conflictReason || t.emotionConflictFallback}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-
-  if (variant === 'emotionOnly') {
-    return emotionPanel;
-  }
-
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
       <div className="md:col-span-1 flex flex-col gap-4">
@@ -109,7 +77,28 @@ export default function DeviceAffectPanel({
       </div>
 
       <div className="md:col-span-3">
-        {emotionPanel}
+        <div className="bg-gradient-to-br from-[#FFFBF5] to-[#FFF5EB] p-6 rounded-3xl border border-[#F0E5D8] shadow-sm flex flex-col justify-center relative overflow-hidden min-h-[220px]">
+          <Heart className="absolute -right-4 -bottom-4 text-orange-100 opacity-50" size={120} />
+          <div className="relative z-10">
+            <h3 className="text-sm font-medium text-[#8C7A6B] flex items-center gap-2 mb-3">
+              <Sparkles size={16} /> {t.emoTitle}
+            </h3>
+            <div className="flex items-end gap-4 flex-wrap">
+              <span className="text-4xl font-bold text-[#D97757] tracking-wider">{displayedEmotionLabel}</span>
+              <span className="text-sm text-[#8C7A6B] mb-1 bg-white/60 px-3 py-1 rounded-full">
+                {displayedEmotionDetail}
+              </span>
+            </div>
+            <p className="mt-4 text-[#5C4D42] text-sm leading-relaxed italic">
+              {displayedEmotionQuote}
+            </p>
+            {affectSnapshot.fusion.conflict ? (
+              <div className="mt-4 rounded-2xl bg-red-50 px-3 py-2 border border-red-100 text-sm text-[#5C4D42]">
+                {affectSnapshot.fusion.conflictReason || t.emotionConflictFallback}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
     </div>
   );

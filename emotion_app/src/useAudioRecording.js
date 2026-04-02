@@ -12,36 +12,6 @@ import {
   createRecordingId,
 } from './appHelpers';
 
-const INFORMATIVE_TRANSCRIPT_PATTERN = /[A-Za-z0-9_\u00C0-\u024F\u4E00-\u9FFF]/gu;
-
-function countInformativeTranscriptChars(value) {
-  return (value.match(INFORMATIVE_TRANSCRIPT_PATTERN) || []).length;
-}
-
-function mergeDebugTranscript(currentText, nextText) {
-  const current = typeof currentText === 'string' ? currentText.trim() : '';
-  const next = typeof nextText === 'string' ? nextText.trim() : '';
-
-  if (!next) {
-    return { text: current, useIncoming: false };
-  }
-  if (!current) {
-    return { text: next, useIncoming: true };
-  }
-
-  const currentInformativeChars = countInformativeTranscriptChars(current);
-  const nextInformativeChars = countInformativeTranscriptChars(next);
-
-  if (nextInformativeChars === 0 && currentInformativeChars > 0) {
-    return { text: current, useIncoming: false };
-  }
-  if (nextInformativeChars < currentInformativeChars) {
-    return { text: current, useIncoming: false };
-  }
-
-  return { text: next, useIncoming: true };
-}
-
 export function useAudioRecording({
   activeSessionId,
   audioUploadState,
@@ -272,35 +242,23 @@ export function useAudioRecording({
           ? previewPayload.transcript_text.trim()
           : '';
         const generatedAt = previewPayload?.generated_at || new Date().toISOString();
-        const nextLanguage = typeof previewPayload?.transcript_language === 'string'
-          ? previewPayload.transcript_language
-          : null;
-        const nextConfidence = typeof previewPayload?.confidence_mean === 'number'
-          ? previewPayload.confidence_mean
-          : null;
-        setPartialTranscriptState((previousState) => {
-          const mergedTranscript = mergeDebugTranscript(previousState.text, transcriptText);
-          return {
-            status: mergedTranscript.text ? 'streaming' : 'idle',
-            text: mergedTranscript.text,
-            previewSeq,
-            recordingId: currentRecordingIdRef.current,
-            updatedAt: mergedTranscript.useIncoming ? generatedAt : (previousState.updatedAt || generatedAt),
-            language: mergedTranscript.useIncoming ? nextLanguage : previousState.language,
-            confidence: mergedTranscript.useIncoming ? nextConfidence : previousState.confidence,
-          };
+        setPartialTranscriptState({
+          status: transcriptText ? 'streaming' : 'idle',
+          text: transcriptText,
+          previewSeq,
+          recordingId: currentRecordingIdRef.current,
+          updatedAt: generatedAt,
+          language: typeof previewPayload?.transcript_language === 'string' ? previewPayload.transcript_language : null,
+          confidence: typeof previewPayload?.confidence_mean === 'number' ? previewPayload.confidence_mean : null,
         });
-        setFinalTranscriptState((previousState) => {
-          const mergedTranscript = mergeDebugTranscript(previousState.text, transcriptText);
-          return {
-            text: mergedTranscript.text,
-            messageId: null,
-            sourceKind: 'test_audio',
-            recordingId: currentRecordingIdRef.current,
-            updatedAt: mergedTranscript.useIncoming ? generatedAt : (previousState.updatedAt || generatedAt),
-            language: mergedTranscript.useIncoming ? nextLanguage : previousState.language,
-            confidence: mergedTranscript.useIncoming ? nextConfidence : previousState.confidence,
-          };
+        setFinalTranscriptState({
+          text: transcriptText,
+          messageId: null,
+          sourceKind: 'test_audio',
+          recordingId: currentRecordingIdRef.current,
+          updatedAt: generatedAt,
+          language: typeof previewPayload?.transcript_language === 'string' ? previewPayload.transcript_language : null,
+          confidence: typeof previewPayload?.confidence_mean === 'number' ? previewPayload.confidence_mean : null,
         });
       } else {
         await requestAudioPreview(runtimeConfig.apiBaseUrl, activeSessionId, {
