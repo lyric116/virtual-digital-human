@@ -22,6 +22,7 @@ export function useCameraAffect({
   isCameraModalOpen,
   mainVideoRef,
   modalVideoRef,
+  sessionRuntimeVideoRef,
   nextVideoFrameSeq,
   nextVideoFrameSeqRef,
   pendingSessionAffectReasonRef,
@@ -61,10 +62,19 @@ export function useCameraAffect({
     }
   }, [affectRefreshTimerRef]);
 
+  const getPreviewVideoElements = useCallback(() => {
+    const candidates = [
+      modalVideoRef.current,
+      mainVideoRef.current,
+      sessionRuntimeVideoRef?.current,
+    ];
+    return candidates.filter((element, index) => element && candidates.indexOf(element) === index);
+  }, [mainVideoRef, modalVideoRef, sessionRuntimeVideoRef]);
+
   const teardownCamera = useCallback((stopTracks = true) => {
     clearCameraFrameTimer();
 
-    [modalVideoRef.current, mainVideoRef.current].forEach((videoElement) => {
+    getPreviewVideoElements().forEach((videoElement) => {
       if (!videoElement) {
         return;
       }
@@ -89,7 +99,7 @@ export function useCameraAffect({
       });
       cameraStreamRef.current = null;
     }
-  }, [cameraStreamRef, clearCameraFrameTimer, mainVideoRef, modalVideoRef]);
+  }, [cameraStreamRef, clearCameraFrameTimer, getPreviewVideoElements]);
 
   const pushAffectHistory = useCallback((snapshot) => {
     if (!snapshot || snapshot.fusion?.emotionState === 'pending') {
@@ -306,7 +316,7 @@ export function useCameraAffect({
   }, [activeSessionId, cameraStateRef, cameraStreamRef, scheduleAffectRefresh, setCameraPermissionMessage, setCameraPermissionState, setCameraPreviewMessage, setCameraState]);
 
   const buildVideoFramePayload = useCallback(async () => {
-    const videoElement = modalVideoRef.current || mainVideoRef.current;
+    const [videoElement] = getPreviewVideoElements();
     const fallbackWidth = videoElement?.videoWidth || 640;
     const fallbackHeight = videoElement?.videoHeight || 360;
     const BlobCtor = window?.Blob || Blob;
@@ -355,7 +365,7 @@ export function useCameraAffect({
       width: fallbackWidth,
       height: fallbackHeight,
     };
-  }, [cameraCanvasRef, cameraStateRef, mainVideoRef, modalVideoRef, nextVideoFrameSeqRef]);
+  }, [cameraCanvasRef, cameraStateRef, getPreviewVideoElements, nextVideoFrameSeqRef]);
 
   const uploadVideoFrame = useCallback(async (payload) => {
     if (!activeSessionId) {
@@ -424,13 +434,14 @@ export function useCameraAffect({
       return false;
     }
 
-    [modalVideoRef.current, mainVideoRef.current].forEach((videoElement) => {
+    const previewVideoElements = getPreviewVideoElements();
+    previewVideoElements.forEach((videoElement) => {
       if (videoElement && 'srcObject' in videoElement) {
         videoElement.srcObject = cameraStreamRef.current;
       }
     });
 
-    const videoElement = modalVideoRef.current || mainVideoRef.current;
+    const [videoElement] = previewVideoElements;
     if (videoElement && typeof videoElement.play === 'function') {
       try {
         await videoElement.play();
@@ -461,7 +472,7 @@ export function useCameraAffect({
       void captureAndUploadVideoFrame();
     }, runtimeConfig.videoFrameUploadIntervalMs);
     return true;
-  }, [activeSessionId, cameraFrameTimerRef, cameraStateRef, cameraStreamRef, captureAndUploadVideoFrame, clearCameraFrameTimer, mainVideoRef, modalVideoRef, nextVideoFrameSeqRef, requestCameraAccess, runtimeConfig.videoFrameUploadIntervalMs, scheduleAffectRefresh, setCameraPreviewMessage, setCameraState, setLastUploadedVideoFrameId, setLastVideoUploadedAt, setNextVideoFrameSeq, setUploadedVideoFrameCount, setVideoUploadMessage, setVideoUploadState]);
+  }, [activeSessionId, cameraFrameTimerRef, cameraStateRef, cameraStreamRef, captureAndUploadVideoFrame, clearCameraFrameTimer, getPreviewVideoElements, nextVideoFrameSeqRef, requestCameraAccess, runtimeConfig.videoFrameUploadIntervalMs, scheduleAffectRefresh, setCameraPreviewMessage, setCameraState, setLastUploadedVideoFrameId, setLastVideoUploadedAt, setNextVideoFrameSeq, setUploadedVideoFrameCount, setVideoUploadMessage, setVideoUploadState]);
 
   const stopCameraPreview = useCallback(() => {
     clearCameraFrameTimer();
@@ -513,13 +524,22 @@ export function useCameraAffect({
   }, [cameraModalAutoStartRef, isCameraModalOpen, requestCameraAccess, startCameraPreview]);
 
   useEffect(() => {
-    if (modalVideoRef.current && cameraStreamRef.current) {
-      modalVideoRef.current.srcObject = cameraStreamRef.current;
+    if (!cameraStreamRef.current) {
+      return;
     }
-    if (mainVideoRef.current && cameraStreamRef.current) {
-      mainVideoRef.current.srcObject = cameraStreamRef.current;
-    }
-  }, [cameraPermissionState, cameraState, cameraStreamRef, isCameraModalOpen, mainVideoRef, modalVideoRef]);
+
+    getPreviewVideoElements().forEach((videoElement) => {
+      if (!('srcObject' in videoElement)) {
+        return;
+      }
+      if (videoElement.srcObject !== cameraStreamRef.current) {
+        videoElement.srcObject = cameraStreamRef.current;
+      }
+      if (cameraState === 'previewing' && typeof videoElement.play === 'function') {
+        void videoElement.play().catch(() => {});
+      }
+    });
+  }, [cameraPermissionState, cameraState, cameraStreamRef, getPreviewVideoElements, isCameraModalOpen]);
 
   return {
     applyAffectSnapshot,

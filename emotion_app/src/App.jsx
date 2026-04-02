@@ -79,6 +79,7 @@ export default function App({ appConfig }) {
   const [nextVideoFrameSeq, setNextVideoFrameSeq] = useState(1);
   const modalVideoRef = useRef(null);
   const mainVideoRef = useRef(null);
+  const sessionRuntimeVideoRef = useRef(null);
   const autoRestoreAttemptedRef = useRef(false);
 
   // 麦克风状态管理
@@ -383,6 +384,7 @@ export default function App({ appConfig }) {
     isCameraModalOpen,
     mainVideoRef,
     modalVideoRef,
+    sessionRuntimeVideoRef,
     nextVideoFrameSeq,
     nextVideoFrameSeqRef,
     pendingSessionAffectReasonRef,
@@ -834,6 +836,7 @@ export default function App({ appConfig }) {
           />
         ) : (
           <SessionRuntimePanel
+            cameraState={cameraState}
             clearSession={clearSession}
             createSession={createSession}
             effectiveAvatarProfile={effectiveAvatarProfile}
@@ -841,8 +844,16 @@ export default function App({ appConfig }) {
             handleAvatarSelection={setSelectedAvatarId}
             hasReplayCache={hasReplayCache}
             interactionLocked={interactionLocked}
+            onCloseCameraPreview={() => {
+              stopCameraPreview();
+              setIsCameraModalOpen(false);
+            }}
+            onOpenCameraModal={() => setIsCameraModalOpen(true)}
+            onOpenMicModal={() => setIsMicModalOpen(true)}
             replayState={replayState}
+            replayLocked={replayLocked}
             restoreSession={restoreSession}
+            runtimeVideoRef={sessionRuntimeVideoRef}
             selectedAvatarId={selectedAvatarId}
             selectedAvatarProfile={selectedAvatarProfile}
             sessionErrorMessage={sessionErrorMessage}
@@ -854,25 +865,17 @@ export default function App({ appConfig }) {
             storedSessionNotice={storedSessionNotice}
             t={t}
             textSubmitState={textSubmitState}
-          />
+          >
+            <DeviceAffectPanel
+              affectSnapshot={affectSnapshot}
+              displayedEmotionDetail={displayedEmotionDetail}
+              displayedEmotionLabel={displayedEmotionLabel}
+              displayedEmotionQuote={displayedEmotionQuote}
+              t={t}
+              variant="emotionOnly"
+            />
+          </SessionRuntimePanel>
         )}
-
-        <DeviceAffectPanel
-          affectSnapshot={affectSnapshot}
-          cameraState={cameraState}
-          displayedEmotionDetail={displayedEmotionDetail}
-          displayedEmotionLabel={displayedEmotionLabel}
-          displayedEmotionQuote={displayedEmotionQuote}
-          mainVideoRef={mainVideoRef}
-          onCloseCameraPreview={() => {
-            stopCameraPreview();
-            setIsCameraModalOpen(false);
-          }}
-          onOpenCameraModal={() => setIsCameraModalOpen(true)}
-          onOpenMicModal={() => setIsMicModalOpen(true)}
-          replayLocked={replayLocked}
-          t={t}
-        />
 
         <AvatarComposerPanel
           activeMessage={activeMessage}
