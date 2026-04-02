@@ -1385,7 +1385,15 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
     module = load_gateway_module()
     repository = FakeSessionRepository()
     repository.user_turn_count = 3
-    connection_registry = module.ConnectionRegistry()
+
+    class RecordingConnectionRegistry:
+        def __init__(self) -> None:
+            self.enqueued: list[str] = []
+
+        async def enqueue_event(self, session_id: str, envelope: dict) -> None:
+            self.enqueued.append(envelope["event_type"])
+
+    connection_registry = RecordingConnectionRegistry()
     request = SimpleNamespace(
         app=SimpleNamespace(
             state=SimpleNamespace(
@@ -1395,6 +1403,51 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
             )
         )
     )
+    observed = {"before_summary": []}
+    affect_snapshot = module.AffectAnalyzeResponse(
+        session_id="sess_fake_001",
+        trace_id="trace_fake_001",
+        current_stage="assess",
+        generated_at=datetime.now(timezone.utc),
+        source_context=module.AffectSourceContext(
+            origin="test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn",
+            dataset="test",
+            record_id="record_test_summary_001",
+            note="test affect snapshot",
+        ),
+        text_result=module.AffectLaneResult(
+            status="ready",
+            label="anxious",
+            confidence=0.7,
+            evidence=[],
+            detail="text lane",
+        ),
+        audio_result=module.AffectLaneResult(
+            status="pending",
+            label="pending",
+            confidence=0.0,
+            evidence=[],
+            detail="audio lane",
+        ),
+        video_result=module.AffectLaneResult(
+            status="pending",
+            label="pending",
+            confidence=0.0,
+            evidence=[],
+            detail="video lane",
+        ),
+        fusion_result=module.AffectFusionResult(
+            emotion_state="anxious",
+            risk_level="medium",
+            confidence=0.7,
+            conflict=False,
+            conflict_reason="",
+            detail="fusion lane",
+        ),
+    )
+
+    def fake_request_affect_snapshot(settings, session, message):
+        return affect_snapshot
 
     def fake_request_dialogue_reply(
         settings,
@@ -1429,6 +1482,7 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
         previous_summary,
         recent_messages,
     ):
+        observed["before_summary"] = list(connection_registry.enqueued)
         assert user_turn_count == 3
         assert previous_summary is None
         assert len(recent_messages) >= 2
@@ -1445,6 +1499,7 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
         return func(*args, **kwargs)
 
     monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "request_affect_snapshot", fake_request_affect_snapshot)
     monkeypatch.setattr(module, "request_dialogue_reply", fake_request_dialogue_reply)
     monkeypatch.setattr(module, "request_dialogue_summary", fake_request_dialogue_summary)
 
@@ -1474,6 +1529,12 @@ def test_dispatch_pipeline_generates_dialogue_summary_every_third_user_turn(monk
         )
     )
 
+    assert observed["before_summary"] == ["message.accepted", "dialogue.reply"]
+    assert connection_registry.enqueued == [
+        "message.accepted",
+        "dialogue.reply",
+        "dialogue.summary.updated",
+    ]
     assert repository.summary_update_calls[0]["summary_payload"]["summary_text"].startswith("用户反复提到")
     assert repository.session_metadata["dialogue_summary"]["generated_from_message_id"] == "msg_assistant_003"
     assert repository.event_calls[-1]["event_type"] == "dialogue.summary.updated"

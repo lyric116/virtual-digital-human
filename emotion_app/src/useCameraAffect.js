@@ -22,6 +22,7 @@ export function useCameraAffect({
   isCameraModalOpen,
   mainVideoRef,
   modalVideoRef,
+  persistentVideoRef,
   sessionRuntimeVideoRef,
   nextVideoFrameSeq,
   nextVideoFrameSeqRef,
@@ -65,11 +66,12 @@ export function useCameraAffect({
   const getPreviewVideoElements = useCallback(() => {
     const candidates = [
       modalVideoRef.current,
+      persistentVideoRef?.current,
       mainVideoRef.current,
       sessionRuntimeVideoRef?.current,
     ];
     return candidates.filter((element, index) => element && candidates.indexOf(element) === index);
-  }, [mainVideoRef, modalVideoRef, sessionRuntimeVideoRef]);
+  }, [mainVideoRef, modalVideoRef, persistentVideoRef, sessionRuntimeVideoRef]);
 
   const teardownCamera = useCallback((stopTracks = true) => {
     clearCameraFrameTimer();

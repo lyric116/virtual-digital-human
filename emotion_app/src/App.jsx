@@ -79,6 +79,7 @@ export default function App({ appConfig }) {
   const [nextVideoFrameSeq, setNextVideoFrameSeq] = useState(1);
   const modalVideoRef = useRef(null);
   const mainVideoRef = useRef(null);
+  const persistentVideoRef = useRef(null);
   const sessionRuntimeVideoRef = useRef(null);
   const autoRestoreAttemptedRef = useRef(false);
 
@@ -384,6 +385,7 @@ export default function App({ appConfig }) {
     isCameraModalOpen,
     mainVideoRef,
     modalVideoRef,
+    persistentVideoRef,
     sessionRuntimeVideoRef,
     nextVideoFrameSeq,
     nextVideoFrameSeqRef,
@@ -898,7 +900,15 @@ export default function App({ appConfig }) {
         />
 
       </div>
-      
+
+      {/* Keep a mounted preview host so real frame capture survives view switches. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed left-[-9999px] top-0 h-px w-px overflow-hidden opacity-0"
+      >
+        <video ref={persistentVideoRef} autoPlay playsInline muted />
+      </div>
+
       <CameraModal
         cameraPermissionState={cameraPermissionState}
         cameraState={cameraState}

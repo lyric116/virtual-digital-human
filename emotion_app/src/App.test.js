@@ -619,6 +619,55 @@ test('camera close hides the preview card, supports adjust reopen, and restores 
   expect(screen.getAllByRole('button', { name: /摄像头预览|camera preview/i }).length).toBeGreaterThan(0);
 });
 
+test('camera preview keeps sending real frame blobs after switching to timeline view', async () => {
+  jest.useFakeTimers();
+  installMockCameraEnvironment();
+  const videoFrameBodies = [];
+  fetch.mockImplementation(async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/api/session/create')) {
+      return jsonResponse(sessionPayload, 201);
+    }
+    if (requestUrl.includes('/video/frame')) {
+      const count = fetch.mock.calls.filter(([nextUrl]) => String(nextUrl).includes('/video/frame')).length;
+      const bodyText = options.body
+        ? await new Response(options.body).text()
+        : null;
+      videoFrameBodies.push(bodyText);
+      return jsonResponse({
+        media_id: `video_media_${count}`,
+        created_at: `2026-03-16T08:00:0${count}Z`,
+      });
+    }
+    if (requestUrl.includes('/internal/affect/analyze')) {
+      return jsonResponse(buildAffectPayload());
+    }
+    throw new Error(`Unexpected fetch URL: ${requestUrl}`);
+  });
+
+  render(<App appConfig={appConfig} />);
+  const socket = await clickCreateSession();
+  await openSocket(socket);
+
+  await openCameraModal();
+  await waitFor(() => expect(screen.getByRole('button', { name: /关闭预览|turn off preview/i })).toBeInTheDocument());
+  await waitFor(() => expect(videoFrameBodies.length).toBeGreaterThan(0));
+  expect(videoFrameBodies[videoFrameBodies.length - 1]).toBe('frame');
+  await closeCameraModal();
+
+  const uploadsBeforeTimeline = videoFrameBodies.length;
+
+  await openTimelineView();
+  expect(screen.queryByText(/开始一段陪伴式对话|start a gentle conversation/i)).not.toBeInTheDocument();
+
+  await act(async () => {
+    jest.advanceTimersByTime(appConfig.videoFrameUploadIntervalMs + 5);
+  });
+
+  await waitFor(() => expect(videoFrameBodies.length).toBeGreaterThan(uploadsBeforeTimeline));
+  expect(videoFrameBodies[videoFrameBodies.length - 1]).toBe('frame');
+});
+
 test('camera denial keeps the default entry and does not upload frames', async () => {
   installMockCameraEnvironment({
     getUserMedia: jest.fn().mockRejectedValue(Object.assign(new Error('denied'), { name: 'NotAllowedError' })),

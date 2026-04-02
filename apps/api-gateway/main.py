@@ -167,6 +167,12 @@ class GatewaySettings:
         )
 
 
+@dataclass
+class MessageFollowupOutcome:
+    immediate_events: list[dict[str, Any]]
+    assistant_result: dict[str, Any] | None = None
+
+
 class SessionCreateRequest(BaseModel):
     input_modes: list[str] = Field(default_factory=lambda: ["text", "audio"])
     avatar_id: str | None = None
@@ -3256,7 +3262,7 @@ def build_message_followup_events(
     settings: GatewaySettings,
     session_id: str,
     result: dict[str, Any],
-) -> list[dict[str, Any]]:
+) -> MessageFollowupOutcome:
     persisted_session = repository.get_session_summary(session_id) or result["session"]
     request_session = {
         **result["session"],
@@ -3267,6 +3273,7 @@ def build_message_followup_events(
         "metadata": persisted_session.get("metadata", {}),
     }
     events: list[dict[str, Any]] = []
+    assistant_result: dict[str, Any] | None = None
 
     rule_match = detect_high_risk_rule_match(result["message"].get("content_text", ""))
     affect_snapshot: AffectAnalyzeResponse | None = None
@@ -3377,48 +3384,6 @@ def build_message_followup_events(
         )
         repository.record_system_event(dialogue_event)
         events.append(dialogue_event)
-
-        try:
-            summary_result = maybe_refresh_dialogue_summary(
-                repository,
-                settings,
-                session_id,
-                assistant_result,
-            )
-            if summary_result is not None:
-                summary_event = jsonable_encoder(
-                    build_event_envelope(
-                        session=summary_result["session"],
-                        event_type="dialogue.summary.updated",
-                        payload=summary_result["summary"],
-                        message_id=summary_result["summary"]["generated_from_message_id"],
-                        source_service="orchestrator",
-                    )
-                )
-                repository.record_system_event(summary_event)
-                events.append(summary_event)
-        except (KeyError, psycopg.Error, RuntimeError) as exc:
-            summary_error_event = jsonable_encoder(
-                build_event_envelope(
-                    session=assistant_result["session"],
-                    event_type="session.error",
-                    payload=error_payload(
-                        error_code="dialogue_summary_refresh_failed",
-                        message=str(exc),
-                        trace_id=assistant_result["session"]["trace_id"],
-                        session_id=session_id,
-                        retryable=True,
-                        details={
-                            "operation": "dialogue_summary_refresh",
-                            "generated_from_message_id": assistant_result["message"]["message_id"],
-                        },
-                    ),
-                    message_id=assistant_result["message"]["message_id"],
-                    source_service="api_gateway",
-                )
-            )
-            repository.record_system_event(summary_error_event)
-            events.append(summary_error_event)
     except (KeyError, psycopg.Error, RuntimeError) as exc:
         error_event = jsonable_encoder(
             build_event_envelope(
@@ -3437,6 +3402,63 @@ def build_message_followup_events(
         repository.record_system_event(error_event)
         events.append(error_event)
 
+    return MessageFollowupOutcome(
+        immediate_events=events,
+        assistant_result=assistant_result,
+    )
+
+
+def build_summary_refresh_events(
+    repository: SessionRepository,
+    settings: GatewaySettings,
+    session_id: str,
+    assistant_result: dict[str, Any],
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+
+    try:
+        summary_result = maybe_refresh_dialogue_summary(
+            repository,
+            settings,
+            session_id,
+            assistant_result,
+        )
+        if summary_result is None:
+            return events
+        summary_event = jsonable_encoder(
+            build_event_envelope(
+                session=summary_result["session"],
+                event_type="dialogue.summary.updated",
+                payload=summary_result["summary"],
+                message_id=summary_result["summary"]["generated_from_message_id"],
+                source_service="orchestrator",
+            )
+        )
+        repository.record_system_event(summary_event)
+        events.append(summary_event)
+    except (KeyError, psycopg.Error, RuntimeError) as exc:
+        summary_error_event = jsonable_encoder(
+            build_event_envelope(
+                session=assistant_result["session"],
+                event_type="session.error",
+                payload=error_payload(
+                    error_code="dialogue_summary_refresh_failed",
+                    message=str(exc),
+                    trace_id=assistant_result["session"]["trace_id"],
+                    session_id=session_id,
+                    retryable=True,
+                    details={
+                        "operation": "dialogue_summary_refresh",
+                        "generated_from_message_id": assistant_result["message"]["message_id"],
+                    },
+                ),
+                message_id=assistant_result["message"]["message_id"],
+                source_service="api_gateway",
+            )
+        )
+        repository.record_system_event(summary_error_event)
+        events.append(summary_error_event)
+
     return events
 
 
@@ -3453,7 +3475,7 @@ async def dispatch_message_pipeline(
     try:
         await asyncio.to_thread(repository.record_system_event, accepted_event)
         await app.state.connection_registry.enqueue_event(session_id, accepted_event)
-        events = await asyncio.to_thread(
+        followup = await asyncio.to_thread(
             build_message_followup_events,
             repository,
             settings,
@@ -3461,25 +3483,37 @@ async def dispatch_message_pipeline(
             result,
         )
     except Exception as exc:
-        events = [
-            jsonable_encoder(
-                build_event_envelope(
-                    session=result["session"],
-                    event_type="session.error",
-                    payload=error_payload(
-                        error_code="dialogue_pipeline_failed",
-                        message=str(exc),
-                        trace_id=result["session"]["trace_id"],
-                        session_id=session_id,
-                        retryable=True,
-                    ),
-                    source_service="api_gateway",
-                )
+        error_event = jsonable_encoder(
+            build_event_envelope(
+                session=result["session"],
+                event_type="session.error",
+                payload=error_payload(
+                    error_code="dialogue_pipeline_failed",
+                    message=str(exc),
+                    trace_id=result["session"]["trace_id"],
+                    session_id=session_id,
+                    retryable=True,
+                ),
+                source_service="api_gateway",
             )
-        ]
-        await asyncio.to_thread(repository.record_system_event, events[0])
+        )
+        followup = MessageFollowupOutcome(immediate_events=[error_event])
+        await asyncio.to_thread(repository.record_system_event, error_event)
 
-    for envelope in events:
+    for envelope in followup.immediate_events:
+        await app.state.connection_registry.enqueue_event(session_id, envelope)
+
+    if followup.assistant_result is None:
+        return
+
+    deferred_events = await asyncio.to_thread(
+        build_summary_refresh_events,
+        repository,
+        settings,
+        session_id,
+        followup.assistant_result,
+    )
+    for envelope in deferred_events:
         await app.state.connection_registry.enqueue_event(session_id, envelope)
 
 

@@ -595,14 +595,28 @@ export default function Live2DAvatar({
     };
   }, [corePath, idleMotion, modelPath]);
 
+  const showsCanvas = renderState === 'ready';
+  const showsLoadingPlaceholder = renderState === 'loading';
+  const showsFallback = renderState === 'fallback' || renderState === 'error';
+
   return (
     <div className={`relative overflow-hidden ${className}`} data-live2d-state={renderState} ref={rootRef}>
-      <div className={`absolute inset-0 transition-opacity duration-300 ${renderState === 'ready' ? 'opacity-100' : 'opacity-0'}`} ref={canvasHostRef} />
-      {renderState === 'ready' ? null : (
+      <div className={`absolute inset-0 transition-opacity duration-300 ${showsCanvas ? 'opacity-100' : 'opacity-0'}`} ref={canvasHostRef} />
+      {showsLoadingPlaceholder ? (
+        <div
+          className="absolute inset-0 flex items-end justify-center"
+          data-testid="live2d-loading-placeholder"
+        >
+          <div className="absolute inset-x-[18%] bottom-[8%] h-[62%] rounded-t-[44%] rounded-b-[12%] bg-gradient-to-b from-white/40 via-[#F4EEE5] to-[#E7F1EA] opacity-90" />
+          <div className="absolute inset-x-[28%] bottom-[58%] h-[24%] rounded-full bg-white/70 blur-sm" />
+          <div className="absolute inset-x-[20%] bottom-0 h-[18%] rounded-t-[44px] bg-white/55" />
+        </div>
+      ) : null}
+      {showsFallback ? (
         <div className="absolute inset-0">
           {fallback}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
