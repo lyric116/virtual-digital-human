@@ -52,12 +52,12 @@ test('renders companion A through Live2D with fallback in jsdom', () => {
   expect(screen.getByTestId('assistant-avatar-stage-note')).toHaveStyle({
     '--assistant-stage-note-left': '49%',
     '--assistant-stage-note-top': '15%',
-    '--assistant-stage-note-left-md': '50%',
-    '--assistant-stage-note-top-md': '18%',
+    '--assistant-stage-note-left-md': '49%',
+    '--assistant-stage-note-top-md': '30%',
   });
 });
 
-test('renders role B through Live2D with the coach fallback surface in jsdom', () => {
+test('renders Xiaozhi through Live2D with the coach fallback surface in jsdom', () => {
   renderAvatarPanel({ avatarProfile: getAvatarProfile('coach_male_01') });
 
   const assistantSurface = screen.getByTestId('assistant-avatar-surface');
@@ -66,8 +66,8 @@ test('renders role B through Live2D with the coach fallback surface in jsdom', (
   expect(screen.getByTestId('assistant-avatar-stage-note')).toHaveStyle({
     '--assistant-stage-note-left': '55%',
     '--assistant-stage-note-top': '13%',
-    '--assistant-stage-note-left-md': '56%',
-    '--assistant-stage-note-top-md': '17%',
+    '--assistant-stage-note-left-md': '47%',
+    '--assistant-stage-note-top-md': '23%',
   });
 });
 
