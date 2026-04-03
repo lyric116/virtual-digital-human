@@ -105,6 +105,18 @@ export default function AvatarComposerPanel({
       offsetY: 0,
     }
   ), [avatarProfile]);
+  const assistantStageNotePlacement = useMemo(() => (
+    avatarProfile?.stageNotePlacement || {
+      mobile: {
+        left: '49%',
+        top: '10%',
+      },
+      desktop: {
+        left: '50%',
+        top: '13%',
+      },
+    }
+  ), [avatarProfile]);
 
   const assistantAvatarFallback = (
     <AssistantAvatarFallback
@@ -145,7 +157,16 @@ export default function AvatarComposerPanel({
         </div>
 
         <div className="absolute right-0 md:right-10 bottom-0 animate-breathe-delayed" data-testid="assistant-avatar-surface">
-          <div className="absolute left-20 md:left-[98px] top-[84px] md:top-[132px] z-10 rounded-2xl bg-white/80 border border-[#F0E5D8] px-4 py-3 text-center shadow-sm min-w-[160px]">
+          <div
+            className="absolute left-[var(--assistant-stage-note-left)] top-[var(--assistant-stage-note-top)] md:left-[var(--assistant-stage-note-left-md)] md:top-[var(--assistant-stage-note-top-md)] -translate-x-1/2 z-10 rounded-2xl bg-white/80 border border-[#F0E5D8] px-4 py-3 text-center shadow-sm min-w-[160px]"
+            data-testid="assistant-avatar-stage-note"
+            style={{
+              '--assistant-stage-note-left': assistantStageNotePlacement.mobile.left,
+              '--assistant-stage-note-top': assistantStageNotePlacement.mobile.top,
+              '--assistant-stage-note-left-md': assistantStageNotePlacement.desktop.left,
+              '--assistant-stage-note-top-md': assistantStageNotePlacement.desktop.top,
+            }}
+          >
             <div className="text-sm font-semibold text-[#5C4D42]">{avatarProfile.label}</div>
             <div className="mt-1 text-xs text-[#8C7A6B]">{avatarProfile.stageNote}</div>
           </div>

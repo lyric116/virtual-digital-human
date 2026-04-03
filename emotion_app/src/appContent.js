@@ -548,13 +548,23 @@ export const avatarProfiles = {
       offsetX: 0,
       offsetY: 0,
     },
+    stageNotePlacement: {
+      mobile: {
+        left: '49%',
+        top: '15%',
+      },
+      desktop: {
+        left: '49%',
+        top: '30%',
+      },
+    },
   },
   coach_male_01: {
     avatarId: 'coach_male_01',
     profileId: 'coach',
-    label: '引导角色 B',
+    label: '小智',
     meta: '帮助梳理重点，陪你往下走',
-    stageNote: '更适合帮助梳理重点，带着你往下一步走。',
+    stageNote: '有什么问题尽管交给我。',
     idleDetail: '引导角色已准备好继续对话。',
     speakingDetail: '引导角色正在给出更清晰的建议。',
     voicePreview: 'zh-CN-YunxiNeural',
@@ -571,6 +581,16 @@ export const avatarProfiles = {
       centerY: 0.46,
       offsetX: 0,
       offsetY: 0,
+    },
+    stageNotePlacement: {
+      mobile: {
+        left: '55%',
+        top: '13%',
+      },
+      desktop: {
+        left: '47%',
+        top: '23%',
+      },
     },
   },
 };
