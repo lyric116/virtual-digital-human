@@ -49,6 +49,12 @@ test('renders companion A through Live2D with fallback in jsdom', () => {
   const assistantSurface = screen.getByTestId('assistant-avatar-surface');
   expect(assistantSurface.querySelector('[data-live2d-state="fallback"]')).toBeInTheDocument();
   expect(assistantSurface.querySelector('[data-avatar-fallback-profile="companion"]')).toBeInTheDocument();
+  expect(screen.getByTestId('assistant-avatar-stage-note')).toHaveStyle({
+    '--assistant-stage-note-left': '49%',
+    '--assistant-stage-note-top': '15%',
+    '--assistant-stage-note-left-md': '50%',
+    '--assistant-stage-note-top-md': '18%',
+  });
 });
 
 test('renders role B through Live2D with the coach fallback surface in jsdom', () => {
@@ -57,6 +63,12 @@ test('renders role B through Live2D with the coach fallback surface in jsdom', (
   const assistantSurface = screen.getByTestId('assistant-avatar-surface');
   expect(assistantSurface.querySelector('[data-live2d-state="fallback"]')).toBeInTheDocument();
   expect(assistantSurface.querySelector('[data-avatar-fallback-profile="coach"]')).toBeInTheDocument();
+  expect(screen.getByTestId('assistant-avatar-stage-note')).toHaveStyle({
+    '--assistant-stage-note-left': '55%',
+    '--assistant-stage-note-top': '13%',
+    '--assistant-stage-note-left-md': '56%',
+    '--assistant-stage-note-top-md': '17%',
+  });
 });
 
 test('renders any avatar profile through Live2D when the profile provides model config', () => {
