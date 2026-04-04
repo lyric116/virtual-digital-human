@@ -5,6 +5,8 @@ const originalMediaDevices = navigator.mediaDevices;
 const originalMediaPlay = window.HTMLMediaElement.prototype.play;
 const originalMediaPause = window.HTMLMediaElement.prototype.pause;
 const originalMediaLoad = window.HTMLMediaElement.prototype.load;
+const originalAudioContext = window.AudioContext;
+const originalWebkitAudioContext = window.webkitAudioContext;
 
 const appConfig = {
   apiBaseUrl: 'http://127.0.0.1:8000',
@@ -139,6 +141,97 @@ function jsonResponse(payload, status = 200) {
     status,
     json: async () => payload,
   };
+}
+
+function streamResponse(lines, status = 200) {
+  let readIndex = 0;
+  const encodedLines = lines.map((line) => new Uint8Array(Array.from(line).map((character) => character.charCodeAt(0))));
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    body: {
+      getReader() {
+        return {
+          async read() {
+            if (readIndex >= encodedLines.length) {
+              return { done: true, value: undefined };
+            }
+            const value = encodedLines[readIndex];
+            readIndex += 1;
+            return { done: false, value };
+          },
+          releaseLock() {},
+        };
+      },
+    },
+    json: async () => null,
+  };
+}
+
+function installMockStreamingAudioContext() {
+  class MockAudioBuffer {
+    constructor(length) {
+      this.duration = length / 24000;
+      this.channelData = new Float32Array(length);
+    }
+
+    copyToChannel(data) {
+      this.channelData.set(data);
+    }
+
+    getChannelData() {
+      return this.channelData;
+    }
+  }
+
+  class MockAudioBufferSourceNode {
+    constructor() {
+      this.onended = null;
+    }
+
+    connect() {}
+
+    disconnect() {}
+
+    start() {
+      setTimeout(() => {
+        if (typeof this.onended === 'function') {
+          this.onended();
+        }
+      }, 0);
+    }
+
+    stop() {}
+  }
+
+  class MockAudioContext {
+    constructor() {
+      this.currentTime = 0;
+      this.destination = {};
+      this.state = 'running';
+    }
+
+    createBuffer(channelCount, length) {
+      return new MockAudioBuffer(length);
+    }
+
+    createBufferSource() {
+      return new MockAudioBufferSourceNode();
+    }
+
+    resume() {
+      this.state = 'running';
+      return Promise.resolve();
+    }
+
+    close() {
+      this.state = 'closed';
+      return Promise.resolve();
+    }
+  }
+
+  window.AudioContext = MockAudioContext;
+  window.webkitAudioContext = MockAudioContext;
 }
 
 class MockWebSocket {
@@ -326,6 +419,8 @@ afterEach(() => {
   window.HTMLMediaElement.prototype.play = originalMediaPlay;
   window.HTMLMediaElement.prototype.pause = originalMediaPause;
   window.HTMLMediaElement.prototype.load = originalMediaLoad;
+  window.AudioContext = originalAudioContext;
+  window.webkitAudioContext = originalWebkitAudioContext;
 });
 
 test('renders the base experience with timeline hidden by default', () => {
@@ -633,6 +728,150 @@ test('timeline preserves turn ordering and dedupes replayed message envelopes', 
     'third user turn',
     'third assistant turn',
   ]);
+});
+
+test('dialogue reply prefers streaming tts when the stream endpoint is available', async () => {
+  installMockStreamingAudioContext();
+  fetch.mockImplementation((url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/api/session/create')) {
+      return Promise.resolve(jsonResponse(sessionPayload, 201));
+    }
+    if (requestUrl.includes('/internal/tts/synthesize-stream')) {
+      return Promise.resolve(jsonResponse({
+        tts_id: 'tts_stream_001',
+        session_id: sessionPayload.session_id,
+        trace_id: sessionPayload.trace_id,
+        message_id: 'msg_stream_reply_001',
+        voice_id: 'Cherry',
+        subtitle: 'streaming assistant reply',
+        audio_format: 'wav',
+        audio_url: 'http://127.0.0.1:8040/media/tts/tts_stream_001.wav',
+        duration_ms: 1800,
+        byte_size: 0,
+        provider_used: 'qwen_tts_stream',
+        fallback_used: false,
+        fallback_reason: null,
+        generated_at: '2026-04-04T08:00:05Z',
+        streaming: true,
+        stream_url: 'http://127.0.0.1:8040/internal/tts/stream/tts_stream_001',
+        stream_audio_format: 'pcm_s16le',
+        stream_sample_rate_hz: 24000,
+      }));
+    }
+    if (requestUrl.includes('/internal/tts/stream/tts_stream_001')) {
+      return Promise.resolve(streamResponse([
+        `${JSON.stringify({ type: 'started', tts_id: 'tts_stream_001', generated_at: '2026-04-04T08:00:05Z', audio_url: 'http://127.0.0.1:8040/media/tts/tts_stream_001.wav' })}\n`,
+        `${JSON.stringify({ type: 'audio_chunk', data: 'AAAAAA==', sample_rate_hz: 24000 })}\n`,
+        `${JSON.stringify({ type: 'completed', tts_id: 'tts_stream_001', audio_url: 'http://127.0.0.1:8040/media/tts/tts_stream_001.wav', audio_format: 'wav', duration_ms: 1800, byte_size: 128, generated_at: '2026-04-04T08:00:06Z' })}\n`,
+      ]));
+    }
+    if (requestUrl.includes('/api/session/sess_test_001/runtime-event')) {
+      return Promise.resolve(jsonResponse({ accepted: true }, 202));
+    }
+    if (requestUrl.includes('/internal/affect/analyze')) {
+      return Promise.resolve(jsonResponse(buildAffectPayload()));
+    }
+    throw new Error(`Unexpected fetch URL: ${requestUrl}`);
+  });
+
+  render(<App appConfig={appConfig} />);
+  const socket = await clickCreateSession();
+  await openSocket(socket);
+
+  act(() => {
+    socket.receive(buildEnvelope('dialogue.reply', {
+      session_id: sessionPayload.session_id,
+      trace_id: sessionPayload.trace_id,
+      message_id: 'msg_stream_reply_001',
+      reply: 'streaming assistant reply',
+      emotion: 'calm',
+      risk_level: 'low',
+      stage: 'engage',
+      next_action: 'ask_followup',
+      submitted_at: '2026-04-04T08:00:04Z',
+    }, { source_service: 'orchestrator' }));
+  });
+
+  await waitFor(() => expect(fetch.mock.calls.some(
+    ([url]) => String(url).includes('/internal/tts/synthesize-stream'),
+  )).toBe(true));
+  await waitFor(() => expect(fetch.mock.calls.some(
+    ([url]) => String(url).includes('/internal/tts/stream/tts_stream_001'),
+  )).toBe(true));
+  expect(fetch.mock.calls.some(
+    ([url]) => String(url).includes('/internal/tts/synthesize')
+      && !String(url).includes('/internal/tts/synthesize-stream'),
+  )).toBe(false);
+});
+
+test('dialogue reply falls back to legacy tts when streaming prepare is unavailable', async () => {
+  installMockStreamingAudioContext();
+  fetch.mockImplementation((url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/api/session/create')) {
+      return Promise.resolve(jsonResponse(sessionPayload, 201));
+    }
+    if (requestUrl.includes('/internal/tts/synthesize-stream')) {
+      return Promise.resolve(jsonResponse({
+        detail: 'streaming tts model is not configured',
+      }, 409));
+    }
+    if (
+      requestUrl.includes('/internal/tts/synthesize')
+      && !requestUrl.includes('/internal/tts/synthesize-stream')
+    ) {
+      return Promise.resolve(jsonResponse({
+        tts_id: 'tts_legacy_001',
+        session_id: sessionPayload.session_id,
+        trace_id: sessionPayload.trace_id,
+        message_id: 'msg_legacy_reply_001',
+        voice_id: 'zh-CN-XiaoxiaoNeural',
+        subtitle: 'legacy assistant reply',
+        audio_format: 'mp3',
+        audio_url: 'http://127.0.0.1:8040/media/tts/tts_legacy_001.mp3',
+        duration_ms: 1600,
+        byte_size: 256,
+        provider_used: 'edge_tts',
+        fallback_used: false,
+        fallback_reason: null,
+        generated_at: '2026-04-04T08:05:05Z',
+      }));
+    }
+    if (requestUrl.includes('/api/session/sess_test_001/runtime-event')) {
+      return Promise.resolve(jsonResponse({ accepted: true }, 202));
+    }
+    if (requestUrl.includes('/internal/affect/analyze')) {
+      return Promise.resolve(jsonResponse(buildAffectPayload()));
+    }
+    throw new Error(`Unexpected fetch URL: ${requestUrl}`);
+  });
+
+  render(<App appConfig={appConfig} />);
+  const socket = await clickCreateSession();
+  await openSocket(socket);
+
+  act(() => {
+    socket.receive(buildEnvelope('dialogue.reply', {
+      session_id: sessionPayload.session_id,
+      trace_id: sessionPayload.trace_id,
+      message_id: 'msg_legacy_reply_001',
+      reply: 'legacy assistant reply',
+      emotion: 'calm',
+      risk_level: 'low',
+      stage: 'engage',
+      next_action: 'ask_followup',
+      submitted_at: '2026-04-04T08:05:04Z',
+    }, { source_service: 'orchestrator' }));
+  });
+
+  await waitFor(() => expect(fetch.mock.calls.some(
+    ([url]) => String(url).includes('/internal/tts/synthesize-stream'),
+  )).toBe(true));
+  await waitFor(() => expect(fetch.mock.calls.some(
+    ([url]) => String(url).includes('/internal/tts/synthesize')
+      && !String(url).includes('/internal/tts/synthesize-stream'),
+  )).toBe(true));
 });
 
 test('camera close hides the preview card, supports adjust reopen, and restores the default entry', async () => {

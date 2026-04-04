@@ -17,6 +17,8 @@ This service now covers implementation plan steps 30 and 31:
 
 - `GET /health`
 - `POST /internal/tts/synthesize`
+- `POST /internal/tts/synthesize-stream`
+- `GET /internal/tts/stream/{tts_id}`
 - `GET /media/tts/{filename}`
 
 ## Local Run
@@ -36,6 +38,9 @@ Required environment variables:
 - `TTS_AUDIO_FORMAT`
 - `TTS_EDGE_TIMEOUT_SECONDS`
 - `TTS_ENABLE_WAVE_FALLBACK`
+- `TTS_STREAM_SAMPLE_RATE_HZ`
+- `TTS_STREAM_TIMEOUT_SECONDS`
+- `TTS_STREAM_SESSION_TTL_SECONDS`
 - `TTS_STORAGE_ROOT`
 
 ## Notes
@@ -49,6 +54,11 @@ Required environment variables:
 - `/internal/tts/synthesize` now derives `audio_url` from the incoming HTTP request
   base URL, so browser callers receive a host that is reachable from the browser
   instead of an internal Docker-only service hostname.
+- `/internal/tts/synthesize-stream` keeps the legacy single-shot route untouched and
+  only prepares a browser-consumable stream session when `TTS_BASE_URL`,
+  `TTS_API_KEY`, and `TTS_MODEL` are configured.
+- `/internal/tts/stream/{tts_id}` proxies DashScope streaming PCM chunks as NDJSON so
+  the browser can start playback before the full WAV replay asset finishes writing.
 - The response payload is authoritative for playback: successful remote synthesis usually
   returns `mp3`, while the local fallback path returns `wav`.
 - `scripts/verify_tts_service.py` runs three fixed Chinese samples and confirms that the

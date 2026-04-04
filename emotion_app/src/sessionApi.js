@@ -293,6 +293,38 @@ export async function requestTTSSynthesis(ttsBaseUrl, payload) {
   return responsePayload;
 }
 
+export async function requestTTSStreamSynthesis(ttsBaseUrl, payload) {
+  const response = await fetch(`${ttsBaseUrl}/internal/tts/synthesize-stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const responsePayload = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(buildErrorMessage(responsePayload, `TTS stream prepare failed with status ${response.status}`));
+  }
+  return responsePayload;
+}
+
+export async function openTTSStream(streamUrl, signal) {
+  const response = await fetch(streamUrl, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/x-ndjson',
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    const responsePayload = await parseJson(response);
+    throw new Error(buildErrorMessage(responsePayload, `TTS stream open failed with status ${response.status}`));
+  }
+  return response;
+}
+
 export async function requestRuntimeEvent(apiBaseUrl, sessionId, payload) {
   const response = await fetch(
     `${apiBaseUrl}/api/session/${encodeURIComponent(sessionId)}/runtime-event`,
