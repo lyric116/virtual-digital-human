@@ -137,7 +137,7 @@ export default function AvatarComposerPanel({
         </div>
 
         <div className="absolute left-4 md:left-20 bottom-0 flex flex-col items-center animate-breathe">
-          <div className={`absolute -top-24 md:-top-28 left-10 md:left-24 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-bl-none shadow-sm border border-orange-50 max-w-[200px] md:max-w-[260px] transition-opacity duration-700 ${activeMessage === 0 ? 'opacity-100' : 'opacity-0'}`}>
+          <div data-testid="user-bubble" className={`absolute -top-24 md:-top-28 left-10 md:left-24 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-bl-none shadow-sm border border-orange-50 max-w-[200px] md:max-w-[260px] transition-opacity duration-700 ${activeMessage === 0 ? 'opacity-100' : 'opacity-0'}`}>
             <p className="text-sm md:text-base text-[#5C4D42] leading-relaxed">
               {liveTranscriptText || t.bubble1}
             </p>
@@ -170,7 +170,7 @@ export default function AvatarComposerPanel({
             <div className="text-sm font-semibold text-[#5C4D42]">{avatarProfile.label}</div>
             <div className="mt-1 text-xs text-[#8C7A6B]">{avatarProfile.stageNote}</div>
           </div>
-          <div className={`absolute -left-2 md:-left-[148px] top-[132px] md:top-[166px] z-10 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 max-w-[220px] md:max-w-[236px] transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
+          <div data-testid="assistant-bubble" className={`absolute -left-2 md:-left-[148px] top-[132px] md:top-[166px] z-10 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 max-w-[220px] md:max-w-[236px] transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
             <p className="text-sm md:text-base text-[#5C4D42] leading-relaxed">
               {latestAssistantMessage?.content_text || t.bubble2}
             </p>

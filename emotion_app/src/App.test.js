@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from './App';
 
+const BUBBLE_RESUME_DELAY_MS = 4000;
+
 const originalMediaDevices = navigator.mediaDevices;
 const originalMediaPlay = window.HTMLMediaElement.prototype.play;
 const originalMediaPause = window.HTMLMediaElement.prototype.pause;
@@ -360,6 +362,42 @@ function getConversationMessageTexts() {
     .filter(Boolean);
 }
 
+function expectBubbleState({ userVisible, assistantVisible }) {
+  const userBubble = screen.getByTestId('user-bubble');
+  const assistantBubble = screen.getByTestId('assistant-bubble');
+
+  expect(userBubble.className.includes('opacity-100')).toBe(userVisible);
+  expect(userBubble.className.includes('opacity-0')).toBe(!userVisible);
+  expect(assistantBubble.className.includes('opacity-100')).toBe(assistantVisible);
+  expect(assistantBubble.className.includes('opacity-0')).toBe(!assistantVisible);
+}
+
+async function createConnectedSessionWithTextInput(text = 'hello from user') {
+  fetch.mockImplementation((url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/api/session/create')) {
+      return Promise.resolve(jsonResponse(sessionPayload, 201));
+    }
+    if (requestUrl.includes(`/api/session/${sessionPayload.session_id}/text`)) {
+      return Promise.resolve(jsonResponse({
+        message_id: 'msg_pending_text_001',
+      }, 202));
+    }
+    if (requestUrl.includes('/internal/affect/analyze')) {
+      return Promise.resolve(jsonResponse(buildAffectPayload()));
+    }
+    throw new Error(`Unexpected fetch URL: ${requestUrl}`);
+  });
+
+  render(<App appConfig={appConfig} />);
+  const socket = await clickCreateSession();
+  await openSocket(socket);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: text },
+  });
+  return socket;
+}
+
 async function openCameraModal() {
   await act(async () => {
     fireEvent.click(screen.getAllByRole('button', { name: /摄像头预览|camera preview/i })[0]);
@@ -432,6 +470,135 @@ test('renders the base experience with timeline hidden by default', () => {
   expect(screen.getAllByRole('button', { name: /摄像头预览|camera preview/i }).length).toBeGreaterThan(0);
   expect(screen.queryByText(/^对话记录$|^Conversation$/i)).not.toBeInTheDocument();
 
+});
+
+test('idle bubble rotation still alternates every 6 seconds', async () => {
+  jest.useFakeTimers();
+  render(<App appConfig={appConfig} />);
+
+  expectBubbleState({ userVisible: true, assistantVisible: false });
+
+  await act(async () => {
+    jest.advanceTimersByTime(6000);
+  });
+  expectBubbleState({ userVisible: false, assistantVisible: true });
+
+  await act(async () => {
+    jest.advanceTimersByTime(6000);
+  });
+  expectBubbleState({ userVisible: true, assistantVisible: false });
+});
+
+test('text submit pins user bubble until assistant reply arrives', async () => {
+  const socket = await createConnectedSessionWithTextInput('Need help now');
+
+  fireEvent.click(screen.getByRole('button', { name: /发送文本|send text/i }));
+
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining(`/api/session/${sessionPayload.session_id}/text`),
+    expect.any(Object),
+  ));
+  expectBubbleState({ userVisible: true, assistantVisible: false });
+  expect(screen.getByTestId('user-bubble')).toHaveTextContent('Need help now');
+
+  act(() => {
+    socket.receive(buildEnvelope('message.accepted', {
+      ...buildMessage({
+        message_id: 'msg_user_turn_pending',
+        content_text: 'Need help now',
+        submitted_at: '2026-04-04T08:00:02Z',
+      }),
+    }));
+  });
+
+  expectBubbleState({ userVisible: true, assistantVisible: false });
+  expect(screen.getByTestId('user-bubble')).toHaveTextContent('Need help now');
+
+  act(() => {
+    socket.receive(buildEnvelope('dialogue.reply', {
+      session_id: sessionPayload.session_id,
+      trace_id: sessionPayload.trace_id,
+      message_id: 'msg_assistant_turn_pending',
+      reply: 'I am here with you',
+      emotion: 'calm',
+      risk_level: 'low',
+      stage: 'engage',
+      next_action: 'ask_followup',
+      submitted_at: '2026-04-04T08:00:03Z',
+    }, { source_service: 'orchestrator' }));
+  });
+
+  await waitFor(() => expect(screen.getByTestId('assistant-bubble')).toHaveTextContent('I am here with you'));
+  expectBubbleState({ userVisible: false, assistantVisible: true });
+});
+
+test('final transcript pins user bubble and playback completion restores auto rotation after delay', async () => {
+  jest.useFakeTimers();
+  const socket = await createConnectedSessionWithTextInput('placeholder');
+
+  await act(async () => {
+    jest.advanceTimersByTime(6000);
+  });
+  expectBubbleState({ userVisible: false, assistantVisible: true });
+
+  act(() => {
+    socket.receive(buildEnvelope('transcript.final', {
+      transcript_kind: 'final',
+      text: 'voice became text',
+      source_kind: 'audio',
+      recording_id: 'rec_001',
+      message_id: 'msg_audio_turn_001',
+      generated_at: '2026-04-04T08:00:04Z',
+      language: 'zh',
+      confidence: 0.95,
+    }));
+  });
+
+  expectBubbleState({ userVisible: true, assistantVisible: false });
+  expect(screen.getByTestId('user-bubble')).toHaveTextContent('voice became text');
+
+  act(() => {
+    socket.receive(buildEnvelope('dialogue.reply', {
+      session_id: sessionPayload.session_id,
+      trace_id: sessionPayload.trace_id,
+      message_id: 'msg_assistant_turn_audio',
+      reply: 'assistant audio reply',
+      emotion: 'calm',
+      risk_level: 'low',
+      stage: 'engage',
+      next_action: 'ask_followup',
+      submitted_at: '2026-04-04T08:00:05Z',
+    }, { source_service: 'orchestrator' }));
+  });
+
+  await waitFor(() => expect(screen.getByTestId('assistant-bubble')).toHaveTextContent('assistant audio reply'));
+  expectBubbleState({ userVisible: false, assistantVisible: true });
+
+  act(() => {
+    socket.receive(buildEnvelope('tts.playback.ended', {
+      avatar_id: sessionPayload.avatar_id,
+      voice_id: 'Cherry',
+      duration_ms: 1800,
+      audio_format: 'wav',
+    }, { message_id: 'msg_assistant_turn_audio' }));
+  });
+
+  expectBubbleState({ userVisible: false, assistantVisible: true });
+
+  await act(async () => {
+    jest.advanceTimersByTime(BUBBLE_RESUME_DELAY_MS - 1);
+  });
+  expectBubbleState({ userVisible: false, assistantVisible: true });
+
+  await act(async () => {
+    jest.advanceTimersByTime(1);
+  });
+  expectBubbleState({ userVisible: false, assistantVisible: true });
+
+  await act(async () => {
+    jest.advanceTimersByTime(6000);
+  });
+  expectBubbleState({ userVisible: true, assistantVisible: false });
 });
 
 test('session runtime panel camera and mic controls open the same debug modals', async () => {

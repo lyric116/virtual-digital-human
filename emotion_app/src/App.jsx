@@ -44,6 +44,8 @@ import { useAudioRecording } from './useAudioRecording';
 import { useCameraAffect } from './useCameraAffect';
 import { useSessionRealtime } from './useSessionRealtime';
 
+const BUBBLE_RESUME_DELAY_MS = 4000;
+
 export default function App({ appConfig }) {
   // 语言状态管理
   const [lang, setLang] = useState('zh');
@@ -52,6 +54,7 @@ export default function App({ appConfig }) {
   const t = i18n[lang];
 
   const [activeMessage, setActiveMessage] = useState(0);
+  const [bubbleDisplayMode, setBubbleDisplayMode] = useState('auto');
   
   // 输入框与录音状态管理
   const [inputText, setInputText] = useState('');
@@ -182,6 +185,12 @@ export default function App({ appConfig }) {
   const synthesizeAssistantAudioRef = useRef(null);
   const replayTimerRef = useRef(null);
   const replayRunIdRef = useRef(0);
+  const bubbleResumeTimerRef = useRef(null);
+  const pendingSubmittedTextRef = useRef('');
+  const previousTextSubmitStateRef = useRef(textSubmitState);
+  const previousTtsPlaybackStateRef = useRef(ttsPlaybackState);
+  const previousAssistantMessageIdRef = useRef(null);
+  const previousFinalTranscriptSignatureRef = useRef('');
 
   const runtimeConfig = useMemo(
     () => resolveAppConfig(appConfig, 'built-in defaults'),
@@ -224,11 +233,96 @@ export default function App({ appConfig }) {
 
   const activeSessionId = sessionState?.session?.session_id || null;
   const activeTraceId = sessionState?.session?.trace_id || null;
+  const sessionSummary = sessionState?.session || null;
+  const sessionMessages = Array.isArray(sessionState?.messages) ? sessionState.messages : [];
+  const latestAssistantMessage = [...sessionMessages].reverse().find((message) => message.role === 'assistant') || null;
+  const latestUserMessage = [...sessionMessages].reverse().find((message) => message.role === 'user') || null;
+  const avatarSpeechState = ttsPlaybackState === 'playing'
+    ? 'speaking'
+    : ttsPlaybackState === 'completed'
+      ? 'completed'
+      : 'idle';
+  const normalizedAffectEmotion = normalizeEmotionLabel(affectSnapshot.fusion.emotionState);
+  const hasResolvedEmotion = ![
+    'pending',
+    'pending_multimodal',
+    'observe_more',
+    'needs_clarification',
+  ].includes(normalizedAffectEmotion);
+  const hasResolvedEmotionDetail = hasResolvedEmotion
+    && typeof affectSnapshot.fusion.detail === 'string'
+    && affectSnapshot.fusion.detail.trim()
+    && !/等待|调试|占位|waiting|debug|placeholder/i.test(affectSnapshot.fusion.detail);
+  const hasResolvedEmotionQuote = hasResolvedEmotion
+    && typeof affectSnapshot.sourceContext.note === 'string'
+    && affectSnapshot.sourceContext.note.trim()
+    && !/等待|调试|样本信息|waiting for session sample information|sample information|debug/i.test(affectSnapshot.sourceContext.note);
+  const displayedEmotionLabel = hasResolvedEmotion
+    ? affectSnapshot.fusion.emotionState
+    : t.emoState;
+  const displayedEmotionDetail = hasResolvedEmotionDetail
+    ? affectSnapshot.fusion.detail
+    : t.emoDesc;
+  const displayedEmotionQuote = hasResolvedEmotionQuote
+    ? affectSnapshot.sourceContext.note
+    : t.emoQuote;
+  const hasPendingSubmittedText = [
+    'sending',
+    'awaiting_ack',
+    'awaiting_reply',
+  ].includes(textSubmitState) && Boolean(pendingSubmittedTextRef.current);
+  const liveTranscriptText = isMicModalOpen
+    ? ''
+    : (partialTranscriptState.status === 'streaming' && partialTranscriptState.text
+      ? partialTranscriptState.text
+      : (finalTranscriptState.sourceKind === 'test_audio' ? '' : finalTranscriptState.text)
+        || (hasPendingSubmittedText ? pendingSubmittedTextRef.current : '')
+        || latestUserMessage?.content_text
+        || '');
+  const micTestTranscriptText = finalTranscriptState.sourceKind === 'test_audio'
+    ? finalTranscriptState.text
+    : (isMicModalOpen && partialTranscriptState.text ? partialTranscriptState.text : '');
+
+  const storedSessionNotice = sessionErrorMessage ? '' : (storedSessionId ? t.restoreReady : t.noStoredSession);
+  const interactionLocked = sessionRequestState === 'creating'
+    || sessionRequestState === 'restoring'
+    || replayState === 'running';
+  const replayLocked = connectionStatus === 'replay' || replayState === 'running';
+  const hasReplayCache = Boolean(readExportCache(runtimeConfig.exportCacheStorageKey)?.payload);
+  const canSubmitText = Boolean(inputText.trim())
+    && activeSessionId
+    && connectionStatus === 'connected'
+    && textSubmitState === 'idle'
+    && !interactionLocked
+    && !replayLocked;
+  const selectedAvatarProfile = getAvatarProfile(selectedAvatarId, runtimeConfig.defaultAvatarId);
+  const resolvedActiveMessage = bubbleDisplayMode === 'auto'
+    ? activeMessage
+    : bubbleDisplayMode === 'assistant'
+      ? 1
+      : 0;
+
+  const formatRoleLabel = useCallback((role) => {
+    if (role === 'assistant') {
+      return t.assistantRoleLabel;
+    }
+    if (role === 'user') {
+      return t.userRoleLabel;
+    }
+    return t.systemRoleLabel;
+  }, [t.assistantRoleLabel, t.systemRoleLabel, t.userRoleLabel]);
 
   const clearReplayTimer = useCallback(() => {
     if (replayTimerRef.current) {
       window.clearTimeout(replayTimerRef.current);
       replayTimerRef.current = null;
+    }
+  }, []);
+
+  const clearBubbleResumeTimer = useCallback(() => {
+    if (bubbleResumeTimerRef.current) {
+      window.clearTimeout(bubbleResumeTimerRef.current);
+      bubbleResumeTimerRef.current = null;
     }
   }, []);
 
@@ -245,6 +339,8 @@ export default function App({ appConfig }) {
   const finishReplay = useCallback((sequenceLength) => {
     replayRunIdRef.current += 1;
     clearReplayTimer();
+    clearBubbleResumeTimer();
+    pendingSubmittedTextRef.current = '';
     pendingMessageIdRef.current = null;
     textSubmitStateRef.current = 'idle';
     setSessionState((previousState) => {
@@ -271,7 +367,8 @@ export default function App({ appConfig }) {
     setSessionStatusMessage(t.replayComplete);
     setTextSubmitState('idle');
     setPendingMessageId(null);
-  }, [clearReplayTimer, t.replayComplete]);
+    setBubbleDisplayMode('auto');
+  }, [clearBubbleResumeTimer, clearReplayTimer, t.replayComplete]);
 
   const {
     stopAssistantAudioPlayback,
@@ -525,11 +622,12 @@ export default function App({ appConfig }) {
 
   useEffect(() => () => {
     clearReplayTimer();
+    clearBubbleResumeTimer();
     teardownMicrophone();
     teardownCamera(true);
     clearAffectRefreshTimer();
     stopAssistantAudioPlayback();
-  }, [clearAffectRefreshTimer, clearReplayTimer, stopAssistantAudioPlayback, teardownCamera, teardownMicrophone]);
+  }, [clearAffectRefreshTimer, clearBubbleResumeTimer, clearReplayTimer, stopAssistantAudioPlayback, teardownCamera, teardownMicrophone]);
 
   useEffect(() => {
     const msgInterval = setInterval(() => {
@@ -537,6 +635,71 @@ export default function App({ appConfig }) {
     }, 6000);
     return () => clearInterval(msgInterval);
   }, []);
+
+  useEffect(() => {
+    const previousTextSubmitState = previousTextSubmitStateRef.current;
+    if (textSubmitState === 'sending' && previousTextSubmitState !== 'sending') {
+      clearBubbleResumeTimer();
+      pendingSubmittedTextRef.current = inputText.trim();
+      setBubbleDisplayMode('user');
+    }
+    if (textSubmitState === 'error') {
+      clearBubbleResumeTimer();
+      pendingSubmittedTextRef.current = '';
+      setBubbleDisplayMode('auto');
+    }
+    previousTextSubmitStateRef.current = textSubmitState;
+  }, [clearBubbleResumeTimer, inputText, textSubmitState]);
+
+  useEffect(() => {
+    const finalTranscriptSignature = finalTranscriptState.sourceKind === 'test_audio'
+      ? ''
+      : `${finalTranscriptState.sourceKind || ''}:${finalTranscriptState.recordingId || ''}:${finalTranscriptState.messageId || ''}:${finalTranscriptState.updatedAt || ''}:${finalTranscriptState.text || ''}`;
+    if (
+      finalTranscriptSignature
+      && finalTranscriptSignature !== previousFinalTranscriptSignatureRef.current
+      && finalTranscriptState.text
+    ) {
+      clearBubbleResumeTimer();
+      setBubbleDisplayMode('user');
+    }
+    previousFinalTranscriptSignatureRef.current = finalTranscriptSignature;
+  }, [clearBubbleResumeTimer, finalTranscriptState]);
+
+  useEffect(() => {
+    const assistantMessageId = latestAssistantMessage?.message_id || '';
+    if (
+      assistantMessageId
+      && assistantMessageId !== previousAssistantMessageIdRef.current
+      && bubbleDisplayMode !== 'auto'
+    ) {
+      clearBubbleResumeTimer();
+      pendingSubmittedTextRef.current = '';
+      setBubbleDisplayMode('assistant');
+    }
+    previousAssistantMessageIdRef.current = assistantMessageId;
+  }, [bubbleDisplayMode, clearBubbleResumeTimer, latestAssistantMessage]);
+
+  useEffect(() => {
+    const previousTtsPlaybackState = previousTtsPlaybackStateRef.current;
+    if (ttsPlaybackState === 'completed' && previousTtsPlaybackState !== 'completed') {
+      clearBubbleResumeTimer();
+      bubbleResumeTimerRef.current = window.setTimeout(() => {
+        bubbleResumeTimerRef.current = null;
+        pendingSubmittedTextRef.current = '';
+        setBubbleDisplayMode('auto');
+      }, BUBBLE_RESUME_DELAY_MS);
+    }
+    previousTtsPlaybackStateRef.current = ttsPlaybackState;
+  }, [clearBubbleResumeTimer, ttsPlaybackState]);
+
+  useEffect(() => {
+    if (!activeSessionId || replayState === 'running' || connectionStatus === 'replay') {
+      clearBubbleResumeTimer();
+      pendingSubmittedTextRef.current = '';
+      setBubbleDisplayMode('auto');
+    }
+  }, [activeSessionId, clearBubbleResumeTimer, connectionStatus, replayState]);
 
   const scheduleReplayStep = useCallback((sequence, index, runId, sourceName) => {
     if (runId !== replayRunIdRef.current) {
@@ -587,6 +750,8 @@ export default function App({ appConfig }) {
     affectRequestTokenRef.current += 1;
     ttsRequestTokenRef.current += 1;
     clearReplayTimer();
+    clearBubbleResumeTimer();
+    pendingSubmittedTextRef.current = '';
     teardownCamera(true);
     teardownMicrophone();
     stopAssistantAudioPlayback();
@@ -660,6 +825,7 @@ export default function App({ appConfig }) {
     setReplaySourceName(fileName);
     setReplaySequenceLength(replaySequence.length);
     setReplayMessage(`准备回放 ${fileName}。`);
+    setBubbleDisplayMode('auto');
 
     const runId = replayRunIdRef.current + 1;
     replayRunIdRef.current = runId;
@@ -699,72 +865,6 @@ export default function App({ appConfig }) {
       return false;
     }
   }, [activeSessionId, runtimeConfig.apiBaseUrl, runtimeConfig.exportCacheStorageKey]);
-
-  const sessionSummary = sessionState?.session || null;
-  const sessionMessages = Array.isArray(sessionState?.messages) ? sessionState.messages : [];
-  const latestAssistantMessage = [...sessionMessages].reverse().find((message) => message.role === 'assistant') || null;
-  const latestUserMessage = [...sessionMessages].reverse().find((message) => message.role === 'user') || null;
-  const avatarSpeechState = ttsPlaybackState === 'playing'
-    ? 'speaking'
-    : ttsPlaybackState === 'completed'
-      ? 'completed'
-      : 'idle';
-  const normalizedAffectEmotion = normalizeEmotionLabel(affectSnapshot.fusion.emotionState);
-  const hasResolvedEmotion = ![
-    'pending',
-    'pending_multimodal',
-    'observe_more',
-    'needs_clarification',
-  ].includes(normalizedAffectEmotion);
-  const hasResolvedEmotionDetail = hasResolvedEmotion
-    && typeof affectSnapshot.fusion.detail === 'string'
-    && affectSnapshot.fusion.detail.trim()
-    && !/等待|调试|占位|waiting|debug|placeholder/i.test(affectSnapshot.fusion.detail);
-  const hasResolvedEmotionQuote = hasResolvedEmotion
-    && typeof affectSnapshot.sourceContext.note === 'string'
-    && affectSnapshot.sourceContext.note.trim()
-    && !/等待|调试|样本信息|waiting for session sample information|sample information|debug/i.test(affectSnapshot.sourceContext.note);
-  const displayedEmotionLabel = hasResolvedEmotion
-    ? affectSnapshot.fusion.emotionState
-    : t.emoState;
-  const displayedEmotionDetail = hasResolvedEmotionDetail
-    ? affectSnapshot.fusion.detail
-    : t.emoDesc;
-  const displayedEmotionQuote = hasResolvedEmotionQuote
-    ? affectSnapshot.sourceContext.note
-    : t.emoQuote;
-  const liveTranscriptText = isMicModalOpen
-    ? ''
-    : (partialTranscriptState.status === 'streaming' && partialTranscriptState.text
-      ? partialTranscriptState.text
-      : (finalTranscriptState.sourceKind === 'test_audio' ? '' : finalTranscriptState.text) || latestUserMessage?.content_text || '');
-  const micTestTranscriptText = finalTranscriptState.sourceKind === 'test_audio'
-    ? finalTranscriptState.text
-    : (isMicModalOpen && partialTranscriptState.text ? partialTranscriptState.text : '');
-
-  const storedSessionNotice = sessionErrorMessage ? '' : (storedSessionId ? t.restoreReady : t.noStoredSession);
-  const interactionLocked = sessionRequestState === 'creating'
-    || sessionRequestState === 'restoring'
-    || replayState === 'running';
-  const replayLocked = connectionStatus === 'replay' || replayState === 'running';
-  const hasReplayCache = Boolean(readExportCache(runtimeConfig.exportCacheStorageKey)?.payload);
-  const canSubmitText = Boolean(inputText.trim())
-    && activeSessionId
-    && connectionStatus === 'connected'
-    && textSubmitState === 'idle'
-    && !interactionLocked
-    && !replayLocked;
-  const selectedAvatarProfile = getAvatarProfile(selectedAvatarId, runtimeConfig.defaultAvatarId);
-
-  const formatRoleLabel = useCallback((role) => {
-    if (role === 'assistant') {
-      return t.assistantRoleLabel;
-    }
-    if (role === 'user') {
-      return t.userRoleLabel;
-    }
-    return t.systemRoleLabel;
-  }, [t.assistantRoleLabel, t.systemRoleLabel, t.userRoleLabel]);
 
   return (
     <div 
@@ -880,7 +980,7 @@ export default function App({ appConfig }) {
         )}
 
         <AvatarComposerPanel
-          activeMessage={activeMessage}
+          activeMessage={resolvedActiveMessage}
           assistantAudioRef={assistantAudioRef}
           avatarProfile={selectedAvatarProfile}
           avatarMouthState={avatarMouthState}
