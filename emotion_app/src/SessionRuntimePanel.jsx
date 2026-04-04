@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { avatarProfiles } from './appContent';
 import { X, Video, Mic } from 'lucide-react';
 
@@ -37,6 +37,10 @@ export default function SessionRuntimePanel({
   const hasSupplementaryPanel = React.Children.count(children) > 0;
   const hasPendingAvatarSwitch = hasActiveSession
     && selectedAvatarId !== effectiveAvatarProfile?.avatarId;
+  const localizedAvatarProfiles = useMemo(() => Object.values(avatarProfiles).map((profile) => ({
+    ...profile,
+    label: profile.profileId === 'coach' ? t.avatarCoachLabel : t.avatarCompanionLabel,
+  })), [t.avatarCoachLabel, t.avatarCompanionLabel]);
 
   return (
     <section className="bg-white/85 backdrop-blur-sm p-5 rounded-3xl border border-[#F0E5D8] shadow-sm flex flex-col gap-4">
@@ -95,7 +99,7 @@ export default function SessionRuntimePanel({
           <div className="rounded-2xl border border-[#F0E5D8] bg-white p-4 w-full">
             <div className="text-xs text-[#A6998E] mb-2">{t.avatarSelection}</div>
             <div className="flex flex-wrap gap-2">
-              {Object.values(avatarProfiles).map((profile) => {
+              {localizedAvatarProfiles.map((profile) => {
                 const isActive = selectedAvatarId === profile.avatarId;
                 return (
                   <button

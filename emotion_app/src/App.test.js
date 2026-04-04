@@ -672,12 +672,37 @@ test('avatar buttons switch the assistant preview between Lily and Xiaozhi', () 
 
   const assistantSurface = screen.getByTestId('assistant-avatar-surface');
   expect(within(assistantSurface).getAllByText('莉莉').length).toBeGreaterThan(0);
+  expect(within(assistantSurface).getByText('愿您美好心情每一天~')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: '小智' }));
   expect(within(assistantSurface).getAllByText('小智').length).toBeGreaterThan(0);
+  expect(within(assistantSurface).getByText('有什么问题尽管交给我。')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: '莉莉' }));
   expect(within(assistantSurface).getAllByText('莉莉').length).toBeGreaterThan(0);
+  expect(within(assistantSurface).getByText('愿您美好心情每一天~')).toBeInTheDocument();
+});
+
+test('avatar labels and stage notes follow the selected language', async () => {
+  render(<App appConfig={appConfig} />);
+
+  fireEvent.click(screen.getByRole('button', { name: /语言选择|language/i }));
+  fireEvent.click(screen.getByRole('button', { name: /英语|english/i }));
+
+  expect(screen.getByRole('button', { name: 'Lily' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Xiaozhi' })).toBeInTheDocument();
+  expect(screen.getByText('Next conversation will use: Lily')).toBeInTheDocument();
+  expect(screen.queryByText(/Current companion:/)).not.toBeInTheDocument();
+
+  const assistantSurface = screen.getByTestId('assistant-avatar-surface');
+  expect(within(assistantSurface).getAllByText('Lily').length).toBeGreaterThan(0);
+  expect(within(assistantSurface).getByText('Wishing you a beautiful mood every day~')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Xiaozhi' }));
+  expect(within(assistantSurface).getAllByText('Xiaozhi').length).toBeGreaterThan(0);
+  expect(within(assistantSurface).getByText('Bring me any question you have.')).toBeInTheDocument();
+  expect(screen.getByText('Next conversation will use: Xiaozhi')).toBeInTheDocument();
+  expect(screen.queryByText(/Current companion:/)).not.toBeInTheDocument();
 });
 
 test('avatar buttons switch the assistant preview even when a Lily session is restored', async () => {
@@ -707,6 +732,37 @@ test('avatar buttons switch the assistant preview even when a Lily session is re
   await waitFor(() => expect(within(assistantSurface).getAllByText('小智').length).toBeGreaterThan(0));
   expect(screen.getByText('当前对话角色：莉莉')).toBeInTheDocument();
   expect(screen.getByText('下次创建会话时将使用：小智')).toBeInTheDocument();
+});
+
+test('restored session avatar labels also follow language changes', async () => {
+  window.localStorage.setItem(appConfig.activeSessionStorageKey, sessionPayload.session_id);
+  fetch.mockResolvedValueOnce(jsonResponse(buildSessionState({
+    session: {
+      ...sessionPayload,
+      avatar_id: 'companion_female_01',
+    },
+    messages: [],
+  })));
+
+  render(<App appConfig={appConfig} />);
+
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining('/api/session/sess_test_001/state'),
+    expect.any(Object),
+  ));
+
+  fireEvent.click(screen.getByRole('button', { name: /语言选择|language/i }));
+  fireEvent.click(screen.getByRole('button', { name: /英语|english/i }));
+
+  const assistantSurface = screen.getByTestId('assistant-avatar-surface');
+  expect(screen.getByText('Current companion: Lily')).toBeInTheDocument();
+  expect(screen.queryByText(/Next conversation will use:/)).not.toBeInTheDocument();
+  expect(within(assistantSurface).getByText('Wishing you a beautiful mood every day~')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Xiaozhi' }));
+  expect(screen.getByText('Current companion: Lily')).toBeInTheDocument();
+  expect(screen.getByText('Next conversation will use: Xiaozhi')).toBeInTheDocument();
+  expect(within(assistantSurface).getByText('Bring me any question you have.')).toBeInTheDocument();
 });
 
 test('restore session keeps the session panel hidden until timeline is opened', async () => {

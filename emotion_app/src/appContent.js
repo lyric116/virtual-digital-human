@@ -128,6 +128,10 @@ export const i18n = {
     replayModeActive: '回放模式已接管当前界面，实时交互已暂停。',
     replayComplete: '回放完成，可重新回放或重新开始对话。',
     emotionConflictFallback: '当前信息存在分歧，建议继续温和确认。',
+    avatarCompanionLabel: '莉莉',
+    avatarCoachLabel: '小智',
+    avatarCompanionStageNote: '愿您美好心情每一天~',
+    avatarCoachStageNote: '有什么问题尽管交给我。',
   },
   en: {
     title: 'Sanctuary of Light',
@@ -258,6 +262,10 @@ export const i18n = {
     replayModeActive: 'Replay mode is controlling the screen right now. Live interaction is paused.',
     replayComplete: 'Replay finished. You can replay again or start a new conversation.',
     emotionConflictFallback: 'The signals do not fully match yet. It may help to gently check in again.',
+    avatarCompanionLabel: 'Lily',
+    avatarCoachLabel: 'Xiaozhi',
+    avatarCompanionStageNote: 'Wishing you a beautiful mood every day~',
+    avatarCoachStageNote: 'Bring me any question you have.',
   },
   de: {
     title: 'Lichtoase',
@@ -388,6 +396,10 @@ export const i18n = {
     replayModeActive: 'Der Wiedergabemodus steuert gerade die Ansicht. Live-Interaktion ist pausiert.',
     replayComplete: 'Die Wiedergabe ist beendet. Du kannst sie erneut starten oder ein neues Gespräch beginnen.',
     emotionConflictFallback: 'Die Signale passen noch nicht ganz zusammen. Ein behutsames Nachfragen kann helfen.',
+    avatarCompanionLabel: 'Lily',
+    avatarCoachLabel: 'Xiaozhi',
+    avatarCompanionStageNote: 'Ich wünsche dir jeden Tag eine gute Stimmung~',
+    avatarCoachStageNote: 'Mit jeder Frage kannst du gern zu mir kommen.',
   },
   fr: {
     title: 'Sanctuaire de Lumière',
@@ -518,6 +530,10 @@ export const i18n = {
     replayModeActive: 'Le mode lecture contrôle actuellement l’écran. L’interaction en direct est en pause.',
     replayComplete: 'La lecture est terminée. Vous pouvez la relancer ou commencer une nouvelle conversation.',
     emotionConflictFallback: 'Les signaux ne concordent pas encore tout à fait. Une vérification douce peut aider.',
+    avatarCompanionLabel: 'Lily',
+    avatarCoachLabel: 'Xiaozhi',
+    avatarCompanionStageNote: 'Je vous souhaite une belle humeur chaque jour~',
+    avatarCoachStageNote: 'Confiez-moi toutes vos questions.',
   },
 };
 

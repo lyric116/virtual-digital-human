@@ -296,6 +296,28 @@ export default function App({ appConfig }) {
     && !interactionLocked
     && !replayLocked;
   const selectedAvatarProfile = getAvatarProfile(selectedAvatarId, runtimeConfig.defaultAvatarId);
+  const localizedSelectedAvatarProfile = useMemo(() => ({
+    ...selectedAvatarProfile,
+    label: selectedAvatarProfile?.profileId === 'coach' ? t.avatarCoachLabel : t.avatarCompanionLabel,
+    stageNote: selectedAvatarProfile?.profileId === 'coach' ? t.avatarCoachStageNote : t.avatarCompanionStageNote,
+  }), [
+    selectedAvatarProfile,
+    t.avatarCoachLabel,
+    t.avatarCoachStageNote,
+    t.avatarCompanionLabel,
+    t.avatarCompanionStageNote,
+  ]);
+  const localizedEffectiveAvatarProfile = useMemo(() => ({
+    ...effectiveAvatarProfile,
+    label: effectiveAvatarProfile?.profileId === 'coach' ? t.avatarCoachLabel : t.avatarCompanionLabel,
+    stageNote: effectiveAvatarProfile?.profileId === 'coach' ? t.avatarCoachStageNote : t.avatarCompanionStageNote,
+  }), [
+    effectiveAvatarProfile,
+    t.avatarCoachLabel,
+    t.avatarCoachStageNote,
+    t.avatarCompanionLabel,
+    t.avatarCompanionStageNote,
+  ]);
   const resolvedActiveMessage = bubbleDisplayMode === 'auto'
     ? activeMessage
     : bubbleDisplayMode === 'assistant'
@@ -941,7 +963,7 @@ export default function App({ appConfig }) {
             cameraState={cameraState}
             clearSession={clearSession}
             createSession={createSession}
-            effectiveAvatarProfile={effectiveAvatarProfile}
+            effectiveAvatarProfile={localizedEffectiveAvatarProfile}
             exportSession={exportSession}
             handleAvatarSelection={setSelectedAvatarId}
             hasReplayCache={hasReplayCache}
@@ -957,7 +979,7 @@ export default function App({ appConfig }) {
             restoreSession={restoreSession}
             runtimeVideoRef={sessionRuntimeVideoRef}
             selectedAvatarId={selectedAvatarId}
-            selectedAvatarProfile={selectedAvatarProfile}
+            selectedAvatarProfile={localizedSelectedAvatarProfile}
             sessionErrorMessage={sessionErrorMessage}
             sessionRequestState={sessionRequestState}
             sessionStatusMessage={sessionStatusMessage}
@@ -982,7 +1004,7 @@ export default function App({ appConfig }) {
         <AvatarComposerPanel
           activeMessage={resolvedActiveMessage}
           assistantAudioRef={assistantAudioRef}
-          avatarProfile={selectedAvatarProfile}
+          avatarProfile={localizedSelectedAvatarProfile}
           avatarMouthState={avatarMouthState}
           avatarSpeechState={avatarSpeechState}
           canSubmitText={canSubmitText}
