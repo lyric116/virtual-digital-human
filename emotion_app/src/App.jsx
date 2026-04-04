@@ -24,12 +24,15 @@ import {
   getReplayDelayMs,
   normalizeEmotionLabel,
   normalizeSessionStatePayload,
+  normalizeUserAvatarId,
   readExportCache,
+  readStoredUserAvatarId,
   resolveAppConfig,
   resolveAvatarExpressionPreset,
   resolveAvatarId,
   storeExportCache,
   triggerExportDownload,
+  writeStoredUserAvatarId,
 } from './appHelpers';
 import AppHeader from './AppHeader';
 import AssistantRepliesPanel from './AssistantRepliesPanel';
@@ -50,6 +53,7 @@ export default function App({ appConfig }) {
   // 语言状态管理
   const [lang, setLang] = useState('zh');
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const [isUserAvatarMenuOpen, setIsUserAvatarMenuOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const t = i18n[lang];
 
@@ -196,6 +200,9 @@ export default function App({ appConfig }) {
     () => resolveAppConfig(appConfig, 'built-in defaults'),
     [appConfig],
   );
+  const [selectedUserAvatarId, setSelectedUserAvatarId] = useState(() => readStoredUserAvatarId(
+    resolveAppConfig(appConfig, 'built-in defaults').userAvatarStorageKey,
+  ));
 
   const effectiveAvatarId = sessionAvatarId
     ? resolveAvatarId(sessionAvatarId, runtimeConfig.defaultAvatarId)
@@ -318,6 +325,8 @@ export default function App({ appConfig }) {
     t.avatarCompanionLabel,
     t.avatarCompanionStageNote,
   ]);
+  const normalizedSelectedUserAvatarId = normalizeUserAvatarId(selectedUserAvatarId);
+  const resolvedUserAvatarId = normalizedSelectedUserAvatarId;
   const resolvedActiveMessage = bubbleDisplayMode === 'auto'
     ? activeMessage
     : bubbleDisplayMode === 'assistant'
@@ -659,6 +668,10 @@ export default function App({ appConfig }) {
   }, []);
 
   useEffect(() => {
+    writeStoredUserAvatarId(runtimeConfig.userAvatarStorageKey, normalizedSelectedUserAvatarId);
+  }, [normalizedSelectedUserAvatarId, runtimeConfig.userAvatarStorageKey]);
+
+  useEffect(() => {
     const previousTextSubmitState = previousTextSubmitStateRef.current;
     if (textSubmitState === 'sending' && previousTextSubmitState !== 'sending') {
       clearBubbleResumeTimer();
@@ -853,7 +866,7 @@ export default function App({ appConfig }) {
     replayRunIdRef.current = runId;
     scheduleReplayStep(replaySequence, 0, runId, fileName);
     return true;
-  }, [clearAffectRefreshTimer, clearReplayTimer, runtimeConfig.exportCacheStorageKey, runtimeConfig.defaultAvatarId, scheduleReplayStep, selectedAvatarId, stopAssistantAudioPlayback, t.replayModeActive, teardownCamera, teardownMicrophone, teardownRealtime]);
+  }, [clearAffectRefreshTimer, clearBubbleResumeTimer, clearReplayTimer, runtimeConfig.exportCacheStorageKey, runtimeConfig.defaultAvatarId, scheduleReplayStep, selectedAvatarId, stopAssistantAudioPlayback, t.replayModeActive, teardownCamera, teardownMicrophone, teardownRealtime]);
 
   const exportSession = useCallback(async () => {
     if (!activeSessionId) {
@@ -889,9 +902,12 @@ export default function App({ appConfig }) {
   }, [activeSessionId, runtimeConfig.apiBaseUrl, runtimeConfig.exportCacheStorageKey]);
 
   return (
-    <div 
+    <div
       className="min-h-screen bg-[#FDFBF7] text-[#5C4D42] font-sans relative overflow-hidden selection:bg-orange-200"
-      onClick={() => setIsLangMenuOpen(false)}
+      onClick={() => {
+        setIsLangMenuOpen(false);
+        setIsUserAvatarMenuOpen(false);
+      }}
     >
       {/* 自定义呼吸动画样式 */}
       <style dangerouslySetInnerHTML={{__html: `
@@ -937,6 +953,7 @@ export default function App({ appConfig }) {
           isLangMenuOpen={isLangMenuOpen}
           isLoggedIn={isLoggedIn}
           isTimelineOpen={isTimelineOpen}
+          isUserAvatarMenuOpen={isUserAvatarMenuOpen}
           lang={lang}
           onAuthOpen={() => {
             setAuthMode('login');
@@ -947,8 +964,20 @@ export default function App({ appConfig }) {
             setLang(nextLang);
             setIsLangMenuOpen(false);
           }}
+          onSelectUserAvatar={(nextUserAvatarId) => {
+            setSelectedUserAvatarId(normalizeUserAvatarId(nextUserAvatarId));
+            setIsUserAvatarMenuOpen(false);
+          }}
           onTimelineOpen={() => setIsTimelineOpen((previous) => !previous)}
-          onToggleLangMenu={() => setIsLangMenuOpen(!isLangMenuOpen)}
+          onToggleLangMenu={() => {
+            setIsUserAvatarMenuOpen(false);
+            setIsLangMenuOpen((previous) => !previous);
+          }}
+          onToggleUserAvatarMenu={() => {
+            setIsLangMenuOpen(false);
+            setIsUserAvatarMenuOpen((previous) => !previous);
+          }}
+          selectedUserAvatarId={resolvedUserAvatarId}
           t={t}
         />
 
@@ -1019,6 +1048,7 @@ export default function App({ appConfig }) {
           submitText={submitText}
           t={t}
           textSubmitState={textSubmitState}
+          userAvatarId={resolvedUserAvatarId}
         />
 
       </div>

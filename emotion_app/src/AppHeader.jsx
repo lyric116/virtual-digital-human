@@ -12,14 +12,22 @@ export default function AppHeader({
   isLangMenuOpen,
   isLoggedIn,
   isTimelineOpen,
+  isUserAvatarMenuOpen,
   lang,
   onAuthOpen,
   onHomeOpen,
   onSelectLang,
+  onSelectUserAvatar,
   onTimelineOpen,
   onToggleLangMenu,
+  onToggleUserAvatarMenu,
+  selectedUserAvatarId,
   t,
 }) {
+  const userAvatarOptions = [
+    { id: 'female', label: t.userAvatarFemaleLabel },
+    { id: 'male', label: t.userAvatarMaleLabel },
+  ];
   return (
     <header className="relative z-50 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-4 border-b border-[#F0E5D8]">
       <div className="flex flex-col">
@@ -45,6 +53,8 @@ export default function AppHeader({
                 e.stopPropagation();
                 if (item.id === 'lang') {
                   onToggleLangMenu();
+                } else if (item.id === 'profile') {
+                  onToggleUserAvatarMenu();
                 } else if (item.id === 'auth') {
                   if (isLoggedIn) {
                     onHomeOpen();
@@ -79,6 +89,25 @@ export default function AppHeader({
                     }`}
                   >
                     {option.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {item.id === 'profile' && isUserAvatarMenuOpen && (
+              <div className="absolute top-full mt-3 right-0 md:left-1/2 md:-translate-x-1/2 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-[#F0E5D8] py-2 w-44 flex flex-col z-50 overflow-hidden">
+                {userAvatarOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectUserAvatar(option.id);
+                    }}
+                    className={`px-4 py-3 text-sm text-left hover:bg-[#FFF5EB] hover:text-[#D97757] transition-colors ${
+                      selectedUserAvatarId === option.id ? 'text-[#D97757] bg-[#FFF5EB]/50 font-medium' : 'text-[#8C7A6B]'
+                    }`}
+                  >
+                    {option.label}
                   </button>
                 ))}
               </div>

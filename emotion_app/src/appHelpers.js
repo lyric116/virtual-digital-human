@@ -14,6 +14,7 @@ const defaultAppConfig = {
   defaultAvatarId: 'companion_female_01',
   activeSessionStorageKey: 'virtual-human-active-session-id',
   exportCacheStorageKey: 'virtual-human-last-export',
+  userAvatarStorageKey: 'virtual-human-user-avatar-id',
   heartbeatIntervalMs: 5000,
   reconnectDelayMs: 1000,
   enableAudioFinalize: true,
@@ -97,6 +98,11 @@ export function resolveAppConfig(config, fallbackSourceLabel = 'built-in default
       nextConfig,
       ['exportCacheStorageKey', 'export_cache_storage_key'],
       defaultAppConfig.exportCacheStorageKey,
+    ),
+    userAvatarStorageKey: readStringConfigValue(
+      nextConfig,
+      ['userAvatarStorageKey', 'user_avatar_storage_key'],
+      defaultAppConfig.userAvatarStorageKey,
     ),
     heartbeatIntervalMs: readNumberConfigValue(
       nextConfig,
@@ -648,6 +654,26 @@ export function buildMouthCueSequence(text, durationMs) {
   }
 
   return cues;
+}
+
+export function normalizeUserAvatarId(value) {
+  return value === 'male' ? 'male' : 'female';
+}
+
+export function readStoredUserAvatarId(storageKey) {
+  try {
+    return normalizeUserAvatarId(window?.localStorage?.getItem(storageKey));
+  } catch (error) {
+    return 'female';
+  }
+}
+
+export function writeStoredUserAvatarId(storageKey, userAvatarId) {
+  try {
+    window?.localStorage?.setItem(storageKey, normalizeUserAvatarId(userAvatarId));
+  } catch (error) {
+    // Ignore localStorage availability errors in browser-restricted contexts.
+  }
 }
 
 export function readExportCache(storageKey) {

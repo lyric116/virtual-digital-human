@@ -132,6 +132,8 @@ export const i18n = {
     avatarCoachLabel: '小智',
     avatarCompanionStageNote: '愿您美好心情每一天~',
     avatarCoachStageNote: '有什么问题尽管交给我。',
+    userAvatarFemaleLabel: '女性形象',
+    userAvatarMaleLabel: '男性形象',
   },
   en: {
     title: 'Sanctuary of Light',
@@ -266,6 +268,8 @@ export const i18n = {
     avatarCoachLabel: 'Xiaozhi',
     avatarCompanionStageNote: 'Wishing you a beautiful mood every day~',
     avatarCoachStageNote: 'Bring me any question you have.',
+    userAvatarFemaleLabel: 'Female Avatar',
+    userAvatarMaleLabel: 'Male Avatar',
   },
   de: {
     title: 'Lichtoase',
@@ -400,6 +404,8 @@ export const i18n = {
     avatarCoachLabel: 'Xiaozhi',
     avatarCompanionStageNote: 'Ich wünsche dir jeden Tag eine gute Stimmung~',
     avatarCoachStageNote: 'Mit jeder Frage kannst du gern zu mir kommen.',
+    userAvatarFemaleLabel: 'Weiblicher Avatar',
+    userAvatarMaleLabel: 'Männlicher Avatar',
   },
   fr: {
     title: 'Sanctuaire de Lumière',
@@ -534,6 +540,8 @@ export const i18n = {
     avatarCoachLabel: 'Xiaozhi',
     avatarCompanionStageNote: 'Je vous souhaite une belle humeur chaque jour~',
     avatarCoachStageNote: 'Confiez-moi toutes vos questions.',
+    userAvatarFemaleLabel: 'Avatar féminin',
+    userAvatarMaleLabel: 'Avatar masculin',
   },
 };
 

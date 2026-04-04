@@ -30,7 +30,7 @@ function decodeBase64AudioData(base64Value) {
 
   const decodeBase64 = typeof window?.atob === 'function'
     ? window.atob.bind(window)
-    : (typeof globalThis?.atob === 'function' ? globalThis.atob.bind(globalThis) : null);
+    : null;
   if (!decodeBase64) {
     throw new Error('当前环境不支持 Base64 音频解码。');
   }

@@ -38,6 +38,7 @@ function renderAvatarPanel(overrides = {}) {
       submitText={jest.fn()}
       t={testCopy}
       textSubmitState="idle"
+      userAvatarId="female"
       {...overrides}
     />,
   );
@@ -47,6 +48,7 @@ test('renders companion A through Live2D with fallback in jsdom', () => {
   renderAvatarPanel();
 
   const assistantSurface = screen.getByTestId('assistant-avatar-surface');
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'female');
   expect(assistantSurface.querySelector('[data-live2d-state="fallback"]')).toBeInTheDocument();
   expect(assistantSurface.querySelector('[data-avatar-fallback-profile="companion"]')).toBeInTheDocument();
   expect(screen.getByTestId('assistant-avatar-stage-note')).toHaveStyle({
@@ -90,4 +92,21 @@ test('renders any avatar profile through Live2D when the profile provides model 
 
   const assistantSurface = screen.getByTestId('assistant-avatar-surface');
   expect(assistantSurface.querySelector('[data-live2d-state="fallback"]')).toBeInTheDocument();
+});
+
+test('renders the male user avatar when requested', () => {
+  renderAvatarPanel({
+    userAvatarId: 'male',
+  });
+
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'male');
+});
+
+test('pins both speech bubbles to explicit widths so avatar containers do not shrink them', () => {
+  renderAvatarPanel();
+
+  expect(screen.getByTestId('user-bubble').className).toContain('w-[220px]');
+  expect(screen.getByTestId('user-bubble').className).toContain('md:w-[236px]');
+  expect(screen.getByTestId('assistant-bubble').className).toContain('w-[220px]');
+  expect(screen.getByTestId('assistant-bubble').className).toContain('md:w-[236px]');
 });

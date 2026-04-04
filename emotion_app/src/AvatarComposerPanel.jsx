@@ -16,6 +16,57 @@ function AvatarFallbackMouth({ avatarMouthState }) {
   return <path d="M92 100Q100 102 108 100" stroke="#B38A78" strokeWidth="2" strokeLinecap="round" />;
 }
 
+function UserAvatarFemale() {
+  return (
+    <svg
+      width="200"
+      height="240"
+      viewBox="0 0 200 240"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      data-testid="user-avatar"
+      data-user-avatar-id="female"
+    >
+      <path d="M40 240C40 180 60 140 100 140C140 140 160 180 160 240H40Z" fill="#FDECDA"/>
+      <path d="M50 240C50 190 70 155 100 155C130 155 150 190 150 240H50Z" fill="#F8B89C" fillOpacity="0.2"/>
+      <rect x="85" y="110" width="30" height="40" rx="10" fill="#FFE0C8"/>
+      <rect x="65" y="40" width="70" height="85" rx="35" fill="#FFE0C8"/>
+      <path d="M60 70C60 40 75 25 100 25C125 25 140 40 140 70C140 100 145 120 150 130C125 120 115 90 115 90C115 90 105 110 85 110C65 110 50 130 50 130C55 120 60 100 60 70Z" fill="#A87C64"/>
+      <path d="M80 85Q85 88 90 85" stroke="#78503C" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M110 85Q115 88 120 85" stroke="#78503C" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M95 105Q100 110 105 105" stroke="#D97757" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="75" cy="95" r="4" fill="#FFB6A3" opacity="0.6"/>
+      <circle cx="125" cy="95" r="4" fill="#FFB6A3" opacity="0.6"/>
+    </svg>
+  );
+}
+
+function UserAvatarMale() {
+  return (
+    <svg
+      width="200"
+      height="240"
+      viewBox="0 0 200 240"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      data-testid="user-avatar"
+      data-user-avatar-id="male"
+    >
+      <path d="M32 240C32 168 58 126 100 126C142 126 168 168 168 240H32Z" fill="#E4EEF8" />
+      <path d="M46 240C46 182 66 145 100 145C134 145 154 182 154 240H46Z" fill="#5D748C" fillOpacity="0.12" />
+      <rect x="85" y="105" width="30" height="40" rx="10" fill="#F2D6C2"/>
+      <rect x="65" y="36" width="70" height="85" rx="34" fill="#F2D6C2"/>
+      <path d="M60 66C60 34 78 20 100 20C122 20 140 34 140 66C140 84 136 96 128 102C124 82 114 68 100 68C86 68 76 82 72 102C64 96 60 84 60 66Z" fill="#3E4955"/>
+      <path d="M74 56C82 42 90 36 100 36C110 36 118 42 126 56" stroke="#3E4955" strokeWidth="10" strokeLinecap="round"/>
+      <path d="M79 81Q85 79 91 81" stroke="#2F3842" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M109 81Q115 79 121 81" stroke="#2F3842" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M84 93Q92 88 96 93" stroke="#2F3842" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M104 93Q108 88 116 93" stroke="#2F3842" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M92 100Q100 102 108 100" stroke="#B38A78" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function AssistantAvatarFallback({
   avatarMouthState,
   avatarSpeechState,
@@ -87,6 +138,7 @@ export default function AvatarComposerPanel({
   submitText,
   t,
   textSubmitState,
+  userAvatarId,
 }) {
   const avatarExpressionPreset = resolveAvatarExpressionPreset({
     stage: latestAssistantMessage?.metadata?.stage,
@@ -125,6 +177,9 @@ export default function AvatarComposerPanel({
       profileId={avatarProfile?.profileId}
     />
   );
+  const userAvatarNode = userAvatarId === 'male'
+    ? <UserAvatarMale />
+    : <UserAvatarFemale />;
 
   return (
     <>
@@ -136,24 +191,13 @@ export default function AvatarComposerPanel({
           <div className="absolute top-20 right-1/3 w-48 h-48 bg-orange-100/30 rounded-full blur-3xl"></div>
         </div>
 
-        <div className="absolute left-4 md:left-20 bottom-0 flex flex-col items-center animate-breathe">
-          <div data-testid="user-bubble" className={`absolute -top-24 md:-top-28 left-10 md:left-24 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-bl-none shadow-sm border border-orange-50 max-w-[200px] md:max-w-[260px] transition-opacity duration-700 ${activeMessage === 0 ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="absolute left-4 md:left-24 bottom-0 flex flex-col items-center animate-breathe">
+          <div data-testid="user-bubble" className={`absolute -top-24 md:-top-10 left-10 md:left-36 w-[220px] md:w-[236px] bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-bl-none shadow-sm border border-orange-50 transition-opacity duration-700 ${activeMessage === 0 ? 'opacity-100' : 'opacity-0'}`}>
             <p className="text-sm md:text-base text-[#5C4D42] leading-relaxed">
               {liveTranscriptText || t.bubble1}
             </p>
           </div>
-          <svg width="200" height="240" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M40 240C40 180 60 140 100 140C140 140 160 180 160 240H40Z" fill="#FDECDA"/>
-            <path d="M50 240C50 190 70 155 100 155C130 155 150 190 150 240H50Z" fill="#F8B89C" fillOpacity="0.2"/>
-            <rect x="85" y="110" width="30" height="40" rx="10" fill="#FFE0C8"/>
-            <rect x="65" y="40" width="70" height="85" rx="35" fill="#FFE0C8"/>
-            <path d="M60 70C60 40 75 25 100 25C125 25 140 40 140 70C140 100 145 120 150 130C125 120 115 90 115 90C115 90 105 110 85 110C65 110 50 130 50 130C55 120 60 100 60 70Z" fill="#A87C64"/>
-            <path d="M80 85Q85 88 90 85" stroke="#78503C" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M110 85Q115 88 120 85" stroke="#78503C" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M95 105Q100 110 105 105" stroke="#D97757" strokeWidth="2" strokeLinecap="round"/>
-            <circle cx="75" cy="95" r="4" fill="#FFB6A3" opacity="0.6"/>
-            <circle cx="125" cy="95" r="4" fill="#FFB6A3" opacity="0.6"/>
-          </svg>
+          {userAvatarNode}
         </div>
 
         <div className="absolute right-0 md:right-10 bottom-0 animate-breathe-delayed" data-testid="assistant-avatar-surface">
@@ -170,7 +214,7 @@ export default function AvatarComposerPanel({
             <div className="text-sm font-semibold text-[#5C4D42]">{avatarProfile.label}</div>
             <div className="mt-1 text-xs text-[#8C7A6B]">{avatarProfile.stageNote}</div>
           </div>
-          <div data-testid="assistant-bubble" className={`absolute -left-2 md:-left-[148px] top-[132px] md:top-[166px] z-10 bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 max-w-[220px] md:max-w-[236px] transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
+          <div data-testid="assistant-bubble" className={`absolute -left-2 md:-left-[148px] top-[132px] md:top-[166px] z-10 w-[220px] md:w-[236px] bg-white/95 backdrop-blur-md p-4 rounded-2xl rounded-br-none shadow-sm border border-teal-50 transition-opacity duration-700 ${activeMessage === 1 ? 'opacity-100' : 'opacity-0'}`}>
             <p className="text-sm md:text-base text-[#5C4D42] leading-relaxed">
               {latestAssistantMessage?.content_text || t.bubble2}
             </p>

@@ -138,6 +138,17 @@ function resolveLive2DMatrixFitOptions(fitOptions) {
   };
 }
 
+class CancelledLive2DLoadError extends Error {
+  constructor() {
+    super('Live2D avatar initialization was cancelled.');
+    this.name = 'CancelledLive2DLoadError';
+  }
+}
+
+function isCancelledLive2DLoadError(error) {
+  return error instanceof CancelledLive2DLoadError || error?.name === 'CancelledLive2DLoadError';
+}
+
 class CubismCanvasModel {
   constructor(runtime) {
     this.runtime = runtime;
@@ -152,6 +163,17 @@ class CubismCanvasModel {
     this.lipSyncIds = [];
     this.expressionValues = {};
     this.mouthOpenY = 0;
+    this.released = false;
+  }
+
+  isReleased() {
+    return this.released || !this.userModel;
+  }
+
+  throwIfCancelled(isCancelled) {
+    if (this.isReleased() || (typeof isCancelled === 'function' && isCancelled())) {
+      throw new CancelledLive2DLoadError();
+    }
   }
 
   getModel() {
@@ -237,13 +259,21 @@ class CubismCanvasModel {
     }, []);
   }
 
-  async load({ gl, idleMotion, modelPath, viewport }) {
+  async load({ gl, idleMotion, modelPath, viewport, isCancelled = null }) {
+    this.throwIfCancelled(isCancelled);
     this.baseAssetUrl = new URL(resolveLive2DModelBasePath(modelPath), window.location.origin).toString();
-    this.modelSetting = await loadLive2DModelSetting(modelPath, this.runtime.CubismModelSettingJson);
 
-    const modelBuffer = await loadLive2DArrayBuffer(
-      this.resolveAssetPath(this.modelSetting.getModelFileName()),
-    );
+    const modelSetting = await loadLive2DModelSetting(modelPath, this.runtime.CubismModelSettingJson);
+    this.throwIfCancelled(isCancelled);
+    this.modelSetting = modelSetting;
+
+    const modelFileName = this.modelSetting?.getModelFileName?.();
+    if (!modelFileName) {
+      throw new Error('Live2D model setting is missing a model file.');
+    }
+
+    const modelBuffer = await loadLive2DArrayBuffer(this.resolveAssetPath(modelFileName));
+    this.throwIfCancelled(isCancelled);
     this.userModel.loadModel(modelBuffer);
 
     const model = this.getModel();
@@ -282,15 +312,18 @@ class CubismCanvasModel {
     const physicsFileName = this.modelSetting.getPhysicsFileName();
     if (physicsFileName) {
       const physicsBuffer = await loadLive2DArrayBuffer(this.resolveAssetPath(physicsFileName));
+      this.throwIfCancelled(isCancelled);
       this.userModel.loadPhysics(physicsBuffer, physicsBuffer.byteLength);
     }
 
     const poseFileName = this.modelSetting.getPoseFileName();
     if (poseFileName) {
       const poseBuffer = await loadLive2DArrayBuffer(this.resolveAssetPath(poseFileName));
+      this.throwIfCancelled(isCancelled);
       this.userModel.loadPose(poseBuffer, poseBuffer.byteLength);
     }
 
+    this.throwIfCancelled(isCancelled);
     this.userModel.createRenderer(viewport.width, viewport.height, 1);
     const renderer = this.getRenderer();
     if (!renderer) {
@@ -300,12 +333,14 @@ class CubismCanvasModel {
     renderer.setIsPremultipliedAlpha(true);
     renderer.setIsCulling(false);
 
-    this.textureIds = await Promise.all(
+    const textureIds = await Promise.all(
       Array.from({ length: this.modelSetting.getTextureCount() }, (_, index) => loadLive2DTexture(
         gl,
         this.resolveAssetPath(this.modelSetting.getTextureFileName(index)),
       )),
     );
+    this.throwIfCancelled(isCancelled);
+    this.textureIds = textureIds;
 
     this.textureIds.forEach((textureId, index) => {
       renderer.bindTexture(index, textureId);
@@ -314,15 +349,21 @@ class CubismCanvasModel {
     this.userModel.setRenderTargetSize(viewport.width, viewport.height);
 
     if (typeof idleMotion?.group === 'string' && Number.isInteger(idleMotion?.index)) {
-      await this.startMotion(idleMotion.group, idleMotion.index, { loop: true, priority: 1 });
+      await this.startMotion(idleMotion.group, idleMotion.index, {
+        loop: true,
+        priority: 1,
+        isCancelled,
+      });
     }
 
+    this.throwIfCancelled(isCancelled);
     model.saveParameters();
     this.userModel.setInitialized(true);
     this.userModel.setUpdating(false);
   }
 
-  async getOrLoadMotion(group, index, { loop = false } = {}) {
+  async getOrLoadMotion(group, index, { loop = false, isCancelled = null } = {}) {
+    this.throwIfCancelled(isCancelled);
     const motionKey = `${group}:${index}`;
     if (this.motionCache.has(motionKey)) {
       return this.motionCache.get(motionKey);
@@ -334,6 +375,7 @@ class CubismCanvasModel {
     }
 
     const motionBuffer = await loadLive2DArrayBuffer(this.resolveAssetPath(motionFileName));
+    this.throwIfCancelled(isCancelled);
     const motion = this.userModel.loadMotion(
       motionBuffer,
       motionBuffer.byteLength,
@@ -363,8 +405,9 @@ class CubismCanvasModel {
     return motion;
   }
 
-  async startMotion(group, index, { loop = false, priority = 1 } = {}) {
-    const motion = await this.getOrLoadMotion(group, index, { loop });
+  async startMotion(group, index, { loop = false, priority = 1, isCancelled = null } = {}) {
+    const motion = await this.getOrLoadMotion(group, index, { loop, isCancelled });
+    this.throwIfCancelled(isCancelled);
     if (!motion || !this.userModel?._motionManager) {
       return;
     }
@@ -462,6 +505,8 @@ class CubismCanvasModel {
   }
 
   release(gl) {
+    this.released = true;
+
     if (gl && this.textureIds.length) {
       this.textureIds.forEach((textureId) => {
         try {
@@ -477,11 +522,19 @@ class CubismCanvasModel {
     this.resolvedParameterNameCache.clear();
 
     if (this.modelSetting?.release) {
-      this.modelSetting.release();
+      try {
+        this.modelSetting.release();
+      } catch (error) {
+        // Ignore repeated Live2D setting cleanup errors.
+      }
     }
     this.modelSetting = null;
 
-    this.userModel?.release?.();
+    try {
+      this.userModel?.release?.();
+    } catch (error) {
+      // Ignore repeated Live2D model cleanup errors.
+    }
     this.userModel = null;
   }
 }
@@ -522,6 +575,8 @@ export default function Live2DAvatar({
     let animationFrameId = 0;
     let cancelled = false;
     let stopObservingViewport = () => {};
+    let pendingModel = null;
+    let effectGl = null;
     const canvasHostElement = canvasHostRef.current;
 
     async function mountLive2D() {
@@ -568,6 +623,7 @@ export default function Live2DAvatar({
         canvasHostElement.appendChild(canvas);
         canvasRef.current = canvas;
         glRef.current = gl;
+        effectGl = gl;
 
         viewportRef.current = measureLive2DViewport(rootRef.current);
         const initialDisplayViewport = resizeLive2DCanvas(
@@ -578,19 +634,23 @@ export default function Live2DAvatar({
         );
 
         const live2DModel = new CubismCanvasModel(runtime);
-        modelRef.current = live2DModel;
+        pendingModel = live2DModel;
 
         await live2DModel.load({
           gl,
           idleMotion,
           modelPath,
           viewport: initialDisplayViewport,
+          isCancelled: () => cancelled,
         });
 
         if (cancelled) {
           live2DModel.release(gl);
           return;
         }
+
+        pendingModel = null;
+        modelRef.current = live2DModel;
 
         stopObservingViewport = observeLive2DViewport(rootRef.current, () => {
           if (!rootRef.current || !canvasRef.current || !glRef.current || !modelRef.current) {
@@ -631,6 +691,13 @@ export default function Live2DAvatar({
         setRenderState('ready');
         animationFrameId = window.requestAnimationFrame(renderFrame);
       } catch (error) {
+        if (pendingModel) {
+          pendingModel.release(effectGl);
+          pendingModel = null;
+        }
+        if (isCancelledLive2DLoadError(error) || cancelled) {
+          return;
+        }
         console.error('Failed to initialize Live2D avatar.', error);
         setRenderState('error');
       }
@@ -644,6 +711,10 @@ export default function Live2DAvatar({
         window.cancelAnimationFrame(animationFrameId);
       }
       stopObservingViewport();
+      if (pendingModel) {
+        pendingModel.release(effectGl);
+        pendingModel = null;
+      }
       if (modelRef.current) {
         modelRef.current.release(glRef.current);
         modelRef.current = null;

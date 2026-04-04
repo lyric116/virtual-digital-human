@@ -19,6 +19,7 @@ const appConfig = {
   defaultAvatarId: 'companion_female_01',
   activeSessionStorageKey: 'virtual-human-active-session-id',
   exportCacheStorageKey: 'virtual-human-last-export',
+  userAvatarStorageKey: 'virtual-human-user-avatar-id',
   heartbeatIntervalMs: 200,
   reconnectDelayMs: 150,
   videoFrameUploadIntervalMs: 50,
@@ -671,14 +672,17 @@ test('avatar buttons switch the assistant preview between Lily and Xiaozhi', () 
   render(<App appConfig={appConfig} />);
 
   const assistantSurface = screen.getByTestId('assistant-avatar-surface');
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'female');
   expect(within(assistantSurface).getAllByText('莉莉').length).toBeGreaterThan(0);
   expect(within(assistantSurface).getByText('愿您美好心情每一天~')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: '小智' }));
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'female');
   expect(within(assistantSurface).getAllByText('小智').length).toBeGreaterThan(0);
   expect(within(assistantSurface).getByText('有什么问题尽管交给我。')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: '莉莉' }));
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'female');
   expect(within(assistantSurface).getAllByText('莉莉').length).toBeGreaterThan(0);
   expect(within(assistantSurface).getByText('愿您美好心情每一天~')).toBeInTheDocument();
 });
@@ -698,11 +702,18 @@ test('avatar labels and stage notes follow the selected language', async () => {
   expect(within(assistantSurface).getAllByText('Lily').length).toBeGreaterThan(0);
   expect(within(assistantSurface).getByText('Wishing you a beautiful mood every day~')).toBeInTheDocument();
 
+  fireEvent.click(screen.getByRole('button', { name: 'My Avatar' }));
+  expect(screen.getByRole('button', { name: 'Female Avatar' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Male Avatar' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Male Avatar' }));
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'male');
+
   fireEvent.click(screen.getByRole('button', { name: 'Xiaozhi' }));
   expect(within(assistantSurface).getAllByText('Xiaozhi').length).toBeGreaterThan(0);
   expect(within(assistantSurface).getByText('Bring me any question you have.')).toBeInTheDocument();
   expect(screen.getByText('Next conversation will use: Xiaozhi')).toBeInTheDocument();
   expect(screen.queryByText(/Current companion:/)).not.toBeInTheDocument();
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'male');
 });
 
 test('avatar buttons switch the assistant preview even when a Lily session is restored', async () => {
@@ -759,10 +770,30 @@ test('restored session avatar labels also follow language changes', async () => 
   expect(screen.queryByText(/Next conversation will use:/)).not.toBeInTheDocument();
   expect(within(assistantSurface).getByText('Wishing you a beautiful mood every day~')).toBeInTheDocument();
 
+  fireEvent.click(screen.getByRole('button', { name: 'My Avatar' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Male Avatar' }));
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'male');
+
   fireEvent.click(screen.getByRole('button', { name: 'Xiaozhi' }));
   expect(screen.getByText('Current companion: Lily')).toBeInTheDocument();
   expect(screen.getByText('Next conversation will use: Xiaozhi')).toBeInTheDocument();
   expect(within(assistantSurface).getByText('Bring me any question you have.')).toBeInTheDocument();
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'male');
+});
+
+test('user avatar selection persists across remounts', () => {
+  const { unmount } = render(<App appConfig={appConfig} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '我的形象' }));
+  fireEvent.click(screen.getByRole('button', { name: '男性形象' }));
+
+  expect(window.localStorage.getItem(appConfig.userAvatarStorageKey)).toBe('male');
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'male');
+
+  unmount();
+  render(<App appConfig={appConfig} />);
+
+  expect(screen.getByTestId('user-avatar')).toHaveAttribute('data-user-avatar-id', 'male');
 });
 
 test('restore session keeps the session panel hidden until timeline is opened', async () => {
