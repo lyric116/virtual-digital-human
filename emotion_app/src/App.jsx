@@ -36,7 +36,6 @@ import {
 } from './appHelpers';
 import AppHeader from './AppHeader';
 import AssistantRepliesPanel from './AssistantRepliesPanel';
-import AuthModal from './AuthModal';
 import AvatarComposerPanel from './AvatarComposerPanel';
 import CameraModal from './CameraModal';
 import DeviceAffectPanel from './DeviceAffectPanel';
@@ -93,10 +92,7 @@ export default function App({ appConfig }) {
   // 麦克风状态管理
   const [isMicModalOpen, setIsMicModalOpen] = useState(false);
 
-  // 用户登录/注册状态管理
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  // 保留登录/注册弹窗组件代码，但当前不挂载使用。
 
   const [sessionState, setSessionState] = useState(null);
   const [sessionRequestState, setSessionRequestState] = useState('idle');
@@ -951,14 +947,9 @@ export default function App({ appConfig }) {
         
         <AppHeader
           isLangMenuOpen={isLangMenuOpen}
-          isLoggedIn={isLoggedIn}
           isTimelineOpen={isTimelineOpen}
           isUserAvatarMenuOpen={isUserAvatarMenuOpen}
           lang={lang}
-          onAuthOpen={() => {
-            setAuthMode('login');
-            setIsAuthModalOpen(true);
-          }}
           onHomeOpen={() => setIsTimelineOpen(false)}
           onSelectLang={(nextLang) => {
             setLang(nextLang);
@@ -1100,18 +1091,6 @@ export default function App({ appConfig }) {
         t={t}
       />
 
-      <AuthModal
-        authMode={authMode}
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onSubmit={(e) => {
-          e.preventDefault();
-          setIsLoggedIn(true);
-          setIsAuthModalOpen(false);
-        }}
-        onSwitchMode={setAuthMode}
-        t={t}
-      />
 
     </div>
   );

@@ -423,14 +423,6 @@ async function openTimelineView() {
   });
 }
 
-async function loginUser() {
-  fireEvent.click(screen.getByRole('button', { name: /欢迎入住|check in/i }));
-  await waitFor(() => expect(screen.getByText(/欢迎回来|welcome back/i)).toBeInTheDocument());
-  fireEvent.change(screen.getByPlaceholderText(/用户名|username/i), { target: { value: 'tester' } });
-  fireEvent.change(screen.getByPlaceholderText(/密码|password/i), { target: { value: 'secret' } });
-  fireEvent.click(screen.getByRole('button', { name: /温柔登录|gentle login/i }));
-  await waitFor(() => expect(screen.queryByText(/欢迎回来|welcome back/i)).not.toBeInTheDocument());
-}
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -465,7 +457,8 @@ afterEach(() => {
 test('renders the base experience with timeline hidden by default', () => {
   render(<App appConfig={appConfig} />);
 
-  expect(screen.getByText('和光心苑')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '和光心苑' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '和光心苑' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /创建会话|create session/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /时光记录|time log/i })).toBeInTheDocument();
   expect(screen.getAllByRole('button', { name: /摄像头预览|camera preview/i }).length).toBeGreaterThan(0);
@@ -839,9 +832,8 @@ test('restore session keeps the session panel hidden until timeline is opened', 
   expect(screen.queryByText(/^对话记录$|^Conversation$/i)).not.toBeInTheDocument();
 });
 
-test('timeline opens from the header and logged-in home closes it again', async () => {
+test('header home actions close timeline without opening auth modal', async () => {
   const socket = await createConnectedSession();
-  await loginUser();
 
   act(() => {
     socket.receive(buildEnvelope('message.accepted', {
@@ -873,14 +865,19 @@ test('timeline opens from the header and logged-in home closes it again', async 
     'trace assistant reply',
   ]);
 
-  fireEvent.click(screen.getByRole('button', { name: /欢迎回家|welcome home/i }));
+  fireEvent.click(screen.getByRole('button', { name: /欢迎入住|check in/i }));
   expect(screen.queryByText(/^对话记录$|^Conversation$/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/欢迎回来|welcome back/i)).not.toBeInTheDocument();
 
   await openTimelineView();
   expect(getConversationMessageTexts()).toEqual([
     'trace user message',
     'trace assistant reply',
   ]);
+
+  fireEvent.click(screen.getByRole('button', { name: '和光心苑' }));
+  expect(screen.queryByText(/^对话记录$|^Conversation$/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/欢迎回来|welcome back/i)).not.toBeInTheDocument();
 });
 
 test('timeline preserves turn ordering and dedupes replayed message envelopes', async () => {

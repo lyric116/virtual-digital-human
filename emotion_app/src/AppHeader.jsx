@@ -10,11 +10,9 @@ const languageOptions = [
 
 export default function AppHeader({
   isLangMenuOpen,
-  isLoggedIn,
   isTimelineOpen,
   isUserAvatarMenuOpen,
   lang,
-  onAuthOpen,
   onHomeOpen,
   onSelectLang,
   onSelectUserAvatar,
@@ -31,9 +29,15 @@ export default function AppHeader({
   return (
     <header className="relative z-50 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-4 border-b border-[#F0E5D8]">
       <div className="flex flex-col">
-        <h1 className="text-4xl md:text-5xl font-bold tracking-wider text-[#D97757] flex items-center gap-3">
-          {t.title}
-          <Sparkles className="text-amber-400" size={28} />
+        <h1>
+          <button
+            type="button"
+            onClick={onHomeOpen}
+            className="text-4xl md:text-5xl font-bold tracking-wider text-[#D97757] flex items-center gap-3 text-left bg-transparent border-0 p-0 cursor-pointer transition-opacity duration-200 hover:opacity-85"
+          >
+            {t.title}
+            <Sparkles className="text-amber-400" size={28} />
+          </button>
         </h1>
         <p className="mt-3 text-[#8C7A6B] text-sm md:text-base tracking-wide flex items-center">
           {t.subtitle}
@@ -42,7 +46,7 @@ export default function AppHeader({
 
       <nav className="flex items-center gap-2 md:gap-6 bg-white/60 p-2 md:p-3 rounded-2xl backdrop-blur-sm border border-[#F0E5D8]/50 shadow-sm">
         {[
-          { id: 'auth', icon: HomeIcon, label: isLoggedIn ? t.navAuthHome : t.navAuthIn },
+          { id: 'auth', icon: HomeIcon, label: t.navAuthIn },
           { id: 'timeline', icon: Clock, label: t.navTimeline },
           { id: 'lang', icon: Globe, label: t.navLang },
           { id: 'profile', icon: User, label: t.navProfile },
@@ -56,17 +60,13 @@ export default function AppHeader({
                 } else if (item.id === 'profile') {
                   onToggleUserAvatarMenu();
                 } else if (item.id === 'auth') {
-                  if (isLoggedIn) {
-                    onHomeOpen();
-                  } else {
-                    onAuthOpen();
-                  }
+                  onHomeOpen();
                 } else if (item.id === 'timeline') {
                   onTimelineOpen();
                 }
               }}
               className={`flex flex-col items-center justify-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-300 hover:-translate-y-0.5 ${
-                (item.id === 'auth' && isLoggedIn && !isTimelineOpen) || (item.id === 'timeline' && isTimelineOpen)
+                (item.id === 'auth' && !isTimelineOpen) || (item.id === 'timeline' && isTimelineOpen)
                   ? 'text-[#D97757] bg-[#FFF5EB]'
                   : 'text-[#8C7A6B] hover:text-[#D97757] hover:bg-[#FFF5EB]'
               }`}
